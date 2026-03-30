@@ -35,11 +35,11 @@ export type AudioEngineEvent =
 
 type EventCallback = (event: AudioEngineEvent) => void
 
-// SoundTouch processing constants — optimized for music
-const BUFFER_SIZE = 4096
-const SOUNDTOUCH_SEQUENCE_MS = 60   // processing segment length
-const SOUNDTOUCH_SEEKWINDOW_MS = 20 // overlap-seek window
-const SOUNDTOUCH_OVERLAP_MS = 12    // overlap between segments
+// SoundTouch processing constants — optimized for music quality + low latency
+const BUFFER_SIZE = 2048              // smaller buffer = lower latency (~46ms at 44.1k)
+const SOUNDTOUCH_SEQUENCE_MS = 40     // shorter segments = less smearing on transients
+const SOUNDTOUCH_SEEKWINDOW_MS = 15   // tighter seek = more precise overlap matching
+const SOUNDTOUCH_OVERLAP_MS = 8       // less overlap = cleaner transitions
 
 class AudioEngine {
   private stems: Map<string, LoadedStem> = new Map()

@@ -161,9 +161,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       set({ currentTime: newTime })
     },
 
-    // ─── Pitch (-12..+12 semitones) ─────────────────────────────────────────
+    // ─── Pitch (-12..+12 semitones, supports fractional for fine-tuning) ────
     setPitch: (semitones: number) => {
-      const clamped = clamp(Math.round(semitones), -12, 12)
+      const clamped = clamp(Math.round(semitones * 10) / 10, -12, 12)
       audioEngine.setPitch(clamped)
       set({ pitch: clamped })
     },

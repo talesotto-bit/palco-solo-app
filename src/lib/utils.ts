@@ -22,7 +22,8 @@ export function clamp(value: number, min: number, max: number): number {
 export function semitonesToLabel(semitones: number): string {
   if (semitones === 0) return 'Original'
   const sign = semitones > 0 ? '+' : ''
-  return `${sign}${semitones} st`
+  const val = Number.isInteger(semitones) ? semitones.toString() : semitones.toFixed(1)
+  return `${sign}${val} st`
 }
 
 /** Convert speed ratio to percentage label */
