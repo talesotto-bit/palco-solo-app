@@ -65,10 +65,15 @@ export async function startSeparation(
 
   if (uploadError) throw new Error(`Erro no upload: ${uploadError.message}`)
 
-  // Get public URL
-  const { data: { publicUrl } } = supabase.storage
+  // Get signed URL (works even if bucket is private)
+  const { data: signedData, error: signedError } = await supabase.storage
     .from('uploads')
-    .getPublicUrl(filePath)
+    .createSignedUrl(filePath, 3600) // 1 hour expiry
+
+  if (signedError || !signedData?.signedUrl) {
+    throw new Error('Erro ao gerar URL do arquivo')
+  }
+  const publicUrl = signedData.signedUrl
 
   // Start separation
   onProgress('starting', 'Iniciando separação por IA...')
