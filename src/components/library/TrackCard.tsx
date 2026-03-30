@@ -37,17 +37,18 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
     navigate('/app/player')
   }
 
+  // ─── List view ─────────────────────────────────────────────────────
   if (view === 'list') {
     return (
       <div
         className={cn(
-          'flex items-center gap-3 md:gap-4 px-3 md:px-4 py-2.5 md:py-2 rounded-md group cursor-pointer transition-colors',
+          'flex items-center gap-3 px-3 py-2.5 rounded-md group cursor-pointer transition-colors',
           isActive ? 'bg-white/10' : 'hover:bg-white/5'
         )}
         onClick={handleNavigate}
       >
-        {/* Index / play */}
-        <div className="w-7 shrink-0 text-center">
+        {/* Index / eq */}
+        <div className="w-6 shrink-0 text-center">
           {isPlaying ? (
             <div className="flex items-end justify-center gap-[2px] h-4">
               <span className="eq-bar" style={{ animationDuration: '0.6s' }} />
@@ -55,17 +56,9 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
               <span className="eq-bar" style={{ animationDuration: '0.5s' }} />
             </div>
           ) : (
-            <>
-              <span className="text-sm text-[#b3b3b3] group-hover:hidden tabular-nums">
-                {index || ''}
-              </span>
-              <button
-                className="hidden group-hover:block text-white"
-                onClick={handlePlay}
-              >
-                <Play className="h-4 w-4 fill-white" />
-              </button>
-            </>
+            <span className="text-xs text-[#808080] tabular-nums">
+              {index || ''}
+            </span>
           )}
         </div>
 
@@ -84,40 +77,48 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
           )}>
             {track.title}
           </p>
-          <p className="text-xs text-[#b3b3b3] truncate">{track.artist}</p>
+          <p className="text-[11px] text-[#808080] truncate">
+            {track.artist}
+          </p>
         </div>
 
-        {/* Genre label */}
-        <span className="hidden lg:block text-xs text-[#b3b3b3] truncate max-w-[120px]">
-          {track.genreLabel}
-        </span>
-
-        {/* Stems badge */}
+        {/* Stems */}
         {track.hasStems && track.stems.length > 1 && (
-          <div className="hidden sm:flex items-center gap-1 text-[10px] text-[hsl(var(--primary))] font-semibold shrink-0">
+          <div className="flex items-center gap-1 text-[10px] text-[#808080] font-medium shrink-0">
             <Layers className="h-3 w-3" />
-            {track.stems.length}
+            <span>{track.stems.length}</span>
           </div>
         )}
+
+        {/* Play on hover (desktop) */}
+        <button
+          className="hidden group-hover:flex items-center justify-center h-8 w-8 rounded-full bg-[hsl(var(--primary))] shrink-0 hover:scale-105 transition-transform"
+          onClick={handlePlay}
+        >
+          {isPlaying
+            ? <Pause className="h-3.5 w-3.5 text-black fill-black" />
+            : <Play className="h-3.5 w-3.5 text-black fill-black ml-0.5" />
+          }
+        </button>
       </div>
     )
   }
 
-  // Grid view — Spotify card style
+  // ─── Grid view ─────────────────────────────────────────────────────
   return (
     <div
-      className="group relative rounded-md bg-white/5 hover:bg-white/10 p-2.5 md:p-3 cursor-pointer transition-all duration-200"
+      className="group relative rounded-lg bg-white/[0.03] hover:bg-white/[0.08] p-2.5 md:p-3 cursor-pointer transition-all duration-200"
       onClick={handleNavigate}
     >
       {/* Cover */}
-      <div className="relative aspect-square mb-2 md:mb-3 rounded-md overflow-hidden shadow-lg shadow-black/40">
+      <div className="relative aspect-square mb-2.5 rounded-md overflow-hidden shadow-lg shadow-black/40">
         <img
           src={track.coverUrl}
           alt={track.title}
           className="h-full w-full object-cover"
         />
 
-        {/* Play button — appears on hover */}
+        {/* Play button */}
         <button
           onClick={handlePlay}
           className={cn(
@@ -136,33 +137,33 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
           }
         </button>
 
-        {/* Playing indicator */}
-        {isPlaying && (
-          <div className="absolute top-2 left-2 flex items-end gap-[2px] h-4">
-            <span className="eq-bar" style={{ animationDuration: '0.6s' }} />
-            <span className="eq-bar" style={{ animationDuration: '0.8s' }} />
-            <span className="eq-bar" style={{ animationDuration: '0.5s' }} />
+        {/* Stems badge */}
+        {track.hasStems && track.stems.length > 1 && (
+          <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white/80 font-medium backdrop-blur-sm">
+            <Layers className="h-2.5 w-2.5" />
+            {track.stems.length}
           </div>
         )}
 
-        {/* Stems badge */}
-        {track.hasStems && track.stems.length > 1 && (
-          <div className="absolute top-2 right-2 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white font-semibold backdrop-blur-sm">
-            <Layers className="h-2.5 w-2.5" />
-            {track.stems.length}
+        {/* Playing indicator */}
+        {isPlaying && (
+          <div className="absolute top-1.5 left-1.5 flex items-end gap-[2px] h-3">
+            <span className="eq-bar" style={{ animationDuration: '0.6s' }} />
+            <span className="eq-bar" style={{ animationDuration: '0.8s' }} />
+            <span className="eq-bar" style={{ animationDuration: '0.5s' }} />
           </div>
         )}
       </div>
 
       {/* Info */}
       <p className={cn(
-        'text-sm font-semibold truncate',
+        'text-[13px] font-semibold truncate leading-tight',
         isActive ? 'text-[hsl(var(--primary))]' : 'text-white'
       )}>
         {track.title}
       </p>
-      <p className="text-xs text-[#b3b3b3] truncate mt-0.5">
-        {track.genreLabel}
+      <p className="text-[11px] text-[#808080] truncate mt-0.5 leading-tight">
+        {track.artist}
       </p>
     </div>
   )

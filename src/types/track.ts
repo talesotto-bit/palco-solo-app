@@ -18,41 +18,50 @@ export type Genre =
   | 'modao'
 
 export type InstrumentId =
-  | 'main'      // mix estéreo completo
-  | 'drums'     // bateria / percussão
-  | 'bass'      // baixo
-  | 'guitar'    // violão / guitarra
-  | 'keys'      // teclado / piano
-  | 'voice'     // voz guia
-  | 'choir'     // backing vocal
-  | 'brass'     // metais / sopros
-  | 'strings'   // cordas
-  | 'acoustic'  // violão acústico
+  | 'main'       // mix estéreo completo
+  | 'drums'      // bateria
+  | 'percussion' // percussão
+  | 'bass'       // baixo
+  | 'guitar'     // guitarra elétrica
+  | 'keys'       // teclado / piano
+  | 'synth'      // sintetizador / pads / fx
+  | 'voice'      // voz guia
+  | 'choir'      // backing vocal
+  | 'brass'      // metais / sopros
+  | 'strings'    // cordas
+  | 'acoustic'   // violão acústico
+  | 'click'      // click track / metrônomo
 
 export const INSTRUMENT_LABELS: Record<InstrumentId, string> = {
   main: 'Mix Completo',
   drums: 'Bateria',
+  percussion: 'Percussão',
   bass: 'Baixo',
   guitar: 'Guitarra',
   keys: 'Teclado',
+  synth: 'Sintetizador',
   voice: 'Voz Guia',
   choir: 'Backing Vocal',
   brass: 'Metais',
   strings: 'Cordas',
   acoustic: 'Violão',
+  click: 'Click',
 }
 
 export const INSTRUMENT_ICONS: Record<InstrumentId, string> = {
   main: '🎵',
   drums: '🥁',
+  percussion: '🪘',
   bass: '🎸',
   guitar: '🎸',
   keys: '🎹',
+  synth: '🎛️',
   voice: '🎤',
   choir: '🎙️',
   brass: '🎺',
   strings: '🎻',
   acoustic: '🪕',
+  click: '🔔',
 }
 
 export interface Stem {
