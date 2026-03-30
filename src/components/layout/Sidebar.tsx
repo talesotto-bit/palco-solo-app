@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Home, Search, Library, Mic2, Settings, LogOut,
-  Crown, Music2,
+  Crown, Music2, Wand2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -10,6 +10,7 @@ import { usePlayerStore } from '@/store/playerStore'
 const NAV_MAIN = [
   { label: 'Início', to: '/app/library', icon: Home },
   { label: 'Player', to: '/app/player', icon: Music2 },
+  { label: 'Separar Pistas', to: '/app/separar', icon: Wand2 },
   { label: 'Palco', to: '/app/performance', icon: Mic2 },
 ]
 

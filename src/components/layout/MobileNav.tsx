@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom'
-import { Home, Music2, Mic2, Settings } from 'lucide-react'
+import { Home, Music2, Wand2, Mic2, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/store/playerStore'
 
 const NAV_ITEMS = [
   { label: 'Início', to: '/app/library', icon: Home },
   { label: 'Player', to: '/app/player', icon: Music2 },
+  { label: 'Separar', to: '/app/separar', icon: Wand2 },
   { label: 'Palco', to: '/app/performance', icon: Mic2 },
   { label: 'Config', to: '/app/settings', icon: Settings },
 ]

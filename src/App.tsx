@@ -13,6 +13,7 @@ import Library from '@/pages/Library'
 import PlayerPage from '@/pages/PlayerPage'
 import Performance from '@/pages/Performance'
 import Settings from '@/pages/Settings'
+import SeparatePage from '@/pages/SeparatePage'
 import NotFound from '@/pages/NotFound'
 
 const queryClient = new QueryClient({
@@ -65,6 +66,7 @@ export default function App() {
               <Route index element={<Navigate to="library" replace />} />
               <Route path="library" element={<Library />} />
               <Route path="player" element={<PlayerPage />} />
+              <Route path="separar" element={<SeparatePage />} />
               <Route path="performance" element={<Performance />} />
               <Route path="settings" element={<Settings />} />
             </Route>
