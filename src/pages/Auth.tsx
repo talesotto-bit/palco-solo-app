@@ -38,8 +38,9 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-[#1a1a1a] to-black flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-sm space-y-8">
+    <div className="min-h-dvh bg-gradient-to-b from-[#1a1a1a] to-black flex flex-col items-center justify-center px-5 py-8"
+         style={{ paddingBottom: 'calc(32px + env(safe-area-inset-bottom, 0px))' }}>
+      <div className="w-full max-w-sm space-y-6 md:space-y-8">
         {/* Logo */}
         <div className="flex flex-col items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--primary))]">
@@ -49,7 +50,7 @@ export default function Auth() {
         </div>
 
         {/* Card */}
-        <div className="rounded-lg bg-[#181818] p-8 space-y-6">
+        <div className="rounded-lg bg-[#181818] p-5 md:p-8 space-y-5 md:space-y-6">
           <div className="text-center">
             <h2 className="text-xl font-bold text-white">
               {mode === 'login' ? 'Entrar na sua conta' : 'Criar conta grátis'}

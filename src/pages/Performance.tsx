@@ -272,7 +272,7 @@ export default function Performance() {
           )}
         </div>
 
-        <div className="pb-safe-area-inset-bottom h-4 shrink-0" />
+        <div className="shrink-0" style={{ height: 'calc(16px + env(safe-area-inset-bottom, 0px))' }} />
       </div>
     </TooltipProvider>
   )

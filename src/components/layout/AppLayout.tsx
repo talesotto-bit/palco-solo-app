@@ -11,12 +11,6 @@ export function AppLayout() {
   const location = useLocation()
   const isPlayerPage = location.pathname.startsWith('/app/player')
 
-  // Mobile: bottom nav (56px) + mini player (64px) = 120px
-  // Desktop: mini player only (72px)
-  const bottomPad = hasTrack && !isPlayerPage
-    ? 'pb-[120px] md:pb-[90px]'
-    : 'pb-[56px] md:pb-0'
-
   return (
     <div className="flex h-dvh overflow-hidden bg-black">
       {/* Sidebar — hidden on mobile */}
@@ -31,10 +25,16 @@ export function AppLayout() {
         'flex flex-1 flex-col overflow-hidden',
         isPerformanceMode && 'w-full'
       )}>
-        <main className={cn(
-          'flex-1 overflow-y-auto bg-gradient-to-b from-[#1a1a1a] to-[#121212] md:rounded-tl-lg',
-          bottomPad,
-        )}>
+        <main
+          className={cn(
+            'flex-1 overflow-y-auto bg-gradient-to-b from-[#1a1a1a] to-[#121212] md:rounded-tl-lg',
+          )}
+          style={{
+            paddingBottom: hasTrack && !isPlayerPage
+              ? 'calc(56px + 52px + env(safe-area-inset-bottom, 0px) + 8px)' // miniplayer + nav + safe area + extra
+              : 'calc(52px + env(safe-area-inset-bottom, 0px) + 8px)', // nav + safe area + extra
+          }}
+        >
           <Outlet />
         </main>
 

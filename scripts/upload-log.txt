@@ -3818,3 +3818,137 @@
 ❌ ALO AMBEV - ZE NETO E CRISTIANO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (15s)
 ✅ [4391] ALO EX AMOR - JOAO BOSCO E GABRIEL — 10 stems (9s) [2.8/min]
 ⏭️  AMA EU - NATTANZINHO — não sincronizado ainda (3s)
+❌ ALVEJANTE - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (8s)
+✅ [4393] AMAROK - JAPAOZIN FT TARCISIO — 11 stems (8s) [2.8/min]
+⏭️  AMEACA - ELETRICO — não sincronizado ainda (9s)
+❌ AMEACA - MARCYNHO SENSACAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (12s)
+⏭️  AMAVA PORRA NENHUMA - TIERRY — não sincronizado ainda (9s)
+⏭️  AMIGO TURCO - VERSAO 02 — não sincronizado ainda (15s)
+❌ AMIGO TURCO - JUNIOR VIANNA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (21s)
+⏭️  AMOR OU ESQUEMA - WESLEY SAFADAO — não sincronizado ainda (16s)
+⏭️  AMORECO — não sincronizado ainda (4s)
+❌ AMOR OU LITRAO - PETTER FERRAZ E MENOR N — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (11s)
+✅ [4395] ANJO MODERNO — 15 stems (9s) [2.8/min]
+⏭️  APRENDE A TERMINAR - WESLEY SAFADAO — não sincronizado ainda (5s)
+⏭️  AQUELE COMBO - AVINE VINNY — não sincronizado ainda (0s)
+✅ [4397] AQUELAS COISAS - JOAO GOMES — 11 stems (8s) [2.8/min]
+❌ ARRANHAO - NATTANZINHO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (11s)
+❌ ARRANHAO - HENRIQUE E JULIANO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (19s)
+✅ [4399] AS MENINA DA PECUARIA - ANA CASTELA — 18 stems (13s) [2.8/min]
+⏭️  ASTRONAUTA - SAIA RODADA — não sincronizado ainda (5s)
+✅ [4401] ASSALTO PERIGOSO - JOTTAVE — 15 stems (14s) [2.8/min]
+✅ [4403] ATENDE AI AMOR - ERIC LAND — 15 stems (14s) [2.8/min]
+❌ ATE A PROXIMA VIDA - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (26s)
+✅ [4405] ASSUNTO DELICADO - GUILHERME E BENUTO — 12 stems (25s) [2.8/min]
+✅ [4407] ATENCAO - LUIZA SONZA — 27 stems (15s) [2.8/min]
+⏭️  AUDIO QUE TE ENTREGA - LEO SANTANA — não sincronizado ainda (8s)
+❌ AUGE DA SAUDADE - MATHEUS E KAUAN — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (9s)
+⏭️  BABY ME ATENDE - XAND AVIAO — não sincronizado ainda (15s)
+❌ BABY VEM ME AMAR - VITINHO IMPERADOR — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (14s)
+❌ BAGUNCA - PEDRO SAMPAIO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (8s)
+✅ [4409] BAGUNCA - WESLEY SAFADAO — 14 stems (10s) [2.8/min]
+⏭️  BANDIDO - FORRO - VERSAO 02 2 — não sincronizado ainda (0s)
+❌ BALDINHO - SIMONE E SIMARIA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (8s)
+✅ [4411] BALA TROCADA - XAND AVIAO — 10 stems (13s) [2.8/min]
+⏭️  BANDIDO - ZE FELIPE — não sincronizado ainda (3s)
+❌ BASIQUINHO - MATHEUS E KAUAN — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (5s)
+✅ [4413] BALANCO NA REDE - XAND AVIAO — 14 stems (15s) [2.8/min]
+❌ BARZINHO ALEATORIO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (20s)
+❌ BANDIDO - FORRO - VERSAO 02 — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (22s)
+✅ [4415] BALADINHA RURAL - US AGROBOY — 24 stems (12s) [2.8/min]
+❌ BATE COM A BUNDA - MATHEUS FERNANDES — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (17s)
+❌ BEBACA - TOM MASCULINO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (14s)
+✅ [4417] BEBERIA OU NAO BEBERIA - RAI SAIA RODADA — 13 stems (13s) [2.8/min]
+❌ BEBEZONA - XANDDY HARMONIA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (14s)
+❌ BEBI ATE CAIR - ELETRICO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (13s)
+✅ [4419] BEBEU LEMBROU  — 9 stems (12s) [2.8/min]
+❌ BEIJO DE GLICOSE - DIEGO E VICTOR HUGO — extract failed: Command failed: powershell -Command "Expand- (14s)
+❌ BEBI ATE CAIR - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (24s)
+✅ [4421] BLACK LANCA - WESLEY SAFADAO — 13 stems (11s) [2.8/min]
+⏭️  BLOQUEADO - GUSTAVO LIMA — não sincronizado ainda (7s)
+❌ BLOQUEADO - GUSTTAVO LIMA - VERSAO FORRO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (15s)
+✅ [4423] BLOQUEIA SEU EX - NATTAN — 14 stems (14s) [2.8/min]
+⏭️  BOTADAO - ERIC LAND — não sincronizado ainda (7s)
+✅ [4425] BORA BILL - B GATO PRETO — 8 stems (6s) [2.8/min]
+✅ [4427] BORA BILL - BIU DO PISEIRO — 12 stems (11s) [2.8/min]
+❌ BOTADINHA SALIENTE - MC ROGERINHO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (8s)
+❌ BOMBONZINHO - ISRAEL E RODOLFFO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (16s)
+❌ BOLOLO - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (7s)
+❌ BOTADINHA SALIENTE - WESLEY SAFADAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (8s)
+❌ BOIADEIRA - ANA CASTELA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (13s)
+❌ BOTADONA BRUTA - LUAN PEREIRA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (6s)
+❌ BRUNA - ROGEIRINHO - VERSAO FORRO — extract failed: Command failed: powershell -Command "Expand- (1s)
+❌ BRINCOU DE AMOR - IGUINHO E LULINHA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (14s)
+❌ BRUNA - FELIPE AMORIM — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (7s)
+⏭️  CAFE DA MANHA - LUISA SONZA — não sincronizado ainda (0s)
+✅ [4429] BUNDAO GRANDAO - ANDERSON CANTOR — 9 stems (7s) [2.8/min]
+✅ [4431] BUNDA VAI - XAND AVIAO — 20 stems (15s) [2.8/min]
+❌ CARINHA DE BEBE - MARCYNHO SENSACAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (16s)
+❌ CAPITAO DE AREIA - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (21s)
+✅ [4433] CHA DE CHIFRE - MARCYNHO SENSACAO — 13 stems (16s) [2.8/min]
+⏭️  CENA DE AMOR - ZE VAQUEIRO — não sincronizado ainda (13s)
+❌ CHEGOU UM AUDIO - JONAS ESTICADO — extract failed: Command failed: powershell -Command "Expand- (13s)
+⏭️  CE TA PREPARADA - TAYRONE — não sincronizado ainda (21s)
+❌ CHEGA E SENTA - JOHN AMPLIFICADO — extract failed: Command failed: powershell -Command "Expand- (16s)
+⏭️  CHEIRO DE PROBLEMA - RAI SAIA RODADA — não sincronizado ainda (0s)
+✅ [4435] CHEIRO DE PROBLEMA - NETTO E HENRIQUE — 16 stems (15s) [2.8/min]
+❌ CHOVENDO NA MINHA BOCHECA - TIERRY — extract failed: Command failed: powershell -Command "Expand- (15s)
+❌ CLIMA DE RODEIO - ANA CASTELA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (15s)
+❌ CONCENTRADA NO MACETE - JONAS ESTICADO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (8s)
+❌ COPINHO NA MAO - WESLEY SAFADAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (5s)
+❌ CONFIEI EM TI - NATTANZINHO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (11s)
+❌ CORACAO ACELERA - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (8s)
+❌ CORACAO BANDIDO - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (21s)
+❌ CPF NOVO - WESLEY SAFADAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (4s)
+❌ CUIDADO COM A TATY - DJ GUUGA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (12s)
+⏭️  DANCARINA - PEDRO SAMPAIO — não sincronizado ainda (0s)
+❌ DA GARRAFA A PIOR - HENRIQUE E JULIANO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (22s)
+❌ DA MORAL PROS POBRES - HUGO E GUILHERME — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (17s)
+⏭️  DEIXA EU TENTAR - NATTAN — não sincronizado ainda (0s)
+❌ DAR UMA NAMORADA - ISRAEL E RODOLFFO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (14s)
+❌ DEIXA EU TE SUPERAR - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (10s)
+❌ DESATINO - MATO GROSSO E MATHIAS — extract failed: Command failed: powershell -Command "Expand- (9s)
+❌ DESBLOQUEADO - NATTANZINHO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (10s)
+⏭️  DESENROLA BATE JOGA DE LADINHO - OS HAVA — não sincronizado ainda (8s)
+❌ DESTAMPEI - LEO SANTANA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (17s)
+❌ DEU MEIA NOITE EU SUMI - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (10s)
+❌ DIABINHA - WESLEY SAFADAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (11s)
+❌ DIFERENTE DAS DIFERENTES - NATTANZINHO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (14s)
+❌ DIFERENTE DAS IGUAIS - MARCYNHO SENSACAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (11s)
+✅ [4437] DIFERENTE NAO, ESTRANHO - WS — 12 stems (10s) [2.8/min]
+⏭️  DIFICIL DE SEPARAR - RAI SAIA RODADA — não sincronizado ainda (6s)
+⏭️  ELA E DA BAGACEIRA - WESLEY SAFADAO — não sincronizado ainda (0s)
+✅ [4439] DIGO OU NAO DIGO - JOAO GOMES — 16 stems (12s) [2.8/min]
+❌ ELA QUER RAVE - XAND AVIAO — extract failed: Command failed: powershell -Command "Expand- (14s)
+❌ ELA E ELA - WESLEY SAFADAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (15s)
+❌ ELA E ELA - ZE NETO E CRISTIANO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (10s)
+❌ ENVOLVER - ANITTA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (12s)
+❌ EMPURRA EMPURRA - NATTAN — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (21s)
+✅ [4441] ENVOLVIDAO - GUSTAVO MIOTO — 23 stems (20s) [2.7/min]
+❌ ESPELHO DO PODER - VERSAO FORRO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (4s)
+❌ ERRO PLANEJADO - LUAN SANTANA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (14s)
+❌ ERA TU - TIERRY — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (20s)
+⏭️  ESPERA EU - HENRIQUE E JULIANO — não sincronizado ainda (12s)
+✅ [4443] ESQUECE ESSA DISGRAMA - BAROES DA PISADI — 12 stems (9s) [2.7/min]
+⏭️  ESCRITO NAS ESTRELAS - JONAS ESTICADO — não sincronizado ainda (18s)
+⏭️  EU BEM QUE TE AVISEI - DJ IVIS — não sincronizado ainda (5s)
+❌ ESSE B.O. E MEU - GUILHERME E BENUTO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (11s)
+✅ [4445] EU FUI MAS DEIXEI DE SER - FELIPE AMORIM — 13 stems (12s) [2.7/min]
+❌ EU GOSTO ASSIM - VOZ - GUSTAVO MIOTO — extract failed: Command failed: powershell -Command "Expand- (8s)
+⏭️  EU JA TAVA BEM - FELIPE AMORIM — não sincronizado ainda (4s)
+❌ EU GOSTO ASSIM - GUSTAVO MIOTO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (12s)
+❌ EU QUERO RECAIR - MARI FERNANDEZ — extract failed: Command failed: powershell -Command "Expand- (6s)
+❌ EU TENHO MEDO - ZE VAQUEIRO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (9s)
+❌ EU ME RENDO - ZE VAQUEIRO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (8s)
+❌ EU TE AMO TANTO - JONAS ESTICADO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (12s)
+❌ EU VOU DESCENDO SIM - MARCYNHO SENSACAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (5s)
+❌ EU TE AMO TANTO - IGUINHO E LULINHA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (12s)
+❌ EU VOU SENTAR - NATTAN — extract failed: Command failed: powershell -Command "Expand- (13s)
+❌ EVENTO CANCELADO - HENRIQUE E JULIANO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (10s)
+✅ [4447] FARRA ME CHAMA - VICTOR MEIRA — 13 stems (11s) [2.7/min]
+❌ FALA MAL DE MIM - XAND AVIAO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (11s)
+❌ FALA MAL DE MIM - GUSTTAVO LIMA — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (14s)
+✅ [4449] FAKE AMOR - SAMYRA SHOW — 12 stems (14s) [2.7/min]
+❌ FALA MAL DE MIM - PEDRO SAMPAIO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (17s)
+❌ FARRA SEM LIMITES - DEAVALE SANTOS — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (7s)
+❌ FAZ O TESTE - LUAN ESTILIZADO — ENOENT: no such file or directory, open 'C:\Users\papai\AppD (6s)

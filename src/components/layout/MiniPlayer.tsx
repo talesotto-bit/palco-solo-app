@@ -27,7 +27,7 @@ export function MiniPlayer() {
   return (
     <div className={cn(
       'fixed left-0 right-0 z-50 bg-[#181818] border-t border-white/5',
-      'bottom-[56px] md:bottom-0', // above mobile nav on small screens
+      'bottom-[calc(52px+env(safe-area-inset-bottom))] md:bottom-0',
     )}>
       {/* Progress bar */}
       <div
@@ -41,7 +41,7 @@ export function MiniPlayer() {
       </div>
 
       {/* Mobile layout: compact */}
-      <div className="flex items-center h-[60px] md:h-[72px] px-3 md:px-4 gap-2 md:gap-0">
+      <div className="flex items-center h-[56px] md:h-[72px] px-3 md:px-4 gap-2 md:gap-0">
         {/* Left — Track info */}
         <div
           className="flex items-center gap-2.5 md:gap-3 flex-1 md:flex-none md:w-[30%] min-w-0 cursor-pointer"

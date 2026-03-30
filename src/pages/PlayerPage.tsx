@@ -84,7 +84,7 @@ export default function PlayerPage() {
           {/* Main player area */}
           <div className="flex flex-col md:flex-row gap-5 md:gap-8 items-start">
             {/* Album art */}
-            <div className="w-full max-w-[280px] mx-auto md:mx-0 md:max-w-none md:w-80 shrink-0">
+            <div className="w-full max-w-[240px] mx-auto md:mx-0 md:max-w-none md:w-80 shrink-0">
               <div className="relative aspect-square rounded-lg overflow-hidden shadow-2xl shadow-black/60">
                 <img
                   src={track.coverUrl}
@@ -106,10 +106,10 @@ export default function PlayerPage() {
             <div className="flex-1 min-w-0 w-full space-y-5">
               {/* Title */}
               <div>
-                <h1 className="text-xl md:text-3xl font-extrabold text-white leading-tight truncate">
+                <h1 className="text-lg md:text-3xl font-extrabold text-white leading-tight line-clamp-2">
                   {track.title}
                 </h1>
-                <p className="text-base text-[#b3b3b3] mt-1">{track.artist}</p>
+                <p className="text-sm md:text-base text-[#b3b3b3] mt-1">{track.artist}</p>
 
                 {/* Tags */}
                 <div className="flex flex-wrap items-center gap-2 mt-3">
