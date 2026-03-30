@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 7%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 142 70% 45%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 142 70% 45%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 16%;
+    --input: 0 0% 14%;
+    --ring: 142 70% 45%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    min-height: 100dvh;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+
+  /* Hide scrollbars on mobile touch devices */
+  @media (pointer: coarse) {
+    ::-webkit-scrollbar {
+      width: 3px;
+      height: 3px;
+    }
+  }
+}
+
+@layer utilities {
+  /* EQ animation bars */
+  .eq-bar {
+    @apply inline-block w-[3px] rounded-full;
+    background: hsl(var(--primary));
+    animation: eq-bar 0.8s ease-in-out infinite;
+  }
+  .eq-bar:nth-child(2) { animation-delay: 0.15s; }
+  .eq-bar:nth-child(3) { animation-delay: 0.3s; }
+  .eq-bar:nth-child(4) { animation-delay: 0.1s; }
+
+  /* Glass effect */
+  .glass {
+    background: rgba(18, 18, 18, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* Performance mode scroll */
+  .perf-scroll {
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .perf-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Spotify-style hover card lift */
+  .card-hover {
+    @apply transition-all duration-200;
+  }
+  .card-hover:hover {
+    @apply bg-white/5;
+    transform: translateY(-2px);
+  }
+
+  /* Smooth gradient fade at bottom of scrollable areas */
+  .fade-bottom::after {
+    content: '';
+    @apply absolute bottom-0 left-0 right-0 h-8 pointer-events-none;
+    background: linear-gradient(transparent, hsl(var(--background)));
+  }
+}
+
+@keyframes eq-bar {
+  0%, 100% { height: 15%; }
+  50% { height: 90%; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
