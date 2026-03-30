@@ -58,6 +58,9 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
   // Generate a color-based cover placeholder
   const colors = ['#1a1a2e', '#16213e', '#0f3460', '#1b1b2f', '#162447', '#1f4068', '#1b262c', '#0f0e17']
   const color = colors[index % colors.length]
+  const initial = (song.name || '?').charAt(0).toUpperCase()
+  // Truncate name for SVG display
+  const displayName = song.name.length > 20 ? song.name.slice(0, 18) + '...' : song.name
 
   return {
     id: `r2-${song.genreSlug}-${song.slug}`,
@@ -69,7 +72,7 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
     keyNote: '',
     keyScale: 'major',
     durationSeconds: 0,
-    coverUrl: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect fill="${color}" width="200" height="200"/><text x="100" y="90" text-anchor="middle" fill="white" font-size="40" font-family="sans-serif">🎵</text><text x="100" y="130" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="12" font-family="sans-serif">${song.stemCount} stems</text></svg>`)}`,
+    coverUrl: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect fill="${color}" width="200" height="200"/><text x="100" y="100" text-anchor="middle" dominant-baseline="central" fill="rgba(255,255,255,0.15)" font-size="120" font-weight="bold" font-family="sans-serif">${initial}</text><text x="100" y="170" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="11" font-family="sans-serif">${song.stemCount} stems</text></svg>`)}`,
     previewUrl: stems[0]?.audioUrl || '',
     hasStems: song.stemCount > 1,
     stems,

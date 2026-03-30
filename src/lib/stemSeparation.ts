@@ -51,7 +51,10 @@ export async function startSeparation(
 ): Promise<{ predictionId: string; fileName: string }> {
   // Upload to Supabase Storage
   onProgress('uploading', 'Enviando arquivo...')
-  const filePath = `separations/${Date.now()}-${file.name}`
+  const safeName = file.name
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+  const filePath = `separations/${Date.now()}-${safeName}`
 
   const { data: uploadData, error: uploadError } = await supabase.storage
     .from('uploads')
