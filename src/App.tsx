@@ -54,6 +54,16 @@ export default function App() {
             <Route path="/login" element={<Auth />} />
             <Route path="/" element={<Navigate to="/app/library" replace />} />
 
+            {/* Performance — fullscreen, outside AppLayout */}
+            <Route
+              path="/app/performance"
+              element={
+                <ProtectedRoute>
+                  <Performance />
+                </ProtectedRoute>
+              }
+            />
+
             {/* Protected app routes */}
             <Route
               path="/app"
@@ -67,7 +77,6 @@ export default function App() {
               <Route path="library" element={<Library />} />
               <Route path="player" element={<PlayerPage />} />
               <Route path="separar" element={<SeparatePage />} />
-              <Route path="performance" element={<Performance />} />
               <Route path="settings" element={<Settings />} />
             </Route>
 
