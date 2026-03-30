@@ -1,7 +1,8 @@
-import { Play, Pause, Layers } from 'lucide-react'
+import { Play, Pause, Layers, Heart } from 'lucide-react'
 import type { Track } from '@/types/track'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/store/playerStore'
+import { useFavoritesStore } from '@/store/favoritesStore'
 import { useNavigate } from 'react-router-dom'
 
 interface TrackCardProps {
@@ -17,6 +18,9 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
   const playbackState = usePlayerStore(s => s.playbackState)
   const play = usePlayerStore(s => s.play)
   const pause = usePlayerStore(s => s.pause)
+
+  const isFav = useFavoritesStore(s => s.isFavorite)(track.id)
+  const toggleFav = useFavoritesStore(s => s.toggle)
 
   const isActive = currentTrack?.id === track.id
   const isPlaying = isActive && playbackState === 'playing'
@@ -90,6 +94,17 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
           </div>
         )}
 
+        {/* Favorite */}
+        <button
+          className="shrink-0 p-1.5 transition-colors"
+          onClick={(e) => { e.stopPropagation(); toggleFav(track.id) }}
+        >
+          <Heart className={cn(
+            'h-4 w-4 transition-colors',
+            isFav ? 'fill-red-500 text-red-500' : 'text-[#808080] hover:text-white'
+          )} />
+        </button>
+
         {/* Play on hover (desktop) */}
         <button
           className="hidden group-hover:flex items-center justify-center h-8 w-8 rounded-full bg-[hsl(var(--primary))] shrink-0 hover:scale-105 transition-transform"
@@ -153,6 +168,22 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             <span className="eq-bar" style={{ animationDuration: '0.5s' }} />
           </div>
         )}
+
+        {/* Favorite heart */}
+        <button
+          className={cn(
+            'absolute bottom-2 left-2 p-1 rounded-full transition-all duration-200',
+            isFav
+              ? 'opacity-100'
+              : 'opacity-0 group-hover:opacity-100'
+          )}
+          onClick={(e) => { e.stopPropagation(); toggleFav(track.id) }}
+        >
+          <Heart className={cn(
+            'h-4 w-4 drop-shadow-lg transition-colors',
+            isFav ? 'fill-red-500 text-red-500' : 'text-white hover:text-red-400'
+          )} />
+        </button>
       </div>
 
       {/* Info */}

@@ -11,6 +11,7 @@ import type { Track } from '@/types/track'
 import type { PlayerState, StemState } from '@/types/player'
 import { clamp } from '@/lib/utils'
 import { AudioCache, isCacheUrl, urlToKey } from '@/lib/audioCache'
+import { useTrackSettingsStore } from './trackSettingsStore'
 
 /** Resolve cache:// URLs para blob URLs reais antes de carregar no engine */
 async function resolveTrackUrls(track: Track): Promise<Track> {
@@ -102,12 +103,24 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
     // ─── Track loading ──────────────────────────────────────────────────────
     loadTrack: async (track: Track) => {
-      const stemStates = buildStemStates(track)
-      set({ track, stemStates, playbackState: 'loading', error: null, currentTime: 0 })
+      const defaultStems = buildStemStates(track)
+      const saved = useTrackSettingsStore.getState().get(track.id)
+
+      // Apply saved settings if available, otherwise use defaults
+      const stemStates = saved ? { ...defaultStems, ...saved.stemStates } : defaultStems
+      const pitch = saved?.pitch ?? 0
+      const speed = saved?.speed ?? 1
+
+      set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0 })
       try {
-        // Resolve cache:// URLs para blob URLs reais (arquivos do IndexedDB)
         const resolvedTrack = await resolveTrackUrls(track)
         await audioEngine.load(resolvedTrack.stems)
+
+        // Apply saved pitch/speed/stems to engine
+        if (pitch !== 0) audioEngine.setPitch(pitch)
+        if (speed !== 1) audioEngine.setSpeed(speed)
+        if (saved) audioEngine.setStemStates(stemStates)
+
         set({ playbackState: 'paused', duration: audioEngine.duration })
       } catch (err) {
         set({ playbackState: 'error', error: 'Falha ao carregar a faixa. Tente novamente.' })

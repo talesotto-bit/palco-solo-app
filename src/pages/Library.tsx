@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Search, X, Loader2, LayoutGrid, List } from 'lucide-react'
+import { Search, X, Loader2, LayoutGrid, List, Heart } from 'lucide-react'
 import { useLocalTracksStore } from '@/store/localTracksStore'
 import { useCatalogStore } from '@/store/catalogStore'
+import { useFavoritesStore } from '@/store/favoritesStore'
 import { TrackCard } from '@/components/library/TrackCard'
 import { cn } from '@/lib/utils'
 
@@ -9,9 +10,11 @@ export default function Library() {
   const [search, setSearch] = useState('')
   const [genre, setGenre] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [showFavs, setShowFavs] = useState(false)
 
   const localTracks = useLocalTracksStore(s => s.tracks)
   const catalogTracks = useCatalogStore(s => s.tracks)
+  const favIds = useFavoritesStore(s => s.ids)
   const catalogGenres = useCatalogStore(s => s.genres)
   const catalogLoading = useCatalogStore(s => s.isLoading)
   const loadCatalog = useCatalogStore(s => s.loadCatalog)
@@ -22,10 +25,14 @@ export default function Library() {
 
   const tracks = useMemo(() => [...localTracks, ...catalogTracks], [localTracks, catalogTracks])
 
-  const isFiltering = search.trim() !== '' || genre !== 'all'
+  const isFiltering = search.trim() !== '' || genre !== 'all' || showFavs
 
   const filtered = useMemo(() => {
     let list = tracks
+
+    if (showFavs) {
+      list = list.filter(t => favIds.includes(t.id))
+    }
 
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -41,7 +48,7 @@ export default function Library() {
     }
 
     return list.sort((a, b) => a.title.localeCompare(b.title))
-  }, [tracks, search, genre])
+  }, [tracks, search, genre, showFavs, favIds])
 
   // Grouped by first letter for alphabetical sections
   const alphabetSections = useMemo(() => {
@@ -59,7 +66,7 @@ export default function Library() {
       sections.push({ letter, tracks })
     }
     return sections
-  }, [filtered, isFiltering, genre])
+  }, [filtered, isFiltering, genre, showFavs])
 
   // Genre sections for browse mode
   const genreSections = useMemo(() => {
@@ -83,7 +90,7 @@ export default function Library() {
       })
     }
     return sections
-  }, [tracks, isFiltering, genre, catalogGenres])
+  }, [tracks, isFiltering, genre, showFavs, catalogGenres])
 
   const totalTracks = tracks.length
 
@@ -154,20 +161,35 @@ export default function Library() {
         {catalogGenres.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:-mx-6 md:px-6 scrollbar-none">
             <button
-              onClick={() => setGenre('all')}
+              onClick={() => { setGenre('all'); setShowFavs(false) }}
               className={cn(
                 'shrink-0 h-8 rounded-full px-4 text-xs font-semibold transition-colors',
-                genre === 'all'
+                genre === 'all' && !showFavs
                   ? 'bg-white text-black'
                   : 'bg-[#2a2a2a] text-[#b3b3b3] hover:bg-[#3a3a3a]'
               )}
             >
               Todos
             </button>
+            <button
+              onClick={() => { setShowFavs(!showFavs); setGenre('all') }}
+              className={cn(
+                'shrink-0 h-8 rounded-full px-4 text-xs font-semibold transition-colors flex items-center gap-1.5',
+                showFavs
+                  ? 'bg-red-500 text-white'
+                  : 'bg-[#2a2a2a] text-[#b3b3b3] hover:bg-[#3a3a3a]'
+              )}
+            >
+              <Heart className={cn('h-3 w-3', showFavs && 'fill-white')} />
+              Favoritos
+              {favIds.length > 0 && (
+                <span className="text-[10px] opacity-60">{favIds.length}</span>
+              )}
+            </button>
             {catalogGenres.map(g => (
               <button
                 key={g.id}
-                onClick={() => setGenre(prev => prev === g.id ? 'all' : g.id)}
+                onClick={() => { setGenre(prev => prev === g.id ? 'all' : g.id); setShowFavs(false) }}
                 className={cn(
                   'shrink-0 h-8 rounded-full px-4 text-xs font-semibold transition-colors',
                   genre === g.id
@@ -206,10 +228,20 @@ export default function Library() {
         {/* No results */}
         {!catalogLoading && tracks.length > 0 && filtered.length === 0 && (
           <div className="flex flex-col items-center py-20 gap-2">
-            <p className="text-base font-semibold text-white">Nenhum resultado</p>
-            <p className="text-sm text-[#808080]">Tente outro termo ou gênero.</p>
+            {showFavs ? (
+              <>
+                <Heart className="h-10 w-10 text-[#808080] mb-2" />
+                <p className="text-base font-semibold text-white">Nenhum favorito</p>
+                <p className="text-sm text-[#808080]">Toque no cora\u00e7\u00e3o de uma m\u00fasica para adicion\u00e1-la aqui.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-base font-semibold text-white">Nenhum resultado</p>
+                <p className="text-sm text-[#808080]">Tente outro termo ou g\u00eanero.</p>
+              </>
+            )}
             <button
-              onClick={() => { setSearch(''); setGenre('all') }}
+              onClick={() => { setSearch(''); setGenre('all'); setShowFavs(false) }}
               className="mt-3 h-8 rounded-full px-5 text-xs font-semibold bg-white text-black hover:scale-105 transition-transform"
             >
               Limpar filtros
