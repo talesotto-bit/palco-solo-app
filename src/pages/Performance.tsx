@@ -109,8 +109,15 @@ export default function Performance() {
   const saveSettings = useTrackSettingsStore(s => s.save)
 
   const catalogTracks = useCatalogStore(s => s.tracks)
+  const catalogLoading = useCatalogStore(s => s.isLoading)
+  const loadCatalog = useCatalogStore(s => s.loadCatalog)
   const localTracks = useLocalTracksStore(s => s.tracks)
   const allTracks = useMemo(() => [...localTracks, ...catalogTracks], [localTracks, catalogTracks])
+
+  // Load catalog if not loaded (Performance is outside AppLayout)
+  useEffect(() => {
+    if (catalogTracks.length === 0 && !catalogLoading) loadCatalog()
+  }, [])
 
   // Mobile uses full-screen views; desktop uses side panel
   const [mobileView, setMobileView] = useState<MobileView>('player')
@@ -165,6 +172,15 @@ export default function Performance() {
     }
     prevIndex.current = setlist.currentIndex
   }, [setlist.currentIndex, loadSetlistTrack])
+
+  // Auto-load first setlist track if no track is loaded
+  const didAutoLoad = useRef(false)
+  useEffect(() => {
+    if (!didAutoLoad.current && !track && setlist.items.length > 0 && allTracks.length > 0) {
+      didAutoLoad.current = true
+      loadSetlistTrack(setlist.currentIndex)
+    }
+  }, [track, setlist.items.length, allTracks.length, loadSetlistTrack])
 
   // ─── Helpers ───────────────────────────────────────────────────────────
 

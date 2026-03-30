@@ -32,7 +32,7 @@ async function resolveTrackUrls(track: Track): Promise<Track> {
 interface PlayerStore extends PlayerState {
   // Actions
   loadTrack: (track: Track) => Promise<void>
-  play: () => void
+  play: () => Promise<void>
   pause: () => void
   stop: () => void
   seek: (seconds: number) => void
@@ -128,10 +128,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     },
 
     // ─── Playback ───────────────────────────────────────────────────────────
-    play: () => {
-      if (get().playbackState === 'loading') return
-      audioEngine.play()
-      set({ playbackState: 'playing' })
+    play: async () => {
+      const state = get().playbackState
+      if (state === 'loading' || state === 'playing') return
+      try {
+        await audioEngine.play()
+        set({ playbackState: 'playing' })
+      } catch {
+        // Tone.start() may fail if no user gesture — ignore silently
+      }
     },
 
     pause: () => {
