@@ -36,8 +36,8 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
     }
   }
 
-  const handleNavigate = () => {
-    if (!isActive) loadTrack(track)
+  const handleNavigate = async () => {
+    if (!isActive) await loadTrack(track)
     navigate('/app/player')
   }
 
@@ -154,7 +154,10 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
 
         {/* Stems badge */}
         {track.hasStems && track.stems.length > 1 && (
-          <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white/80 font-medium backdrop-blur-sm">
+          <div
+            className="absolute top-1.5 right-1.5 flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white/80 font-medium backdrop-blur-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Layers className="h-2.5 w-2.5" />
             {track.stems.length}
           </div>
