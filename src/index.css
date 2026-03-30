@@ -45,7 +45,6 @@
     min-height: 100dvh;
     overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
-    padding-top: env(safe-area-inset-top);
   }
 
   /* Prevent iOS input zoom */
@@ -133,4 +132,21 @@
 
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
+}
+
+/* ─── Mini Player positioning ─────────────────────────────────── */
+.mini-player {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #181818;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  bottom: calc(50px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .mini-player {
+    bottom: 0;
+  }
 }

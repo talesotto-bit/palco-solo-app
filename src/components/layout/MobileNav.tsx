@@ -15,11 +15,14 @@ export function MobileNav() {
   const hasTrack = usePlayerStore(s => !!s.track)
 
   return (
-    <nav className={cn(
-      'fixed left-0 right-0 z-40 bg-black/95 backdrop-blur-lg border-t border-white/10 md:hidden',
-      hasTrack ? 'bottom-[60px]' : 'bottom-0',
-    )}>
-      <div className="flex items-center justify-around h-[52px]">
+    <nav
+      className={cn(
+        'fixed left-0 right-0 bottom-0 z-40 bg-black/95 backdrop-blur-lg border-t border-white/10 md:hidden',
+      )}
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
+      {/* MiniPlayer sits above this nav, pushed up by its height */}
+      <div className="flex items-center justify-around h-[50px]">
         {NAV_ITEMS.map(({ label, to, icon: Icon }) => (
           <NavLink
             key={to}
@@ -38,8 +41,6 @@ export function MobileNav() {
           </NavLink>
         ))}
       </div>
-      {/* Safe area bottom for iPhones with home indicator */}
-      <div className="h-[env(safe-area-inset-bottom)]" />
     </nav>
   )
 }

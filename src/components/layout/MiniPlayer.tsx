@@ -2,14 +2,13 @@ import { useNavigate } from 'react-router-dom'
 import { Play, Pause, SkipBack, SkipForward, ChevronUp, Volume2, VolumeX } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { Slider } from '@/components/ui/slider'
-import { formatTime, semitonesToLabel } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { formatTime } from '@/lib/utils'
 
 export function MiniPlayer() {
   const navigate = useNavigate()
   const {
     track, playbackState, currentTime, duration,
-    pitch, speed, volume,
+    volume,
     play, pause, skipBackward, skipForward, setVolume, seek,
   } = usePlayerStore()
 
@@ -25,10 +24,7 @@ export function MiniPlayer() {
   }
 
   return (
-    <div className={cn(
-      'fixed left-0 right-0 z-50 bg-[#181818] border-t border-white/5',
-      'bottom-[calc(52px+env(safe-area-inset-bottom))] md:bottom-0',
-    )}>
+    <div className="mini-player">
       {/* Progress bar */}
       <div
         className="group h-1 hover:h-1.5 bg-white/10 cursor-pointer transition-all relative"
@@ -40,8 +36,8 @@ export function MiniPlayer() {
         />
       </div>
 
-      {/* Mobile layout: compact */}
-      <div className="flex items-center h-[56px] md:h-[72px] px-3 md:px-4 gap-2 md:gap-0">
+      {/* Content */}
+      <div className="flex items-center h-[54px] md:h-[72px] px-3 md:px-4 gap-2 md:gap-0">
         {/* Left — Track info */}
         <div
           className="flex items-center gap-2.5 md:gap-3 flex-1 md:flex-none md:w-[30%] min-w-0 cursor-pointer"
@@ -87,12 +83,12 @@ export function MiniPlayer() {
           </button>
         </div>
 
-        {/* Time — mobile only (compact) */}
+        {/* Time — mobile only */}
         <div className="flex md:hidden text-[10px] text-[#b3b3b3] tabular-nums shrink-0">
           <span>{formatTime(currentTime)}</span>
         </div>
 
-        {/* Desktop — Time under controls */}
+        {/* Desktop — Time */}
         <div className="hidden md:flex items-center justify-center gap-2 absolute left-1/2 -translate-x-1/2 bottom-2 text-[11px] text-[#b3b3b3] tabular-nums">
           <span>{formatTime(currentTime)}</span>
           <span className="text-white/20">/</span>
