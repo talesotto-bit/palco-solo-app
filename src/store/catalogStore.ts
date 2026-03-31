@@ -37,6 +37,10 @@ function genreSlugToLabel(slug: string): string {
     'sertanejo': 'Sertanejo',
     'gospel': 'Gospel',
     'rock-pop-mpb': 'Rock / Pop / MPB',
+    'rock-nacional': 'Rock Nacional',
+    'mpb': 'MPB',
+    'rock-pop-inter': 'Rock / Pop Internacional',
+    'brega': 'Brega',
     'axe-carnaval': 'Axé / Carnaval',
     'aberturas': 'Aberturas',
     'playbacks': 'Playbacks',
@@ -44,6 +48,43 @@ function genreSlugToLabel(slug: string): string {
     'shows-playbacks': 'Shows Playbacks',
   }
   return map[slug] || toTitleCase(slug.replace(/-/g, ' '))
+}
+
+// ─── Sub-genre classification for rock-pop-mpb ────────────────────────
+
+const MPB_ARTISTS = new Set([
+  'djavan','gilberto gil','caetano veloso','chico buarque','tim maia','jorge ben',
+  'jorge ben jor','maria bethânia','gal costa','milton nascimento','elis regina',
+  'marisa monte','ivan lins','gonzaguinha','alceu valença','zé ramalho',
+  'geraldo azevedo','elba ramalho','fagner','belchior','ney matogrosso',
+  'maria gadú','ana carolina','nando reis','arnaldo antunes','tribalistas',
+  'roberto carlos','erasmo carlos','vanessa da mata','seu jorge','lenine',
+])
+
+const ROCK_BR_ARTISTS = new Set([
+  'legião urbana','legiao urbana','barão vermelho','barao vermelho','titãs','titas',
+  'paralamas do sucesso','paralamas','skank','jota quest','capital inicial',
+  'raul seixas','rita lee','cássia eller','cassia eller','charlie brown jr',
+  'detonautas','pitty','nx zero','fresno','engenheiros do hawaii','ira!','ira',
+  'ultraje a rigor','raimundos','mamonas assassinas','o rappa','natiruts',
+  'cidade negra','kid abelha','blitz','lulu santos','lobão','cazuza',
+])
+
+const BREGA_ARTISTS = new Set([
+  'reginaldo rossi','amado batista','odair josé','sidney magal','nelson ned',
+  'waldick soriano','fernando mendes','josé augusto','agnaldo timóteo',
+  'wando','paulo sérgio','benito di paula','luiz ayrão',
+])
+
+function classifyRockPopMpb(artist: string): string {
+  const a = artist.toLowerCase().trim()
+  if (MPB_ARTISTS.has(a)) return 'mpb'
+  if (ROCK_BR_ARTISTS.has(a)) return 'rock-nacional'
+  if (BREGA_ARTISTS.has(a)) return 'brega'
+  for (const name of MPB_ARTISTS) if (a.includes(name) || name.includes(a)) return 'mpb'
+  for (const name of ROCK_BR_ARTISTS) if (a.includes(name) || name.includes(a)) return 'rock-nacional'
+  for (const name of BREGA_ARTISTS) if (a.includes(name) || name.includes(a)) return 'brega'
+  return 'rock-pop-inter'
 }
 
 // ─── Cover art gradient generator ──────────────────────────────────────
@@ -164,12 +205,18 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
     return s
   })
 
+  // Reclassify rock-pop-mpb into sub-genres
+  let effectiveGenreSlug = song.genreSlug
+  if (song.genreSlug === 'rock-pop-mpb') {
+    effectiveGenreSlug = classifyRockPopMpb(artist)
+  }
+
   return {
     id: `r2-${song.genreSlug}-${song.slug}`,
     title,
-    artist: artist || genreSlugToLabel(song.genreSlug),
-    genre: song.genreSlug as any,
-    genreLabel: genreSlugToLabel(song.genreSlug),
+    artist: artist || genreSlugToLabel(effectiveGenreSlug),
+    genre: effectiveGenreSlug as any,
+    genreLabel: genreSlugToLabel(effectiveGenreSlug),
     bpm,
     keyNote,
     keyScale: 'major',
@@ -179,7 +226,7 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
     hasStems: song.stemCount > 1,
     stems: finalStems,
     hasLyrics: false,
-    tags: [song.genreSlug],
+    tags: [effectiveGenreSlug],
   }
 }
 
@@ -209,8 +256,9 @@ export const useCatalogStore = create<CatalogState>((set) => ({
       const tracks = catalog.map((song, i) => catalogToTrack(song, i))
 
       const genreMap = new Map<string, number>()
-      for (const song of catalog) {
-        genreMap.set(song.genreSlug, (genreMap.get(song.genreSlug) || 0) + 1)
+      for (const track of tracks) {
+        const gId = track.tags[0] || 'other'
+        genreMap.set(gId, (genreMap.get(gId) || 0) + 1)
       }
       const genres = Array.from(genreMap.entries()).map(([id, count]) => ({
         id,
