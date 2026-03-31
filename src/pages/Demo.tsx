@@ -227,13 +227,10 @@ export default function Demo() {
 
               {genreSections.map(section => (
                 <div key={section.id}>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="mb-2">
                     <h3 className="text-sm font-bold text-white">
                       {section.label}
                     </h3>
-                    <span className="text-[10px] text-[#808080] font-medium bg-white/5 px-2 py-0.5 rounded-full">
-                      +{section.totalCount.toLocaleString('pt-BR')} faixas
-                    </span>
                   </div>
 
                   <div className="space-y-1">
