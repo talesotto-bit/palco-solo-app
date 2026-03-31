@@ -14,6 +14,52 @@ import type { Track } from '@/types/track'
 const TRACKS_PER_GENRE = 5
 const CTA_URL = 'https://palcosolo.online/#pricing'
 
+// ─── Sub-genre classification for "rock-pop-mpb" ───────────────────────
+const MPB_ARTISTS = new Set([
+  'djavan','gilberto gil','caetano veloso','chico buarque','tim maia','jorge ben',
+  'jorge ben jor','maria bethânia','gal costa','milton nascimento','elis regina',
+  'marisa monte','ivan lins','gonzaguinha','alceu valença','zé ramalho',
+  'geraldo azevedo','elba ramalho','fagner','belchior','ney matogrosso',
+  'maria gadú','ana carolina','nando reis','arnaldo antunes','tribalistas',
+  'roberto carlos','erasmo carlos','vanessa da mata','seu jorge','lenine',
+])
+
+const ROCK_BR_ARTISTS = new Set([
+  'legião urbana','legiao urbana','barão vermelho','barao vermelho','titãs','titas',
+  'paralamas do sucesso','paralamas','skank','jota quest','capital inicial',
+  'raul seixas','rita lee','cássia eller','cassia eller','charlie brown jr',
+  'detonautas','pitty','nx zero','fresno','engenheiros do hawaii','ira!','ira',
+  'ultraje a rigor','raimundos','mamonas assassinas','o rappa','natiruts',
+  'cidade negra','kid abelha','blitz','lulu santos','lobão','cazuza',
+])
+
+const BREGA_ARTISTS = new Set([
+  'reginaldo rossi','amado batista','odair josé','sidney magal','nelson ned',
+  'waldick soriano','fernando mendes','josé augusto','agnaldo timóteo',
+  'wando','paulo sérgio','benito di paula','luiz ayrão',
+])
+
+function classifySubGenre(artist: string): 'rock' | 'pop' | 'mpb' | 'brega' | 'rock-br' {
+  const a = artist.toLowerCase().trim()
+  if (MPB_ARTISTS.has(a)) return 'mpb'
+  if (ROCK_BR_ARTISTS.has(a)) return 'rock-br'
+  if (BREGA_ARTISTS.has(a)) return 'brega'
+  // Check partial matches for compound names
+  for (const name of MPB_ARTISTS) if (a.includes(name) || name.includes(a)) return 'mpb'
+  for (const name of ROCK_BR_ARTISTS) if (a.includes(name) || name.includes(a)) return 'rock-br'
+  for (const name of BREGA_ARTISTS) if (a.includes(name) || name.includes(a)) return 'brega'
+  // Default: international = Pop / Rock
+  return 'rock'
+}
+
+const SUB_GENRE_LABELS: Record<string, string> = {
+  'rock': 'Rock / Pop Internacional',
+  'rock-br': 'Rock Nacional',
+  'mpb': 'MPB',
+  'brega': 'Brega',
+  'pop': 'Pop',
+}
+
 export default function Demo() {
   const { tracks, genres, isLoading, loadCatalog } = useCatalogStore()
   const { track: currentTrack, playbackState, pitch, speed, loadTrack, error } = usePlayerStore()
@@ -31,25 +77,15 @@ export default function Demo() {
     return () => clearTimeout(timer)
   }, [])
 
-  // Build genre sections with 5 tracks each
+  // Build genre sections with 5 tracks each, splitting rock-pop-mpb into sub-genres
   const genreSections = useMemo(() => {
     if (!tracks.length || !genres.length) return []
 
     const sections: { id: string; label: string; tracks: Track[]; totalCount: number }[] = []
-    const genreMap = new Map<string, Track[]>()
 
-    for (const t of tracks) {
-      const gId = t.tags[0] || 'other'
-      if (!genreMap.has(gId)) genreMap.set(gId, [])
-      genreMap.get(gId)!.push(t)
-    }
-
-    const sorted = [...genreMap.entries()].sort((a, b) => b[1].length - a[1].length)
-
-    for (const [id, genreTracks] of sorted) {
-      const genre = genres.find(g => g.id === id)
-      // Pick tracks with 5–10 stems, unique artists and titles
-      const eligible = [...genreTracks]
+    // Helper: pick best tracks with unique artists/titles, 5–10 stems
+    function pickBest(pool: Track[]): Track[] {
+      const eligible = [...pool]
         .filter(t => t.stems.length >= 5 && t.stems.length <= 10)
         .sort((a, b) => b.stems.length - a.stems.length)
       const best: Track[] = []
@@ -65,6 +101,47 @@ export default function Demo() {
         best.push(t)
         if (best.length >= TRACKS_PER_GENRE) break
       }
+      return best
+    }
+
+    const genreMap = new Map<string, Track[]>()
+    for (const t of tracks) {
+      const gId = t.tags[0] || 'other'
+      if (!genreMap.has(gId)) genreMap.set(gId, [])
+      genreMap.get(gId)!.push(t)
+    }
+
+    const sorted = [...genreMap.entries()].sort((a, b) => b[1].length - a[1].length)
+
+    for (const [id, genreTracks] of sorted) {
+      // Split rock-pop-mpb into sub-genres
+      if (id === 'rock-pop-mpb') {
+        const subMap = new Map<string, Track[]>()
+        for (const t of genreTracks) {
+          const sub = classifySubGenre(t.artist)
+          if (!subMap.has(sub)) subMap.set(sub, [])
+          subMap.get(sub)!.push(t)
+        }
+
+        // Order: Rock Nacional, MPB, Rock/Pop Internacional, Brega
+        const subOrder = ['rock-br', 'mpb', 'rock', 'brega']
+        for (const subId of subOrder) {
+          const pool = subMap.get(subId)
+          if (!pool || pool.length === 0) continue
+          const best = pickBest(pool)
+          if (best.length === 0) continue
+          sections.push({
+            id: `${id}-${subId}`,
+            label: SUB_GENRE_LABELS[subId] || subId,
+            tracks: best,
+            totalCount: pool.length,
+          })
+        }
+        continue
+      }
+
+      const genre = genres.find(g => g.id === id)
+      const best = pickBest(genreTracks)
 
       sections.push({
         id,
