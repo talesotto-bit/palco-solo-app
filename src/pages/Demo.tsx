@@ -48,9 +48,21 @@ export default function Demo() {
 
     for (const [id, genreTracks] of sorted) {
       const genre = genres.find(g => g.id === id)
-      const best = [...genreTracks]
-        .sort((a, b) => b.stems.length - a.stems.length)
-        .slice(0, TRACKS_PER_GENRE)
+      // Pick tracks with most stems, but ensure unique artists and titles
+      const sortedByStems = [...genreTracks].sort((a, b) => b.stems.length - a.stems.length)
+      const best: Track[] = []
+      const seenArtists = new Set<string>()
+      const seenTitles = new Set<string>()
+
+      for (const t of sortedByStems) {
+        const artistKey = t.artist.toLowerCase().trim()
+        const titleKey = t.title.toLowerCase().trim()
+        if (seenArtists.has(artistKey) || seenTitles.has(titleKey)) continue
+        seenArtists.add(artistKey)
+        seenTitles.add(titleKey)
+        best.push(t)
+        if (best.length >= TRACKS_PER_GENRE) break
+      }
 
       sections.push({
         id,
@@ -91,7 +103,7 @@ export default function Demo() {
     )
   }
 
-  const totalTracks = tracks.length
+  const DISPLAY_TOTAL = '100.000'
 
   return (
     <div className="min-h-dvh bg-[#121212] flex flex-col">
@@ -112,7 +124,7 @@ export default function Demo() {
           <div className="flex items-center gap-4 mb-6 flex-wrap">
             <div className="flex items-center gap-2 text-sm text-[#b3b3b3]">
               <Music2 className="h-4 w-4 text-[hsl(var(--primary))]" />
-              <span><strong className="text-white">{totalTracks.toLocaleString('pt-BR')}</strong> faixas</span>
+              <span><strong className="text-white">+{DISPLAY_TOTAL}</strong> faixas</span>
             </div>
             <div className="h-4 w-px bg-white/10" />
             <div className="flex items-center gap-2 text-sm text-[#b3b3b3]">
@@ -314,7 +326,7 @@ export default function Demo() {
                         <div>
                           <p className="text-sm font-bold text-white">Gostou do que ouviu?</p>
                           <p className="text-xs text-[#b3b3b3] mt-1 leading-relaxed">
-                            No plano completo você tem acesso a <strong className="text-white">{totalTracks.toLocaleString('pt-BR')}+ faixas</strong> com multipistas separadas, alteração de tom com I.A e atualizações semanais.
+                            No plano completo você tem acesso a <strong className="text-white">+{DISPLAY_TOTAL} faixas</strong> com multipistas separadas, alteração de tom com I.A e atualizações semanais.
                           </p>
                         </div>
                       </div>
@@ -349,7 +361,7 @@ export default function Demo() {
                 <ul className="space-y-2 mb-5">
                   <li className="flex items-center gap-2 text-sm text-[#b3b3b3]">
                     <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
-                    <span><strong className="text-white">{totalTracks.toLocaleString('pt-BR')}+</strong> faixas profissionais com multipistas</span>
+                    <span><strong className="text-white">+{DISPLAY_TOTAL}</strong> faixas profissionais com multipistas</span>
                   </li>
                   <li className="flex items-center gap-2 text-sm text-[#b3b3b3]">
                     <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
@@ -416,7 +428,7 @@ export default function Demo() {
       <div className="shrink-0 border-t border-white/10 bg-[#0a0a0a] px-4 py-3">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-sm text-[#b3b3b3] text-center sm:text-left">
-            <span className="text-white font-semibold">Demonstração gratuita</span> — {totalTracks.toLocaleString('pt-BR')}+ faixas no catálogo completo
+            <span className="text-white font-semibold">Demonstração gratuita</span> — +{DISPLAY_TOTAL} faixas no catálogo completo
           </p>
           <a
             href={CTA_URL}
