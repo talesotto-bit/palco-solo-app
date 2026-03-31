@@ -10,7 +10,7 @@ import { ExternalLink, Crown } from 'lucide-react'
 
 const PLAN_LABELS: Record<string, string> = {
   none: 'Sem plano',
-  basic: 'Básico',
+  basic: 'Pro',
   professional: 'Profissional',
   advanced: 'Avançado',
 }

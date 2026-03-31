@@ -16,7 +16,7 @@ const NAV_MAIN = [
 
 const PLAN_LABELS: Record<string, string> = {
   none: 'Free',
-  basic: 'Básico',
+  basic: 'Pro',
   professional: 'Pro',
   advanced: 'Premium',
 }
