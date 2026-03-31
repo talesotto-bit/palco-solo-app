@@ -302,7 +302,7 @@ export default function Demo() {
                     >
                       <Lock className="h-3.5 w-3.5 text-[#808080] group-hover:text-[hsl(var(--primary))]" />
                       <span className="text-xs text-[#808080] group-hover:text-white transition-colors">
-                        +{(section.totalCount - TRACKS_PER_GENRE).toLocaleString('pt-BR')} faixas no plano completo
+                        +{DISPLAY_TOTAL} faixas no plano completo
                       </span>
                     </a>
                   )}
