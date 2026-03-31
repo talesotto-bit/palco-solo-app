@@ -15,6 +15,7 @@ import Performance from '@/pages/Performance'
 import Settings from '@/pages/Settings'
 import SeparatePage from '@/pages/SeparatePage'
 import NotFound from '@/pages/NotFound'
+import Demo from '@/pages/Demo'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,6 +53,7 @@ export default function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Auth />} />
+            <Route path="/demo" element={<Demo />} />
             <Route path="/" element={<Navigate to="/app/library" replace />} />
 
             {/* Performance — fullscreen, outside AppLayout */}
