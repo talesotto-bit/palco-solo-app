@@ -92,8 +92,6 @@ export default function Library() {
     return sections
   }, [tracks, isFiltering, genre, showFavs, catalogGenres])
 
-  const totalTracks = tracks.length
-
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -104,16 +102,15 @@ export default function Library() {
             <h1 className="text-lg md:text-2xl font-bold text-white">
               {catalogLoading ? 'Carregando...' : 'Biblioteca'}
             </h1>
-            {totalTracks > 0 && (
+            {genre !== 'all' && (
               <p className="text-[11px] md:text-xs text-[#808080] mt-0.5">
-                {totalTracks} faixa{totalTracks !== 1 ? 's' : ''}
-                {genre !== 'all' && ` em ${catalogGenres.find(g => g.id === genre)?.label || genre}`}
+                {catalogGenres.find(g => g.id === genre)?.label || genre}
               </p>
             )}
           </div>
 
           {/* View toggle */}
-          {!catalogLoading && totalTracks > 0 && (
+          {!catalogLoading && tracks.length > 0 && (
             <div className="flex items-center bg-[#2a2a2a] rounded-lg p-0.5">
               <button
                 onClick={() => setViewMode('grid')}
@@ -198,7 +195,6 @@ export default function Library() {
                 )}
               >
                 {g.label}
-                <span className="ml-1.5 text-[10px] opacity-60">{g.count}</span>
               </button>
             ))}
           </div>
