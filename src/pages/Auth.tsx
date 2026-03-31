@@ -118,7 +118,19 @@ export default function Auth() {
             </div>
 
             {error && (
-              <p className="text-sm text-red-400 text-center">{error}</p>
+              <div className="text-sm text-red-400 text-center space-y-2">
+                <p>{error}</p>
+                {error.includes('adquirir um plano') && (
+                  <a
+                    href="https://palcosolo.online/#pricing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block text-[hsl(var(--primary))] font-semibold hover:underline"
+                  >
+                    Ver planos e adquirir agora
+                  </a>
+                )}
+              </div>
             )}
 
             <button
