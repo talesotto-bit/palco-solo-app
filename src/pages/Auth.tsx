@@ -53,7 +53,7 @@ export default function Auth() {
         <div className="rounded-lg bg-[#181818] p-5 md:p-8 space-y-5 md:space-y-6">
           <div className="text-center">
             <h2 className="text-xl font-bold text-white">
-              {mode === 'login' ? 'Entrar na sua conta' : 'Criar conta grátis'}
+              {mode === 'login' ? 'Entrar na sua conta' : 'Criar conta'}
             </h2>
           </div>
 
@@ -152,7 +152,7 @@ export default function Auth() {
             onClick={switchMode}
             className="w-full h-12 rounded-full text-sm font-bold border border-white/20 text-white hover:border-white/40 transition-colors"
           >
-            {mode === 'login' ? 'Criar conta grátis' : 'Já tenho conta'}
+            {mode === 'login' ? 'Criar conta' : 'Já tenho conta'}
           </button>
         </div>
 
