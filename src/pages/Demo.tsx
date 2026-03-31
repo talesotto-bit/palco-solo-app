@@ -48,13 +48,15 @@ export default function Demo() {
 
     for (const [id, genreTracks] of sorted) {
       const genre = genres.find(g => g.id === id)
-      // Pick tracks with most stems, but ensure unique artists and titles
-      const sortedByStems = [...genreTracks].sort((a, b) => b.stems.length - a.stems.length)
+      // Pick tracks with 5–10 stems, unique artists and titles
+      const eligible = [...genreTracks]
+        .filter(t => t.stems.length >= 5 && t.stems.length <= 10)
+        .sort((a, b) => b.stems.length - a.stems.length)
       const best: Track[] = []
       const seenArtists = new Set<string>()
       const seenTitles = new Set<string>()
 
-      for (const t of sortedByStems) {
+      for (const t of eligible) {
         const artistKey = t.artist.toLowerCase().trim()
         const titleKey = t.title.toLowerCase().trim()
         if (seenArtists.has(artistKey) || seenTitles.has(titleKey)) continue
