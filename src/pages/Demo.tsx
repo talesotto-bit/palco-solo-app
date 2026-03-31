@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Layers, Music2, Gauge, ChevronDown, ChevronUp, Loader2, ExternalLink } from 'lucide-react'
+import { Layers, Music2, Gauge, ChevronDown, ChevronUp, Loader2, Lock, Play, Crown, ArrowRight, Sparkles, CheckCircle2, X } from 'lucide-react'
 import { useCatalogStore } from '@/store/catalogStore'
 import { usePlayerStore } from '@/store/playerStore'
 import { PlayerControls } from '@/components/player/PlayerControls'
@@ -11,33 +11,71 @@ import { cn } from '@/lib/utils'
 import { semitonesToLabel, speedToLabel } from '@/lib/utils'
 import type { Track } from '@/types/track'
 
+const TRACKS_PER_GENRE = 5
+const CTA_URL = 'https://palcosolo.online/#pricing'
+
 export default function Demo() {
-  const { tracks, isLoading, loadCatalog } = useCatalogStore()
+  const { tracks, genres, isLoading, loadCatalog } = useCatalogStore()
   const { track: currentTrack, playbackState, pitch, speed, loadTrack, error } = usePlayerStore()
   const [showTuning, setShowTuning] = useState(false)
+  const [showCta, setShowCta] = useState(false)
+  const [dismissedCta, setDismissedCta] = useState(false)
 
   useEffect(() => {
     loadCatalog()
   }, [loadCatalog])
 
-  // Pick 5 tracks with the most stems
-  const demoTracks = useMemo(() => {
-    if (!tracks.length) return []
-    return [...tracks]
-      .filter(t => t.hasStems && t.stems.length > 1)
-      .sort((a, b) => b.stems.length - a.stems.length)
-      .slice(0, 5)
-  }, [tracks])
-
-  // Auto-load first track when catalog is ready
+  // Show floating CTA after 15s
   useEffect(() => {
-    if (demoTracks.length > 0 && !currentTrack) {
-      loadTrack(demoTracks[0])
+    const timer = setTimeout(() => setShowCta(true), 15000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Build genre sections with 5 tracks each
+  const genreSections = useMemo(() => {
+    if (!tracks.length || !genres.length) return []
+
+    const sections: { id: string; label: string; tracks: Track[]; totalCount: number }[] = []
+    const genreMap = new Map<string, Track[]>()
+
+    for (const t of tracks) {
+      const gId = t.tags[0] || 'other'
+      if (!genreMap.has(gId)) genreMap.set(gId, [])
+      genreMap.get(gId)!.push(t)
     }
-  }, [demoTracks, currentTrack, loadTrack])
+
+    const sorted = [...genreMap.entries()].sort((a, b) => b[1].length - a[1].length)
+
+    for (const [id, genreTracks] of sorted) {
+      const genre = genres.find(g => g.id === id)
+      const best = [...genreTracks]
+        .sort((a, b) => b.stems.length - a.stems.length)
+        .slice(0, TRACKS_PER_GENRE)
+
+      sections.push({
+        id,
+        label: genre?.label || id,
+        tracks: best,
+        totalCount: genreTracks.length,
+      })
+    }
+
+    return sections
+  }, [tracks, genres])
+
+  // Auto-load first track
+  useEffect(() => {
+    if (genreSections.length > 0 && genreSections[0].tracks.length > 0 && !currentTrack) {
+      loadTrack(genreSections[0].tracks[0])
+    }
+  }, [genreSections, currentTrack, loadTrack])
 
   const handleSelectTrack = (track: Track) => {
     loadTrack(track)
+    const el = document.getElementById('demo-player')
+    if (el && window.innerWidth < 1024) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
   }
 
   const isPlaying = playbackState === 'playing'
@@ -53,113 +91,143 @@ export default function Demo() {
     )
   }
 
-  if (!isLoading && demoTracks.length === 0) {
-    return (
-      <div className="min-h-dvh bg-[#121212] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center px-4">
-          <Music2 className="h-12 w-12 text-[#535353]" />
-          <h2 className="text-xl font-bold text-white">Nenhuma faixa disponível</h2>
-          <p className="text-sm text-[#b3b3b3] max-w-sm">
-            O catálogo está vazio no momento. Tente novamente mais tarde.
-          </p>
-        </div>
-      </div>
-    )
-  }
+  const totalTracks = tracks.length
 
   return (
     <div className="min-h-dvh bg-[#121212] flex flex-col">
-      {/* Demo banner */}
-      <div className="bg-[hsl(var(--primary))] text-black text-center py-2.5 px-4 shrink-0">
-        <p className="text-sm font-bold tracking-wide">
-          Modo Demonstração — Experimente o player completo
+      {/* Top banner */}
+      <div className="bg-gradient-to-r from-[hsl(var(--primary))] to-[hsl(var(--primary))]/80 text-black text-center py-2.5 px-4 shrink-0">
+        <p className="text-sm font-bold tracking-wide flex items-center justify-center gap-2">
+          <Sparkles className="h-4 w-4" />
+          Modo Demonstração — Explore o player profissional
+          <Sparkles className="h-4 w-4" />
         </p>
       </div>
 
-      {/* Main content */}
+      {/* Main scrollable area */}
       <div className="flex-1 overflow-y-auto">
-        <div className={cn(
-          'min-h-full transition-colors duration-1000',
-          isPlaying
-            ? 'bg-gradient-to-b from-[#1e3a2f] via-[#171717] to-[#121212]'
-            : 'bg-gradient-to-b from-[#2a2a2a] via-[#171717] to-[#121212]'
-        )}>
-          <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 md:py-8">
-            <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
 
-              {/* Track list — top on mobile, left on desktop */}
-              <div className="w-full lg:w-72 shrink-0">
-                <h2 className="text-xs font-semibold text-[#b3b3b3] uppercase tracking-wider mb-3">
-                  Faixas de demonstração
-                </h2>
-                <div className="flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-x-visible pb-2 lg:pb-0 -mx-1 px-1">
-                  {demoTracks.map(track => {
-                    const isActive = currentTrack?.id === track.id
-                    return (
-                      <button
-                        key={track.id}
-                        onClick={() => handleSelectTrack(track)}
-                        className={cn(
-                          'flex items-center gap-3 rounded-lg p-3 transition-colors text-left min-w-[220px] lg:min-w-0 w-full shrink-0 lg:shrink',
-                          isActive
-                            ? 'bg-white/10 ring-1 ring-[hsl(var(--primary))]/50'
-                            : 'bg-white/5 hover:bg-white/[0.08]'
-                        )}
-                      >
-                        {/* Cover art */}
-                        <div className="h-12 w-12 rounded-md overflow-hidden shrink-0">
-                          <img
-                            src={track.coverUrl}
-                            alt={track.title}
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
+          {/* Stats bar */}
+          <div className="flex items-center gap-4 mb-6 flex-wrap">
+            <div className="flex items-center gap-2 text-sm text-[#b3b3b3]">
+              <Music2 className="h-4 w-4 text-[hsl(var(--primary))]" />
+              <span><strong className="text-white">{totalTracks.toLocaleString('pt-BR')}</strong> faixas</span>
+            </div>
+            <div className="h-4 w-px bg-white/10" />
+            <div className="flex items-center gap-2 text-sm text-[#b3b3b3]">
+              <Layers className="h-4 w-4 text-[hsl(var(--primary))]" />
+              <span><strong className="text-white">{genres.length}</strong> gêneros</span>
+            </div>
+            <div className="h-4 w-px bg-white/10" />
+            <div className="flex items-center gap-2 text-sm text-[#b3b3b3]">
+              <Sparkles className="h-4 w-4 text-[hsl(var(--primary))]" />
+              <span>Multipistas separadas</span>
+            </div>
+          </div>
 
-                        {/* Info */}
-                        <div className="min-w-0 flex-1">
-                          <p className={cn(
-                            'text-sm font-semibold truncate',
-                            isActive ? 'text-[hsl(var(--primary))]' : 'text-white'
-                          )}>
-                            {track.title}
-                          </p>
-                          <p className="text-xs text-[#b3b3b3] truncate">{track.artist}</p>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <Layers className="h-3 w-3 text-[#808080]" />
-                            <span className="text-[10px] text-[#808080] font-medium">
-                              {track.stems.length} stems
-                            </span>
+          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+
+            {/* ─── LEFT: Genre sections ─── */}
+            <div className="w-full lg:w-[420px] xl:w-[480px] shrink-0 space-y-6">
+              <h2 className="text-xs font-semibold text-[#b3b3b3] uppercase tracking-wider">
+                Escolha uma faixa para ouvir
+              </h2>
+
+              {genreSections.map(section => (
+                <div key={section.id}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-bold text-white">
+                      {section.label}
+                    </h3>
+                    <span className="text-[10px] text-[#808080] font-medium bg-white/5 px-2 py-0.5 rounded-full">
+                      +{section.totalCount.toLocaleString('pt-BR')} faixas
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    {section.tracks.map((track, i) => {
+                      const isActive = currentTrack?.id === track.id
+                      const isCurrentPlaying = isActive && isPlaying
+                      return (
+                        <button
+                          key={track.id}
+                          onClick={() => handleSelectTrack(track)}
+                          className={cn(
+                            'flex items-center gap-3 w-full rounded-lg p-2.5 transition-all text-left group',
+                            isActive
+                              ? 'bg-white/10 ring-1 ring-[hsl(var(--primary))]/40'
+                              : 'bg-white/[0.03] hover:bg-white/[0.07]'
+                          )}
+                        >
+                          <div className="w-6 shrink-0 text-center">
+                            {isCurrentPlaying ? (
+                              <div className="flex items-end justify-center gap-[2px] h-4">
+                                <span className="eq-bar" style={{ animationDuration: '0.6s' }} />
+                                <span className="eq-bar" style={{ animationDuration: '0.8s' }} />
+                                <span className="eq-bar" style={{ animationDuration: '0.5s' }} />
+                              </div>
+                            ) : (
+                              <>
+                                <span className="text-xs text-[#808080] tabular-nums group-hover:hidden block">
+                                  {i + 1}
+                                </span>
+                                <Play className="h-3.5 w-3.5 text-white hidden group-hover:block mx-auto" />
+                              </>
+                            )}
                           </div>
-                        </div>
 
-                        {/* Playing indicator */}
-                        {isActive && isPlaying && (
-                          <div className="flex items-end gap-0.5 h-4 shrink-0">
-                            <span className="eq-bar w-0.5" style={{ animationDuration: '0.6s' }} />
-                            <span className="eq-bar w-0.5" style={{ animationDuration: '0.8s' }} />
-                            <span className="eq-bar w-0.5" style={{ animationDuration: '0.5s' }} />
+                          <div className="h-10 w-10 rounded-md overflow-hidden shrink-0 shadow-md">
+                            <img src={track.coverUrl} alt={track.title} className="h-full w-full object-cover" />
                           </div>
-                        )}
-                      </button>
-                    )
-                  })}
+
+                          <div className="min-w-0 flex-1">
+                            <p className={cn(
+                              'text-sm font-semibold truncate',
+                              isActive ? 'text-[hsl(var(--primary))]' : 'text-white'
+                            )}>
+                              {track.title}
+                            </p>
+                            <p className="text-[11px] text-[#808080] truncate">{track.artist}</p>
+                          </div>
+
+                          {track.hasStems && track.stems.length > 1 && (
+                            <div className="flex items-center gap-1 text-[10px] text-[#808080] font-medium shrink-0 bg-white/5 px-1.5 py-0.5 rounded">
+                              <Layers className="h-3 w-3" />
+                              {track.stems.length}
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {section.totalCount > TRACKS_PER_GENRE && (
+                    <a
+                      href={CTA_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 mt-1.5 px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/10 transition-colors group"
+                    >
+                      <Lock className="h-3.5 w-3.5 text-[#808080] group-hover:text-[hsl(var(--primary))]" />
+                      <span className="text-xs text-[#808080] group-hover:text-white transition-colors">
+                        +{(section.totalCount - TRACKS_PER_GENRE).toLocaleString('pt-BR')} faixas no plano completo
+                      </span>
+                    </a>
+                  )}
                 </div>
-              </div>
+              ))}
+            </div>
 
-              {/* Player — bottom on mobile, right on desktop */}
-              <div className="flex-1 min-w-0 space-y-5">
+            {/* ─── RIGHT: Player (sticky) ─── */}
+            <div id="demo-player" className="flex-1 min-w-0 lg:sticky lg:top-4 lg:self-start">
+              <div className="space-y-5">
                 {currentTrack ? (
                   <>
-                    {/* Track info + album art */}
                     <div className="flex flex-col sm:flex-row gap-5 items-start">
-                      {/* Album art */}
                       <div className="w-full max-w-[200px] mx-auto sm:mx-0 shrink-0">
                         <div className="relative aspect-square rounded-lg overflow-hidden shadow-2xl shadow-black/60">
-                          <img
-                            src={currentTrack.coverUrl}
-                            alt={currentTrack.title}
-                            className="h-full w-full object-cover"
-                          />
+                          <img src={currentTrack.coverUrl} alt={currentTrack.title} className="h-full w-full object-cover" />
                           {isPlaying && (
                             <div className="absolute bottom-3 left-3 flex items-end gap-1 h-5">
                               <span className="eq-bar w-1" style={{ animationDuration: '0.6s' }} />
@@ -171,7 +239,6 @@ export default function Demo() {
                         </div>
                       </div>
 
-                      {/* Track details */}
                       <div className="flex-1 min-w-0 w-full">
                         <h1 className="text-lg md:text-2xl font-extrabold text-white leading-tight line-clamp-2">
                           {currentTrack.title}
@@ -202,20 +269,15 @@ export default function Demo() {
                       </div>
                     </div>
 
-                    {/* Error */}
                     {error && (
                       <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3">
                         <p className="text-sm text-red-300">{error}</p>
                       </div>
                     )}
 
-                    {/* Progress */}
                     <ProgressBar />
-
-                    {/* Controls */}
                     <PlayerControls size="large" />
 
-                    {/* Pitch & Speed toggle */}
                     <button
                       onClick={() => setShowTuning(!showTuning)}
                       className="flex items-center gap-2 text-sm font-semibold text-[#b3b3b3] hover:text-white transition-colors"
@@ -225,7 +287,7 @@ export default function Demo() {
                       {(pitch !== 0 || speed !== 1) && (
                         <span className="text-[hsl(var(--primary))] text-xs">
                           {pitch !== 0 && semitonesToLabel(pitch)}
-                          {pitch !== 0 && speed !== 1 && ' \u00b7 '}
+                          {pitch !== 0 && speed !== 1 && ' · '}
                           {speed !== 1 && speedToLabel(speed)}
                         </span>
                       )}
@@ -243,8 +305,29 @@ export default function Demo() {
                       </div>
                     )}
 
-                    {/* Stem Mixer */}
                     <StemMixer />
+
+                    {/* Inline CTA */}
+                    <div className="rounded-xl bg-gradient-to-br from-[hsl(var(--primary))]/10 to-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/20 p-5 mt-4">
+                      <div className="flex items-start gap-3 mb-3">
+                        <Crown className="h-5 w-5 text-[hsl(var(--primary))] shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-bold text-white">Gostou do que ouviu?</p>
+                          <p className="text-xs text-[#b3b3b3] mt-1 leading-relaxed">
+                            No plano completo você tem acesso a <strong className="text-white">{totalTracks.toLocaleString('pt-BR')}+ faixas</strong> com multipistas separadas, alteração de tom com I.A e atualizações semanais.
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={CTA_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 h-10 rounded-full px-6 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity"
+                      >
+                        Ver planos e preços
+                        <ArrowRight className="h-4 w-4" />
+                      </a>
+                    </div>
                   </>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-16 gap-4">
@@ -255,23 +338,94 @@ export default function Demo() {
               </div>
             </div>
           </div>
+
+          {/* Full-width CTA at bottom */}
+          <div className="mt-12 mb-4">
+            <div className="rounded-2xl bg-gradient-to-r from-[hsl(var(--primary))]/15 via-[hsl(var(--primary))]/10 to-transparent border border-[hsl(var(--primary))]/20 p-6 md:p-8">
+              <div className="max-w-2xl">
+                <h2 className="text-xl md:text-2xl font-extrabold text-white mb-3">
+                  Pronto para o próximo nível?
+                </h2>
+                <ul className="space-y-2 mb-5">
+                  <li className="flex items-center gap-2 text-sm text-[#b3b3b3]">
+                    <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                    <span><strong className="text-white">{totalTracks.toLocaleString('pt-BR')}+</strong> faixas profissionais com multipistas</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-[#b3b3b3]">
+                    <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                    <span>Alteração de tom com <strong className="text-white">Inteligência Artificial</strong></span>
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-[#b3b3b3]">
+                    <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                    <span>Atualizações semanais com lançamentos novos</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-[#b3b3b3]">
+                    <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                    <span>Acesso vitalício — <strong className="text-white">pagamento único</strong></span>
+                  </li>
+                </ul>
+                <a
+                  href={CTA_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 h-12 rounded-full px-8 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:scale-[1.02] transition-transform"
+                >
+                  <Crown className="h-4 w-4" />
+                  Quero acesso completo
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Persistent CTA at bottom */}
+      {/* Floating CTA (appears after 15s) */}
+      {showCta && !dismissedCta && (
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-6 md:max-w-sm z-50 animate-fade-in">
+          <div className="relative rounded-xl bg-[#1a1a1a] border border-[hsl(var(--primary))]/30 shadow-2xl shadow-black/60 p-4">
+            <button
+              onClick={() => setDismissedCta(true)}
+              className="absolute top-2 right-2 p-1 text-[#808080] hover:text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="h-10 w-10 rounded-full bg-[hsl(var(--primary))]/20 flex items-center justify-center shrink-0">
+                <Crown className="h-5 w-5 text-[hsl(var(--primary))]" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white">Acesso completo</p>
+                <p className="text-xs text-[#808080]">Pagamento único · Vitalício</p>
+              </div>
+            </div>
+            <a
+              href={CTA_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full h-10 rounded-lg text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity"
+            >
+              Ver planos
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Persistent bottom bar */}
       <div className="shrink-0 border-t border-white/10 bg-[#0a0a0a] px-4 py-3">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-sm text-[#b3b3b3] text-center sm:text-left">
-            Gostou? Acesse o catálogo completo com todas as faixas e recursos.
+            <span className="text-white font-semibold">Demonstração gratuita</span> — {totalTracks.toLocaleString('pt-BR')}+ faixas no catálogo completo
           </p>
           <a
-            href="https://palcosolo.online/#pricing"
+            href={CTA_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 h-10 rounded-full px-6 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity shrink-0"
           >
-            Acesse o catálogo completo
-            <ExternalLink className="h-4 w-4" />
+            Quero acesso completo
+            <ArrowRight className="h-4 w-4" />
           </a>
         </div>
       </div>
