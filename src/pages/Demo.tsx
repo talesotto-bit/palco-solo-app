@@ -208,7 +208,7 @@ export default function Demo() {
             <div className="h-4 w-px bg-white/10" />
             <div className="flex items-center gap-2 text-sm text-[#b3b3b3]">
               <Layers className="h-4 w-4 text-[hsl(var(--primary))]" />
-              <span><strong className="text-white">{genres.length}</strong> gêneros</span>
+              <span><strong className="text-white">Todos</strong> os gêneros</span>
             </div>
             <div className="h-4 w-px bg-white/10" />
             <div className="flex items-center gap-2 text-sm text-[#b3b3b3]">
