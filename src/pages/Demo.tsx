@@ -63,7 +63,7 @@ const SUB_GENRE_LABELS: Record<string, string> = {
 export default function Demo() {
   const { tracks, genres, isLoading, loadCatalog } = useCatalogStore()
   const { track: currentTrack, playbackState, pitch, speed, loadTrack, error } = usePlayerStore()
-  const [showTuning, setShowTuning] = useState(false)
+  const [showTuning, setShowTuning] = useState(true)
   const [showCta, setShowCta] = useState(false)
   const [dismissedCta, setDismissedCta] = useState(false)
 
