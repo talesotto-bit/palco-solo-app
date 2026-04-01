@@ -12,7 +12,7 @@ import { semitonesToLabel, speedToLabel } from '@/lib/utils'
 import type { Track } from '@/types/track'
 
 const TRACKS_PER_GENRE = 5
-const CTA_URL = 'https://palcosolo.online/#pricing'
+const CTA_URL = 'https://payfast.greenn.com.br/153173/offer/xIr1QY'
 
 // ─── Sub-genre classification for "rock-pop-mpb" ───────────────────────
 const MPB_ARTISTS = new Set([
