@@ -13,6 +13,26 @@ import type { Track } from '@/types/track'
 
 const TRACKS_PER_GENRE = 5
 const CTA_URL = 'https://payfast.greenn.com.br/152815/offer/gxUz6f'
+/** Max stems to load in demo mode — prevents mobile OOM with 20+ stem tracks */
+const MAX_DEMO_STEMS = 8
+
+/** Priority order for stem selection when capping */
+const STEM_PRIORITY = [
+  'main', 'drums', 'bass', 'voice', 'guitar', 'acoustic', 'keys',
+  'percussion', 'brass', 'strings', 'synth', 'choir', 'click',
+]
+
+/** Limit track stems for demo to avoid mobile memory crashes */
+function capStemsForDemo(track: Track): Track {
+  if (track.stems.length <= MAX_DEMO_STEMS) return track
+  const stemsCopy = [...track.stems]
+  stemsCopy.sort((a, b) => {
+    const aIdx = STEM_PRIORITY.findIndex(p => a.id.toLowerCase().includes(p) || a.label.toLowerCase().includes(p))
+    const bIdx = STEM_PRIORITY.findIndex(p => b.id.toLowerCase().includes(p) || b.label.toLowerCase().includes(p))
+    return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx)
+  })
+  return { ...track, stems: stemsCopy.slice(0, MAX_DEMO_STEMS) }
+}
 
 export default function Demo() {
   // Individual selectors — prevents re-render on every currentTime update (60fps)
@@ -162,13 +182,13 @@ export default function Demo() {
   useEffect(() => {
     if (!autoLoadedRef.current && genreSections.length > 0 && genreSections[0].tracks.length > 0 && !currentTrack) {
       autoLoadedRef.current = true
-      loadTrack(genreSections[0].tracks[0]).catch(() => {})
+      loadTrack(capStemsForDemo(genreSections[0].tracks[0])).catch(() => {})
     }
   }, [genreSections]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectTrack = async (track: Track) => {
     try {
-      await loadTrack(track)
+      await loadTrack(capStemsForDemo(track))
     } catch {
       // Silently handle audio load failures on mobile
     }

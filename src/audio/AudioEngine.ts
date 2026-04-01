@@ -235,7 +235,9 @@ class AudioEngine {
         await new Promise(r => setTimeout(r, 0))
         if (jobId !== this._pitchJobId) return
 
-        const result = processBufferWSola(stem.originalBuffer, totalSemitones)
+        // Clone before processing to protect the original reference
+        const safeBuf = cloneAudioBuffer(stem.originalBuffer)
+        const result = processBufferWSola(safeBuf, totalSemitones)
         processed.set(id, result)
       }
 
@@ -297,9 +299,11 @@ class AudioEngine {
         player.sync().start(0)
         player.playbackRate = this._speed
 
-        // Deep-clone the original AudioBuffer so it's never modified
+        // Store original AudioBuffer for pitch reprocessing
+        // Clone lazily: only deep-copy when pitch is active, otherwise store reference
+        // (cloning 20+ stems eagerly doubles memory and crashes mobile)
         const rawBuf = player.buffer.get()
-        const originalBuffer = rawBuf ? cloneAudioBuffer(rawBuf) : new AudioBuffer({ numberOfChannels: 2, length: 1, sampleRate: 44100 })
+        const originalBuffer = rawBuf ?? new AudioBuffer({ numberOfChannels: 2, length: 1, sampleRate: 44100 })
 
         this.stems.set(stem.id, { id: stem.id, player, gain, panner, originalBuffer })
         return true
@@ -332,8 +336,8 @@ class AudioEngine {
       this.reprocessPitch()
     }
 
-    // Load remaining stems in background
-    const BATCH_SIZE = 3
+    // Load remaining stems in background (small batches to avoid mobile OOM)
+    const BATCH_SIZE = 2
     for (let i = 0; i < rest.length; i += BATCH_SIZE) {
       if (loadId !== this._loadId) break
       const batch = rest.slice(i, i + BATCH_SIZE)
