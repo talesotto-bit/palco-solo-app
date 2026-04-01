@@ -194,9 +194,12 @@ export default function Demo() {
     } catch {
       // Silently handle audio load failures on mobile
     }
-    const el = document.getElementById('demo-player')
-    if (el && window.innerWidth < 1024) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // On mobile, scroll directly to the mixer so user can interact immediately
+    const mixer = document.getElementById('demo-mixer')
+    const player = document.getElementById('demo-player')
+    const target = (window.innerWidth < 1024 ? mixer : player) ?? player
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 
@@ -426,7 +429,7 @@ export default function Demo() {
 
                     {/* Mixer help — before mixer, aligned with M/S button style */}
                     {currentTrack?.hasStems && currentTrack.stems.length > 1 && (
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 md:px-5">
+                      <div id="demo-mixer" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 md:px-5 scroll-mt-4">
                         <span className="flex items-center gap-1.5 text-[11px] text-[#808080]">
                           <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-white/5 text-[#b3b3b3] text-xs font-bold">M</span>
                           Mutar

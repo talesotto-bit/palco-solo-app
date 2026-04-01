@@ -187,6 +187,8 @@ class AudioEngine {
   private isLoaded = false
   private _loadId = 0       // guard against concurrent loads
   private _pitchJobId = 0   // guard against concurrent pitch processing
+  private _pitchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  private _isProcessingPitch = false
 
   constructor() {
     // Register unlock listeners immediately so first user gesture unlocks audio
@@ -241,21 +243,54 @@ class AudioEngine {
     if (wasPlaying) transport.start()
   }
 
-  // ─── Offline pitch processing ─────────────────────────────────────────────
+  // ─── Offline pitch processing (debounced + locked) ─────────────────────────
 
-  private async reprocessPitch(): Promise<void> {
+  /**
+   * Schedule pitch reprocessing after a short debounce.
+   * Slider drags fire hundreds of calls — only the last one actually processes.
+   * Speed playbackRate is applied instantly (zero lag); only the heavy WSOLA
+   * pitch compensation is debounced.
+   */
+  private schedulePitchReprocess(immediate = false): void {
+    if (this._pitchDebounceTimer) {
+      clearTimeout(this._pitchDebounceTimer)
+      this._pitchDebounceTimer = null
+    }
+
+    const run = () => {
+      this._pitchDebounceTimer = null
+      this._runPitchReprocess()
+    }
+
+    if (immediate) {
+      run()
+    } else {
+      this._pitchDebounceTimer = setTimeout(run, 300)
+    }
+  }
+
+  private async _runPitchReprocess(): Promise<void> {
+    // If already processing, just bump the job ID so the running job aborts,
+    // then reschedule — don't pile up concurrent heavy allocations.
+    if (this._isProcessingPitch) {
+      ++this._pitchJobId
+      this.schedulePitchReprocess(false)
+      return
+    }
+
     const jobId = ++this._pitchJobId
+    this._isProcessingPitch = true
 
-    // Total pitch: user pitch + speed compensation
-    // Player.playbackRate of S shifts pitch by +log2(S)*12. Compensate with -log2(S)*12.
     const speedComp = -Math.log2(this._speed) * 12
     const totalSemitones = this._pitch + speedComp
 
-    // Neutral: restore original buffers
+    // Neutral: restore original buffers (instant, no heavy processing)
     if (Math.abs(totalSemitones) < 0.01) {
       const originals = new Map<string, AudioBuffer>()
       this.stems.forEach((stem, id) => originals.set(id, stem.originalBuffer))
       this.applyBuffersToPlayers(originals)
+      this._isProcessingPitch = false
+      this.emit({ type: 'pitchProcessing', active: false })
       return
     }
 
@@ -282,6 +317,7 @@ class AudioEngine {
       // Apply all at once
       this.applyBuffersToPlayers(processed)
     } finally {
+      this._isProcessingPitch = false
       if (jobId === this._pitchJobId) {
         this.emit({ type: 'pitchProcessing', active: false })
       }
@@ -377,7 +413,7 @@ class AudioEngine {
     // Apply pitch if needed
     const needsPitch = Math.abs(this._pitch + (-Math.log2(this._speed) * 12)) > 0.01
     if (needsPitch) {
-      this.reprocessPitch()
+      this.schedulePitchReprocess(true)
     }
 
     // Load remaining stems progressively (1 at a time to avoid mobile memory pressure)
@@ -398,7 +434,7 @@ class AudioEngine {
 
     // After all stems loaded, reprocess if pitch is active
     if (needsPitch && loadId === this._loadId) {
-      this.reprocessPitch()
+      this.schedulePitchReprocess(true)
     }
   }
 
@@ -458,7 +494,7 @@ class AudioEngine {
   setPitch(semitones: number): void {
     this._pitch = semitones
     if (this.isLoaded) {
-      this.reprocessPitch()
+      this.schedulePitchReprocess()
     }
   }
 
@@ -477,7 +513,7 @@ class AudioEngine {
 
     // Reprocess pitch to compensate speed-induced pitch change
     if (this.isLoaded) {
-      this.reprocessPitch()
+      this.schedulePitchReprocess()
     }
   }
 
@@ -576,6 +612,10 @@ class AudioEngine {
   async dispose(): Promise<void> {
     this.stopTimeUpdater()
     this._pitchJobId++
+    if (this._pitchDebounceTimer) {
+      clearTimeout(this._pitchDebounceTimer)
+      this._pitchDebounceTimer = null
+    }
     const transport = Tone.getTransport()
     transport.stop()
     transport.cancel()
