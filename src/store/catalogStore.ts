@@ -86,7 +86,11 @@ const SERTANEJO_ARTISTS = new Set([
   'clayton e romario','israel e rodolfo','bruno e barreto',
   'rio negro e solimoes','zeze e luciano','joao bosco e gabriel',
   'felipe e rodrigo','leo e raphael','brenno e matheus',
-  'antony e gabriel','victor meira',
+  'antony e gabriel','victor meira','toque dez','rick e renner',
+  'edson e hudson','joao neto e frederico','cesar menotti e fabiano',
+  'victor e leo','maria cecilia e rodolfo','bruno e barretto',
+  'paula fernandes','daniel','roberta miranda','leandro e leonardo',
+  'gian e giovani','chrystian e ralf','rick e renner',
 ])
 
 const PISEIRO_ARTISTS = new Set([
@@ -94,6 +98,7 @@ const PISEIRO_ARTISTS = new Set([
   'tarcisio do acordeon','biu do piseiro','alanzim coreano','japazin',
   'ze vaqueiro','mari fernandez','raquel dos teclados',
   'marcynho sensacao','aldair playboy','pedro sampaio',
+  'rogerinho','os baroes','zaza','mc danny',
 ])
 
 const FORRO_ARTISTS = new Set([
@@ -108,23 +113,30 @@ const FORRO_ARTISTS = new Set([
   'dj ivis','kadu martins','thiago aquino','junior vianna',
   'luan estilizado','luka bass','nuzio medeiros','tierry',
   'gabriel diniz','luiza sonza','michele andrade','priscila senna',
+  'banda magnifikos','forro boys','forro pegado','magnificos',
+  'banda torpedo','desejo de menina','garota safada',
 ])
 
 const ARROCHA_ARTISTS = new Set([
   'nadson','nadson ferinha','pablo','devinho novaes','soro silva',
   'silvanno salles','tayrone','pablo do arrocha',
+  'pablo bispo','unha pintada','robyssao','la furia',
 ])
 
 const AXE_ARTISTS = new Set([
   'ivete sangalo','harmonia do samba','leo santana','chiclete com banana',
   'banda eva','bell marques','claudia leitte','parangole','olodum',
-  'asa de aguia','psirico','daniela mercury',
+  'asa de aguia','psirico','daniela mercury','timbalada','babado novo',
+  'netinho','margareth menezes','jammil e uma noites','terra samba',
+  'araketu','cheiro de amor','guig ghetto','tomate',
 ])
 
 const PAGODE_ARTISTS = new Set([
   'ferrugem','thiaguinho','sorriso maroto','turma do pagode','pericles',
   'grupo revelacao','raca negra','dilsinho','menos e mais','exaltasamba',
-  'grupo chocolate',
+  'grupo chocolate','belo','alexandre pires','molejo','soweto',
+  'zeca pagodinho','fundo de quintal','jorge aragao','arlindo cruz',
+  'mumuzinho','suel','vou pro sereno','katingele',
 ])
 
 function classifyAtualizacoes(name: string, artist: string): string {
@@ -157,20 +169,31 @@ function classifyAtualizacoes(name: string, artist: string): string {
 
 const MPB_ARTISTS = new Set([
   'djavan','gilberto gil','caetano veloso','chico buarque','tim maia','jorge ben',
-  'jorge ben jor','maria bethânia','gal costa','milton nascimento','elis regina',
-  'marisa monte','ivan lins','gonzaguinha','alceu valença','zé ramalho',
+  'jorge ben jor','maria bethania','gal costa','milton nascimento','elis regina',
+  'marisa monte','ivan lins','gonzaguinha','alceu valenca','ze ramalho',
   'geraldo azevedo','elba ramalho','fagner','belchior','ney matogrosso',
-  'maria gadú','ana carolina','nando reis','arnaldo antunes','tribalistas',
+  'maria gadu','ana carolina','nando reis','arnaldo antunes','tribalistas',
   'roberto carlos','erasmo carlos','vanessa da mata','seu jorge','lenine',
+  'ed motta','fabio jr','fabio junior','emilio santiago','joao bosco',
+  'maria rita','jorge vercillo','adriana calcanhotto','zelia duncan',
+  'ana vitoria','anavitoria','toquinho','vinicius de moraes','tom jobim',
+  'sandra de sa','jair rodrigues','beth carvalho','alcione','clara nunes',
+  'luiz melodia','pepeu gomes','moraes moreira','novos baianos',
 ])
 
 const ROCK_BR_ARTISTS = new Set([
-  'legião urbana','legiao urbana','barão vermelho','barao vermelho','titãs','titas',
+  'legiao urbana','barao vermelho','titas','titãs',
   'paralamas do sucesso','paralamas','skank','jota quest','capital inicial',
-  'raul seixas','rita lee','cássia eller','cassia eller','charlie brown jr',
+  'raul seixas','rita lee','cassia eller','charlie brown jr',
   'detonautas','pitty','nx zero','fresno','engenheiros do hawaii','ira!','ira',
   'ultraje a rigor','raimundos','mamonas assassinas','o rappa','natiruts',
-  'cidade negra','kid abelha','blitz','lulu santos','lobão','cazuza',
+  'cidade negra','kid abelha','blitz','lulu santos','lobao','cazuza',
+  'velhas virgens','roupa nova','cpm22','cpm 22','pato fu',
+  'camisa de venus','biquini cavadao','nenhum de nos','rpm',
+  'frejat','tiago iorc','tianastacia','tihuana','claudio zoli',
+  'guilherme arantes','leoni','paulo ricardo','marina lima',
+  'jorge mautner','os mutantes','secos e molhados',
+  'humberto gessinger','dado villa lobos',
 ])
 
 const ROCK_POP_INTER_ARTISTS = new Set([
@@ -183,12 +206,33 @@ const ROCK_POP_INTER_ARTISTS = new Set([
   'eric clapton','scorpions','metallica','queen','u2',
   'linkin park','foo fighters','oasis','pearl jam','green day',
   'abba','bee gees','phil collins',
+  'audioslave','creedence clearwater revival','creedence','the offspring',
+  'inxs','madonna','mariah carey','dua lipa','new order',
+  'blink 182','blink-182','simply red','creed','van halen',
+  'roxette','no doubt','a ha','a-ha','ub40',
+  'alanis morissette','avril lavigne','cyndi lauper','duran duran',
+  'matchbox twenty','men at work','nickelback','pixies',
+  'rod stewart','tina turner','tracy chapman','bryan adams',
+  'air supply','erasure','evanescence','the cure','the police',
+  'boney m','crowded house','depeche mode','enrique iglesias',
+  'george michael','rolling stones','the rolling stones','santana',
+  'sheryl crow','system of a down','the pretenders','radiohead',
+  'katy perry','shania twain','luis fonsi','adele','rihanna',
+  'backstreet boys','nsync','westlife','savage garden',
+  'whitesnake','deep purple','black sabbath','iron maiden',
+  'megadeth','alice in chains','soundgarden','stone temple pilots',
+  'rem','r.e.m','weezer','the cranberries','garbage',
+  'sting','peter gabriel','genesis','yes','kansas',
+  'foreigner','boston','styx','def leppard','poison',
+  'warrant','skid row','motley crue','kiss',
 ])
 
 const BREGA_ARTISTS = new Set([
-  'reginaldo rossi','amado batista','odair josé','sidney magal','nelson ned',
-  'waldick soriano','fernando mendes','josé augusto','agnaldo timóteo',
-  'wando','paulo sérgio','benito di paula','luiz ayrão',
+  'reginaldo rossi','amado batista','odair jose','sidney magal','nelson ned',
+  'waldick soriano','fernando mendes','jose augusto','agnaldo timoteo',
+  'wando','paulo sergio','benito di paula','luiz ayrao',
+  'banda calypso','joelma','companhia do calypso','magnificos',
+  'frank aguiar','genival lacerda','nunes filho',
 ])
 
 function classifyRockPopMpb(artist: string, songName: string): string {
@@ -210,7 +254,8 @@ function classifyRockPopMpb(artist: string, songName: string): string {
   for (const name of ROCK_POP_INTER_ARTISTS) if (lower.includes(name)) return 'rock-pop-inter'
   for (const name of ROCK_BR_ARTISTS) if (lower.includes(name)) return 'rock-nacional'
   for (const name of BREGA_ARTISTS) if (lower.includes(name)) return 'brega'
-  // Default: unrecognized tracks in rock-pop-mpb are mostly Brazilian
+  for (const name of MPB_ARTISTS) if (lower.includes(name)) return 'mpb'
+  // Default: unrecognized tracks in rock-pop-mpb are mostly Brazilian MPB
   return 'mpb'
 }
 
