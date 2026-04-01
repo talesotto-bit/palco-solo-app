@@ -83,24 +83,47 @@ export default function Demo() {
 
     const sections: { id: string; label: string; tracks: Track[]; totalCount: number }[] = []
 
+    // Priority artists that MUST appear if available in the genre
+    const PRIORITY_ARTISTS = [
+      'roberto carlos', 'barões da pisadinha', 'baroes da pisadinha',
+      'bruno e marrone',
+    ]
+
     // Helper: pick best tracks with unique artists/titles, 5–10 stems
+    // Priority artists are picked first, then fill remaining slots
     function pickBest(pool: Track[]): Track[] {
       const eligible = [...pool]
         .filter(t => t.stems.length >= 5 && t.stems.length <= 10)
-        .sort((a, b) => b.stems.length - a.stems.length)
       const best: Track[] = []
       const seenArtists = new Set<string>()
       const seenTitles = new Set<string>()
 
-      for (const t of eligible) {
+      function tryAdd(t: Track): boolean {
         const artistKey = t.artist.toLowerCase().trim()
         const titleKey = t.title.toLowerCase().trim()
-        if (seenArtists.has(artistKey) || seenTitles.has(titleKey)) continue
+        if (seenArtists.has(artistKey) || seenTitles.has(titleKey)) return false
         seenArtists.add(artistKey)
         seenTitles.add(titleKey)
         best.push(t)
-        if (best.length >= TRACKS_PER_GENRE) break
+        return true
       }
+
+      // 1. Priority artists first
+      for (const priority of PRIORITY_ARTISTS) {
+        if (best.length >= TRACKS_PER_GENRE) break
+        const match = eligible
+          .sort((a, b) => b.stems.length - a.stems.length)
+          .find(t => t.artist.toLowerCase().trim().includes(priority))
+        if (match) tryAdd(match)
+      }
+
+      // 2. Fill remaining with best stems, unique artists
+      const sorted = [...eligible].sort((a, b) => b.stems.length - a.stems.length)
+      for (const t of sorted) {
+        if (best.length >= TRACKS_PER_GENRE) break
+        tryAdd(t)
+      }
+
       return best
     }
 
