@@ -318,15 +318,9 @@ export default function Settings() {
 
             <Separator />
 
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Versao</span>
-                <span className="text-foreground font-medium">1.0.0</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Acervo</span>
-                <span className="text-foreground font-medium">8.200+ musicas</span>
-              </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Versao</span>
+              <span className="text-foreground font-medium">1.0.0</span>
             </div>
 
             <Separator />
