@@ -20,6 +20,39 @@ import { SoundTouch } from 'soundtouchjs'
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
 
+// ─── Audio Context unlock ───────────────────────────────────────────────────
+// Browsers block AudioContext until user gesture. This ensures it's resumed
+// on the very first touch/click, so audio always works.
+
+let _audioUnlocked = false
+
+function ensureAudioUnlock() {
+  if (_audioUnlocked) return
+
+  const unlock = async () => {
+    try {
+      await Tone.start()
+      // Also resume raw AudioContext in case Tone didn't
+      const ctx = Tone.getContext().rawContext
+      if (ctx.state === 'suspended') {
+        await (ctx as AudioContext).resume()
+      }
+      _audioUnlocked = true
+      // Remove all listeners once unlocked
+      ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
+        document.removeEventListener(evt, unlock, true)
+      )
+    } catch {
+      // Will retry on next gesture
+    }
+  }
+
+  // Listen on capture phase so we catch it before anything else
+  ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
+    document.addEventListener(evt, unlock, { capture: true, passive: true })
+  )
+}
+
 export interface LoadedStem {
   id: string
   player: Tone.Player
@@ -155,7 +188,10 @@ class AudioEngine {
   private _loadId = 0       // guard against concurrent loads
   private _pitchJobId = 0   // guard against concurrent pitch processing
 
-  constructor() {}
+  constructor() {
+    // Register unlock listeners immediately so first user gesture unlocks audio
+    ensureAudioUnlock()
+  }
 
   // ─── Event system ──────────────────────────────────────────────────────────
 
@@ -258,6 +294,14 @@ class AudioEngine {
     const loadId = ++this._loadId
     this.emit({ type: 'loading' })
     await this.dispose()
+
+    // Try to unlock AudioContext early (may fail if no gesture yet — that's OK,
+    // play() will retry. But if user already tapped, this ensures decode works)
+    try { await Tone.start() } catch {}
+    const ctx = Tone.getContext().rawContext
+    if (ctx.state === 'suspended') {
+      try { await (ctx as AudioContext).resume() } catch {}
+    }
 
     // Clean audio chain
     this.mixBus = new Tone.Gain(1)
@@ -362,11 +406,20 @@ class AudioEngine {
 
   async play(): Promise<void> {
     if (!this.isLoaded) return
+
+    // Ensure AudioContext is running (required by browsers on first interaction)
     try {
       await Tone.start()
-    } catch {
-      // iOS may block without user gesture
+    } catch { /* will retry below */ }
+
+    // Double-check: some browsers need explicit resume on the raw context
+    const ctx = Tone.getContext().rawContext
+    if (ctx.state === 'suspended') {
+      try {
+        await (ctx as AudioContext).resume()
+      } catch { /* best effort */ }
     }
+
     Tone.getTransport().start()
     this.startTimeUpdater()
   }
