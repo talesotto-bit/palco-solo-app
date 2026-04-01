@@ -211,20 +211,18 @@ class AudioEngine {
     transport.stop()
     transport.position = 0
 
-    // Load each stem — resilient: skip stems that fail to load
-    const loadPromises = stems.map(async (stem) => {
+    // Helper: load a single stem and connect to mix bus
+    const loadStem = async (stem: Stem): Promise<boolean> => {
       try {
         const player = new Tone.Player({ url: stem.audioUrl, loop: false })
 
-        // Wait for this specific player to load (with timeout)
         await Promise.race([
           new Promise<void>((resolve, reject) => {
             player.buffer.onload = () => resolve()
             ;(player as any).onerror = reject
           }),
-          Tone.loaded(),
           new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout')), 30000)
+            setTimeout(() => reject(new Error('Timeout')), 20000)
           ),
         ])
 
@@ -232,7 +230,7 @@ class AudioEngine {
         if (!player.buffer || !player.buffer.duration || player.buffer.duration < 0.5) {
           console.warn(`[AudioEngine] Stem ${stem.id} has invalid buffer, skipping`)
           player.dispose()
-          return
+          return false
         }
 
         const gain = new Tone.Gain(1)
@@ -248,29 +246,46 @@ class AudioEngine {
         player.playbackRate = this._speed
 
         this.stems.set(stem.id, { id: stem.id, player, gain, panner })
+        return true
       } catch (err) {
         console.warn(`[AudioEngine] Skipping stem ${stem.id}:`, err)
+        return false
       }
-    })
+    }
 
-    await Promise.all(loadPromises)
+    // 1. Load primary stem first so playback can start quickly
+    const primaryStem = stems[0]
+    const rest = stems.slice(1)
 
-    // Check if we got at least one valid stem
-    if (this.stems.size === 0) {
-      this.emit({ type: 'error', message: 'Nenhuma pista conseguiu ser carregada. Verifique sua conexão.' })
+    const primaryOk = await loadStem(primaryStem)
+    if (!primaryOk) {
+      this.emit({ type: 'error', message: 'Não foi possível carregar a faixa. Verifique sua conexão.' })
       return
     }
 
-    // Get duration from longest loaded stem
-    let maxDuration = 0
-    this.stems.forEach(({ player }) => {
-      const dur = player.buffer?.duration ?? 0
-      if (dur > maxDuration) maxDuration = dur
-    })
-    this._duration = maxDuration
+    // Get duration from primary stem
+    const primaryLoaded = this.stems.get(primaryStem.id)
+    this._duration = primaryLoaded?.player.buffer?.duration ?? 0
 
+    // Mark as loaded — playback is ready with primary stem
     this.isLoaded = true
     this.emit({ type: 'loaded' })
+
+    // 2. Load remaining stems in background, in batches of 3
+    const BATCH_SIZE = 3
+    for (let i = 0; i < rest.length; i += BATCH_SIZE) {
+      if (!this.isLoaded) break // stop if track changed
+      const batch = rest.slice(i, i + BATCH_SIZE)
+      await Promise.all(batch.map(s => loadStem(s)))
+
+      // Update duration if a longer stem was found
+      let maxDuration = this._duration
+      this.stems.forEach(({ player }) => {
+        const dur = player.buffer?.duration ?? 0
+        if (dur > maxDuration) maxDuration = dur
+      })
+      this._duration = maxDuration
+    }
   }
 
   // ─── Transport controls ────────────────────────────────────────────────────
