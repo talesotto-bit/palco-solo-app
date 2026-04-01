@@ -3,20 +3,38 @@ import type { Track, Stem } from '@/types/track'
 import { cleanSongName, parseFolderName, detectInstrument, stemLabel, toTitleCase } from '@/lib/stemDetection'
 import { INSTRUMENT_LABELS } from '@/types/track'
 
+const R2_PUBLIC_URL = 'https://pub-81339f96e6c746e8ac25fbe60e95563c.r2.dev'
+
+/** Compact catalog format: short keys to minimize JSON size */
+interface CatalogSongCompact {
+  n: string           // name
+  s: string           // slug
+  g: string           // genreSlug
+  sc: number          // stemCount
+  st: [string, string][]  // stems as [name, key] tuples
+}
+
+/** Expanded format used internally */
 interface CatalogSong {
   name: string
   slug: string
-  genre: string
   genreSlug: string
-  stems: {
-    name: string
-    slug: string
-    key: string
-    url: string
-    format: string
-    size: number
-  }[]
+  stems: { name: string; slug: string; url: string }[]
   stemCount: number
+}
+
+function expandCatalog(compact: CatalogSongCompact[]): CatalogSong[] {
+  return compact.map(c => ({
+    name: c.n,
+    slug: c.s,
+    genreSlug: c.g,
+    stemCount: c.sc,
+    stems: c.st.map(([name, key]) => ({
+      name,
+      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+      url: `${R2_PUBLIC_URL}/${key}`,
+    })),
+  }))
 }
 
 interface CatalogState {
@@ -359,7 +377,15 @@ export const useCatalogStore = create<CatalogState>((set) => ({
 
       try {
         const res = await fetch('/catalog.json')
-        if (res.ok) catalog = await res.json()
+        if (res.ok) {
+          const raw = await res.json()
+          // Support both compact format (n/s/g/sc/st) and legacy format (name/slug/genreSlug)
+          if (raw.length > 0 && 'n' in raw[0]) {
+            catalog = expandCatalog(raw as CatalogSongCompact[])
+          } else {
+            catalog = raw as CatalogSong[]
+          }
+        }
       } catch { /* empty catalog is ok */ }
 
       if (catalog.length === 0) {

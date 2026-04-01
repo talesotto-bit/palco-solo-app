@@ -39,7 +39,7 @@ function VuMeter({ active, volume }: { active: boolean; volume: number }) {
       prev2Ref.current = 0
       if (barRef.current) barRef.current.style.height = '0%'
       if (bar2Ref.current) bar2Ref.current.style.height = '0%'
-      return
+      return () => {} // explicit no-op cleanup
     }
     let cancelled = false
     const animate = () => {
