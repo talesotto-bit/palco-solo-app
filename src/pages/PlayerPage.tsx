@@ -232,7 +232,9 @@ export default function PlayerPage() {
           </div>
 
           {/* Stem Mixer */}
-          <StemMixer />
+          <div id="player-mixer" className="scroll-mt-4">
+            <StemMixer />
+          </div>
         </div>
       </div>
     </div>

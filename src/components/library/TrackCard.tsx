@@ -39,6 +39,10 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
   const handleNavigate = async () => {
     if (!isActive) await loadTrack(track)
     navigate('/app/player')
+    // Scroll to mixer after navigation + render
+    setTimeout(() => {
+      document.getElementById('player-mixer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 300)
   }
 
   // ─── List view ─────────────────────────────────────────────────────

@@ -194,13 +194,13 @@ export default function Demo() {
     } catch {
       // Silently handle audio load failures on mobile
     }
-    // On mobile, scroll directly to the mixer so user can interact immediately
-    const mixer = document.getElementById('demo-mixer')
-    const player = document.getElementById('demo-player')
-    const target = (window.innerWidth < 1024 ? mixer : player) ?? player
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
+    // Scroll to player/mixer after load completes and UI renders
+    setTimeout(() => {
+      const mixer = document.getElementById('demo-mixer')
+      const player = document.getElementById('demo-player')
+      const target = (window.innerWidth < 1024 ? (mixer ?? player) : player) ?? player
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 150)
   }
 
   const isPlaying = playbackState === 'playing'
@@ -427,31 +427,34 @@ export default function Demo() {
                       </div>
                     )}
 
-                    {/* Mixer help — before mixer, aligned with M/S button style */}
-                    {currentTrack?.hasStems && currentTrack.stems.length > 1 && (
-                      <div id="demo-mixer" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 md:px-5 scroll-mt-4">
-                        <span className="flex items-center gap-1.5 text-[11px] text-[#808080]">
-                          <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-white/5 text-[#b3b3b3] text-xs font-bold">M</span>
-                          Mutar
-                        </span>
-                        <span className="flex items-center gap-1.5 text-[11px] text-[#808080]">
-                          <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-white/5 text-[#b3b3b3] text-xs font-bold">S</span>
-                          Solo
-                        </span>
-                        <span className="h-3 w-px bg-white/10" />
-                        {currentTrack.stems.length > MAX_MIXER_STEMS ? (
-                          <span className="text-[11px] text-[#808080]">
-                            {MAX_MIXER_STEMS} de {currentTrack.stems.length} pistas · <a href={CTA_URL} target="_blank" rel="noopener noreferrer" className="text-[hsl(var(--primary))] hover:underline">todas no app completo</a>
+                    {/* Mixer area — scroll target always present */}
+                    <div id="demo-mixer" className="scroll-mt-4 space-y-2">
+                      {/* Mixer help — before mixer, aligned with M/S button style */}
+                      {currentTrack?.hasStems && currentTrack.stems.length > 1 && (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 md:px-5">
+                          <span className="flex items-center gap-1.5 text-[11px] text-[#808080]">
+                            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-white/5 text-[#b3b3b3] text-xs font-bold">M</span>
+                            Mutar
                           </span>
-                        ) : (
-                          <span className="text-[11px] text-[#808080]">
-                            {currentTrack.stems.length} pistas editáveis
+                          <span className="flex items-center gap-1.5 text-[11px] text-[#808080]">
+                            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-white/5 text-[#b3b3b3] text-xs font-bold">S</span>
+                            Solo
                           </span>
-                        )}
-                      </div>
-                    )}
+                          <span className="h-3 w-px bg-white/10" />
+                          {currentTrack.stems.length > MAX_MIXER_STEMS ? (
+                            <span className="text-[11px] text-[#808080]">
+                              {MAX_MIXER_STEMS} de {currentTrack.stems.length} pistas · <a href={CTA_URL} target="_blank" rel="noopener noreferrer" className="text-[hsl(var(--primary))] hover:underline">todas no app completo</a>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-[#808080]">
+                              {currentTrack.stems.length} pistas editáveis
+                            </span>
+                          )}
+                        </div>
+                      )}
 
-                    <StemMixer visibleStemIds={currentTrack ? priorityStemIds(currentTrack) : undefined} />
+                      <StemMixer visibleStemIds={currentTrack ? priorityStemIds(currentTrack) : undefined} />
+                    </div>
 
                     {/* Inline CTA */}
                     <div className="rounded-xl bg-gradient-to-br from-[hsl(var(--primary))]/10 to-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/20 p-5 mt-4">
