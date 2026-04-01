@@ -280,6 +280,14 @@ export default function Library() {
                 )}
               </section>
             ))}
+
+            {/* End-of-list search hint */}
+            <div className="flex items-center justify-center gap-2 py-8 text-[#808080]">
+              <Search className="h-4 w-4 shrink-0" />
+              <p className="text-xs text-center">
+                Para uma melhor experiência, busque por título ou artista na barra acima.
+              </p>
+            </div>
           </div>
         )}
 
