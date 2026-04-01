@@ -350,6 +350,9 @@ export const useCatalogStore = create<CatalogState>((set) => ({
   error: null,
 
   loadCatalog: async () => {
+    // Guard: don't load if already loading or already loaded
+    const state = useCatalogStore.getState()
+    if (state.isLoading || state.tracks.length > 0) return
     set({ isLoading: true, error: null })
     try {
       let catalog: CatalogSong[] = []

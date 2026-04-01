@@ -23,6 +23,9 @@ function openDB(): Promise<IDBDatabase> {
   })
 }
 
+/** Track active blob URLs so we can revoke them to free memory */
+const activeBlobUrls = new Map<string, string>()
+
 export const AudioCache = {
   /** Guarda um File no IndexedDB e retorna a chave */
   async store(key: string, file: File): Promise<void> {
@@ -38,6 +41,10 @@ export const AudioCache = {
 
   /** Recupera um blob URL temporário para uma chave armazenada */
   async getUrl(key: string): Promise<string | null> {
+    // Return existing blob URL if still active (avoids leak)
+    const existing = activeBlobUrls.get(key)
+    if (existing) return existing
+
     const db = await openDB()
     return new Promise((resolve) => {
       const tx = db.transaction(STORE, 'readonly')
@@ -46,10 +53,18 @@ export const AudioCache = {
         if (!req.result) { resolve(null); return }
         const { buffer, type } = req.result
         const blob = new Blob([buffer], { type })
-        resolve(URL.createObjectURL(blob))
+        const url = URL.createObjectURL(blob)
+        activeBlobUrls.set(key, url)
+        resolve(url)
       }
       req.onerror = () => resolve(null)
     })
+  },
+
+  /** Revoke all active blob URLs to free memory */
+  revokeAll(): void {
+    activeBlobUrls.forEach(url => URL.revokeObjectURL(url))
+    activeBlobUrls.clear()
   },
 
   /** Resolve múltiplas chaves de uma vez */

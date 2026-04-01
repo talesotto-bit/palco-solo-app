@@ -4,7 +4,7 @@ import { Slider } from '@/components/ui/slider'
 import { INSTRUMENT_LABELS, INSTRUMENT_ICONS } from '@/types/track'
 import type { InstrumentId } from '@/types/track'
 import { cn } from '@/lib/utils'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 function stemIcon(stemId: string): string {
   if (stemId in INSTRUMENT_ICONS) return INSTRUMENT_ICONS[stemId as InstrumentId]
@@ -27,46 +27,53 @@ function stemDisplayLabel(stemId: string, fallback: string): string {
 }
 
 function VuMeter({ active, volume }: { active: boolean; volume: number }) {
-  const [level, setLevel] = useState(0)
+  const barRef = useRef<HTMLDivElement>(null)
+  const bar2Ref = useRef<HTMLDivElement>(null)
   const frameRef = useRef<number>(0)
+  const prevRef = useRef(0)
+  const prev2Ref = useRef(0)
 
   useEffect(() => {
     if (!active) {
-      setLevel(0)
+      prevRef.current = 0
+      prev2Ref.current = 0
+      if (barRef.current) barRef.current.style.height = '0%'
+      if (bar2Ref.current) bar2Ref.current.style.height = '0%'
       return
     }
-    let prev = 0
+    let cancelled = false
     const animate = () => {
+      if (cancelled) return
       const target = volume * (0.4 + Math.random() * 0.6)
-      prev = prev + (target - prev) * 0.3
-      setLevel(prev)
+      const target2 = volume * (0.3 + Math.random() * 0.5)
+      prevRef.current += (target - prevRef.current) * 0.3
+      prev2Ref.current += (target2 - prev2Ref.current) * 0.25
+      const pct = Math.round(prevRef.current * 100)
+      const pct2 = Math.round(prev2Ref.current * 100)
+      if (barRef.current) {
+        barRef.current.style.height = `${Math.min(100, pct)}%`
+        barRef.current.className = `absolute bottom-0 left-0 right-0 rounded-sm transition-none ${pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-400' : 'bg-[hsl(var(--primary))]'}`
+      }
+      if (bar2Ref.current) {
+        bar2Ref.current.style.height = `${Math.min(100, pct2)}%`
+        bar2Ref.current.className = `absolute bottom-0 left-0 right-0 rounded-sm transition-none ${pct2 > 85 ? 'bg-red-500' : pct2 > 60 ? 'bg-yellow-400' : 'bg-[hsl(var(--primary))]'}`
+      }
       frameRef.current = requestAnimationFrame(animate)
     }
     frameRef.current = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(frameRef.current)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frameRef.current)
+    }
   }, [active, volume])
-
-  const pct = Math.round(level * 100)
 
   return (
     <div className="flex gap-[1px] h-full items-end w-3 shrink-0">
       <div className="flex-1 h-full bg-white/5 rounded-sm overflow-hidden relative">
-        <div
-          className={cn(
-            'absolute bottom-0 left-0 right-0 rounded-sm transition-all duration-75',
-            pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-400' : 'bg-[hsl(var(--primary))]'
-          )}
-          style={{ height: `${Math.min(100, pct)}%` }}
-        />
+        <div ref={barRef} className="absolute bottom-0 left-0 right-0 rounded-sm bg-[hsl(var(--primary))]" style={{ height: '0%' }} />
       </div>
       <div className="flex-1 h-full bg-white/5 rounded-sm overflow-hidden relative">
-        <div
-          className={cn(
-            'absolute bottom-0 left-0 right-0 rounded-sm transition-all duration-100',
-            pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-400' : 'bg-[hsl(var(--primary))]'
-          )}
-          style={{ height: `${Math.min(100, pct * (0.7 + Math.random() * 0.3))}%` }}
-        />
+        <div ref={bar2Ref} className="absolute bottom-0 left-0 right-0 rounded-sm bg-[hsl(var(--primary))]" style={{ height: '0%' }} />
       </div>
     </div>
   )

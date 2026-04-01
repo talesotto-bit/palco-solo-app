@@ -57,7 +57,9 @@ class AudioEngine {
   private _duration = 0
   private listeners: Set<EventCallback> = new Set()
   private rafId: number | null = null
+  private _cancelRaf: (() => void) | null = null
   private isLoaded = false
+  private _loadId = 0      // guard against concurrent loads
 
   constructor() {}
 
@@ -159,6 +161,7 @@ class AudioEngine {
   // ─── Load ──────────────────────────────────────────────────────────────────
 
   async load(stems: Stem[]): Promise<void> {
+    const loadId = ++this._loadId
     this.emit({ type: 'loading' })
     await this.dispose()
 
@@ -174,10 +177,6 @@ class AudioEngine {
       this.initSoundTouch()
 
       if (this.scriptNode) {
-        // Use Tone.js's built-in connect which handles Tone↔Web Audio bridging
-        // Tone.Gain wraps a native GainNode — we can chain via the Tone context
-        const toneCtx = Tone.getContext()
-
         // Method: connect Tone output → native ScriptProcessor → Tone input
         // Tone nodes expose .output (native GainNode) and .input (native GainNode)
         const mixOutput = this.mixBus.output as unknown as AudioNode
@@ -258,6 +257,7 @@ class AudioEngine {
     const rest = stems.slice(1)
 
     const primaryOk = await loadStem(primaryStem)
+    if (loadId !== this._loadId) return // another load started — abort
     if (!primaryOk) {
       this.emit({ type: 'error', message: 'Não foi possível carregar a faixa. Verifique sua conexão.' })
       return
@@ -274,7 +274,7 @@ class AudioEngine {
     // 2. Load remaining stems in background, in batches of 3
     const BATCH_SIZE = 3
     for (let i = 0; i < rest.length; i += BATCH_SIZE) {
-      if (!this.isLoaded) break // stop if track changed
+      if (loadId !== this._loadId) break // another load started — abort
       const batch = rest.slice(i, i + BATCH_SIZE)
       await Promise.all(batch.map(s => loadStem(s)))
 
@@ -440,8 +440,9 @@ class AudioEngine {
 
   private startTimeUpdater(): void {
     this.stopTimeUpdater()
+    let cancelled = false
     const update = () => {
-      if (!this.isLoaded) return
+      if (cancelled || !this.isLoaded) return
       const ct = Tone.getTransport().seconds
       this.emit({ type: 'timeupdate', currentTime: ct, duration: this._duration })
 
@@ -452,10 +453,16 @@ class AudioEngine {
       }
       this.rafId = requestAnimationFrame(update)
     }
+    // Store cancellation function for cleanup
+    this._cancelRaf = () => { cancelled = true }
     this.rafId = requestAnimationFrame(update)
   }
 
   private stopTimeUpdater(): void {
+    if (this._cancelRaf) {
+      this._cancelRaf()
+      this._cancelRaf = null
+    }
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId)
       this.rafId = null

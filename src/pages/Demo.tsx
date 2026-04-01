@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Layers, Music2, Gauge, ChevronDown, ChevronUp, Loader2, Lock, Play, Crown, ArrowRight, Sparkles, CheckCircle2, X } from 'lucide-react'
 import { useCatalogStore } from '@/store/catalogStore'
 import { usePlayerStore } from '@/store/playerStore'
@@ -147,12 +147,14 @@ export default function Demo() {
     return sections
   }, [tracks, genres])
 
-  // Auto-load first track
+  // Auto-load first track (only once when sections first become available)
+  const autoLoadedRef = useRef(false)
   useEffect(() => {
-    if (genreSections.length > 0 && genreSections[0].tracks.length > 0 && !currentTrack) {
+    if (!autoLoadedRef.current && genreSections.length > 0 && genreSections[0].tracks.length > 0 && !currentTrack) {
+      autoLoadedRef.current = true
       loadTrack(genreSections[0].tracks[0])
     }
-  }, [genreSections, currentTrack, loadTrack])
+  }, [genreSections]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectTrack = (track: Track) => {
     loadTrack(track)

@@ -11,6 +11,11 @@ import type { Track } from '@/types/track'
 import type { PlayerState, StemState } from '@/types/player'
 import { clamp } from '@/lib/utils'
 import { AudioCache, isCacheUrl, urlToKey } from '@/lib/audioCache'
+
+/** Revoke previous blob URLs before loading a new track */
+function cleanupPreviousBlobUrls() {
+  AudioCache.revokeAll()
+}
 import { useTrackSettingsStore } from './trackSettingsStore'
 
 /** Resolve cache:// URLs para blob URLs reais antes de carregar no engine */
@@ -113,6 +118,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
       set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0 })
       try {
+        cleanupPreviousBlobUrls()
         const resolvedTrack = await resolveTrackUrls(track)
         await audioEngine.load(resolvedTrack.stems)
 
