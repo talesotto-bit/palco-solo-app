@@ -8,13 +8,11 @@
  * Pitch strategy (offline WSOLA):
  *  When pitch or speed changes, each stem's original AudioBuffer is
  *  processed through SoundTouch WSOLA offline (263x realtime).
- *  The processed buffer replaces the Player's buffer instantly.
+ *  The processed buffer replaces the Player's buffer via pause-swap-resume.
  *  Result: zero-artifact pitch shifting, no real-time processing overhead.
  *
  * Audio chain (clean, no ScriptProcessor):
  *  Tone.Player → Tone.Gain (stem) → Tone.Panner → MixBus → MasterGain → Destination
- *
- * Speed: Player.playbackRate (pitch compensation handled by WSOLA reprocessing)
  */
 
 import * as Tone from 'tone'
@@ -27,7 +25,7 @@ export interface LoadedStem {
   player: Tone.Player
   gain: Tone.Gain
   panner: Tone.Panner
-  originalBuffer: Tone.ToneAudioBuffer  // pristine copy for reprocessing
+  originalBuffer: AudioBuffer  // raw AudioBuffer clone — never modified
 }
 
 export type AudioEngineEvent =
@@ -47,7 +45,7 @@ function processBufferWSola(
   semitones: number,
 ): AudioBuffer {
   if (Math.abs(semitones) < 0.01) {
-    return audioBuffer // no processing needed
+    return audioBuffer
   }
 
   const st = new SoundTouch()
@@ -101,10 +99,9 @@ function processBufferWSola(
     }
   }
 
-  // Use original frame count (pitch shift shouldn't change duration)
+  // Match original duration (pitch shift preserves length)
   const outFrames = Math.min(totalOutput, totalFrames)
 
-  // Create output AudioBuffer (use OfflineAudioContext for cross-browser compat)
   const outBuffer = new AudioBuffer({
     numberOfChannels: numChannels,
     length: outFrames,
@@ -125,6 +122,19 @@ function processBufferWSola(
   }
 
   return outBuffer
+}
+
+/** Clone a raw AudioBuffer (deep copy of channel data) */
+function cloneAudioBuffer(buf: AudioBuffer): AudioBuffer {
+  const clone = new AudioBuffer({
+    numberOfChannels: buf.numberOfChannels,
+    length: buf.length,
+    sampleRate: buf.sampleRate,
+  })
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    clone.getChannelData(ch).set(buf.getChannelData(ch))
+  }
+  return clone
 }
 
 // ─── AudioEngine ────────────────────────────────────────────────────────────
@@ -158,54 +168,81 @@ class AudioEngine {
     this.listeners.forEach(cb => cb(event))
   }
 
-  // ─── Offline pitch processing ─────────────────────────────────────────────
+  // ─── Buffer swap (pause → replace → resume) ──────────────────────────────
 
   /**
-   * Reprocess all loaded stem buffers through SoundTouch WSOLA.
-   * Called when pitch or speed changes.
+   * Safely replace a Player's AudioBuffer while preserving Transport sync.
+   * Briefly pauses transport, swaps all buffers, then resumes from same position.
    */
+  private applyBuffersToPlayers(bufferMap: Map<string, AudioBuffer>): void {
+    const transport = Tone.getTransport()
+    const wasPlaying = transport.state === 'started'
+    const pos = transport.seconds
+
+    // Pause to safely swap buffers
+    if (wasPlaying) transport.pause()
+
+    for (const [id, buf] of bufferMap) {
+      const stem = this.stems.get(id)
+      if (!stem) continue
+
+      // Unsync → stop → swap → re-sync
+      try {
+        stem.player.unsync()
+        stem.player.stop()
+      } catch { /* ok if already stopped */ }
+
+      // Replace buffer contents (ToneAudioBuffer.set replaces internal AudioBuffer ref)
+      stem.player.buffer.set(buf)
+
+      // Re-sync to Transport and restore playback rate
+      stem.player.sync().start(0)
+      stem.player.playbackRate = this._speed
+    }
+
+    // Resume from same position
+    transport.seconds = pos
+    if (wasPlaying) transport.start()
+  }
+
+  // ─── Offline pitch processing ─────────────────────────────────────────────
+
   private async reprocessPitch(): Promise<void> {
     const jobId = ++this._pitchJobId
 
-    // Calculate total pitch shift needed:
-    // Player.playbackRate changes speed AND pitch.
-    // We pre-compensate pitch so the net result is only the user's desired shift.
-    const speedPitchCompensation = -Math.log2(this._speed) * 12
-    const totalSemitones = this._pitch + speedPitchCompensation
+    // Total pitch: user pitch + speed compensation
+    // Player.playbackRate of S shifts pitch by +log2(S)*12. Compensate with -log2(S)*12.
+    const speedComp = -Math.log2(this._speed) * 12
+    const totalSemitones = this._pitch + speedComp
 
-    // If effectively neutral, restore original buffers
+    // Neutral: restore original buffers
     if (Math.abs(totalSemitones) < 0.01) {
-      this.stems.forEach(({ player, originalBuffer }) => {
-        if (player.buffer !== originalBuffer) {
-          player.buffer = originalBuffer
-        }
-      })
+      const originals = new Map<string, AudioBuffer>()
+      this.stems.forEach((stem, id) => originals.set(id, stem.originalBuffer))
+      this.applyBuffersToPlayers(originals)
       return
     }
 
     this.emit({ type: 'pitchProcessing', active: true })
 
     try {
-      // Process each stem's original buffer
-      // Do it stem by stem to avoid blocking too long
-      for (const [, stem] of this.stems) {
-        if (jobId !== this._pitchJobId) return // newer job started, abort
+      const processed = new Map<string, AudioBuffer>()
 
-        const raw = stem.originalBuffer.get()
-        if (!raw) continue
+      for (const [id, stem] of this.stems) {
+        if (jobId !== this._pitchJobId) return // newer change, abort
 
-        // Yield to main thread between stems to keep UI responsive
+        // Yield to keep UI responsive between stems
         await new Promise(r => setTimeout(r, 0))
         if (jobId !== this._pitchJobId) return
 
-        const processed = processBufferWSola(raw, totalSemitones)
-
-        if (jobId !== this._pitchJobId) return
-
-        // Swap the player's buffer with the processed version
-        const toneBuffer = new Tone.ToneAudioBuffer(processed)
-        player_setBuffer(stem.player, toneBuffer)
+        const result = processBufferWSola(stem.originalBuffer, totalSemitones)
+        processed.set(id, result)
       }
+
+      if (jobId !== this._pitchJobId) return
+
+      // Apply all at once
+      this.applyBuffersToPlayers(processed)
     } finally {
       if (jobId === this._pitchJobId) {
         this.emit({ type: 'pitchProcessing', active: false })
@@ -220,18 +257,16 @@ class AudioEngine {
     this.emit({ type: 'loading' })
     await this.dispose()
 
-    // Clean audio chain — no ScriptProcessor needed
+    // Clean audio chain
     this.mixBus = new Tone.Gain(1)
     this.masterGain = new Tone.Gain(this._volume)
     this.mixBus.connect(this.masterGain)
     this.masterGain.toDestination()
 
-    // Tone.Transport settings
     const transport = Tone.getTransport()
     transport.stop()
     transport.position = 0
 
-    // Helper: load a single stem and connect to mix bus
     const loadStem = async (stem: Stem): Promise<boolean> => {
       try {
         const player = new Tone.Player({ url: stem.audioUrl, loop: false })
@@ -246,7 +281,6 @@ class AudioEngine {
           ),
         ])
 
-        // Verify buffer is valid
         if (!player.buffer || !player.buffer.duration || player.buffer.duration < 0.5) {
           console.warn(`[AudioEngine] Stem ${stem.id} has invalid buffer, skipping`)
           player.dispose()
@@ -256,17 +290,16 @@ class AudioEngine {
         const gain = new Tone.Gain(1)
         const panner = new Tone.Panner(0)
 
-        // Audio routing: player → gain → panner → mixBus
         player.connect(gain)
         gain.connect(panner)
         panner.connect(this.mixBus!)
 
-        // Sync player to Transport clock
         player.sync().start(0)
         player.playbackRate = this._speed
 
-        // Keep a pristine copy of the original buffer for pitch reprocessing
-        const originalBuffer = player.buffer
+        // Deep-clone the original AudioBuffer so it's never modified
+        const rawBuf = player.buffer.get()
+        const originalBuffer = rawBuf ? cloneAudioBuffer(rawBuf) : new AudioBuffer({ numberOfChannels: 2, length: 1, sampleRate: 44100 })
 
         this.stems.set(stem.id, { id: stem.id, player, gain, panner, originalBuffer })
         return true
@@ -276,7 +309,7 @@ class AudioEngine {
       }
     }
 
-    // 1. Load primary stem first so playback can start quickly
+    // Load primary stem first
     const primaryStem = stems[0]
     const rest = stems.slice(1)
 
@@ -287,28 +320,25 @@ class AudioEngine {
       return
     }
 
-    // Get duration from primary stem
     const primaryLoaded = this.stems.get(primaryStem.id)
     this._duration = primaryLoaded?.player.buffer?.duration ?? 0
 
-    // Mark as loaded — playback is ready with primary stem
     this.isLoaded = true
     this.emit({ type: 'loaded' })
 
-    // Apply pitch if non-zero (process primary stem immediately)
+    // Apply pitch if needed
     const needsPitch = Math.abs(this._pitch + (-Math.log2(this._speed) * 12)) > 0.01
     if (needsPitch) {
       this.reprocessPitch()
     }
 
-    // 2. Load remaining stems in background, in batches of 3
+    // Load remaining stems in background
     const BATCH_SIZE = 3
     for (let i = 0; i < rest.length; i += BATCH_SIZE) {
       if (loadId !== this._loadId) break
       const batch = rest.slice(i, i + BATCH_SIZE)
       await Promise.all(batch.map(s => loadStem(s)))
 
-      // Update duration if a longer stem was found
       let maxDuration = this._duration
       this.stems.forEach(({ player }) => {
         const dur = player.buffer?.duration ?? 0
@@ -317,7 +347,7 @@ class AudioEngine {
       this._duration = maxDuration
     }
 
-    // After all stems loaded, apply pitch to any new stems
+    // After all stems loaded, reprocess if pitch is active
     if (needsPitch && loadId === this._loadId) {
       this.reprocessPitch()
     }
@@ -330,7 +360,7 @@ class AudioEngine {
     try {
       await Tone.start()
     } catch {
-      // iOS may block AudioContext.resume() without user gesture — ignore
+      // iOS may block without user gesture
     }
     Tone.getTransport().start()
     this.startTimeUpdater()
@@ -366,7 +396,6 @@ class AudioEngine {
   }
 
   // ─── Pitch (semitones, -12..+12) ──────────────────────────────────────────
-  // Offline WSOLA processing — studio quality, zero artifacts during playback
 
   setPitch(semitones: number): void {
     this._pitch = semitones
@@ -384,12 +413,11 @@ class AudioEngine {
   setSpeed(speed: number): void {
     this._speed = speed
 
-    // Update playbackRate on all players
     this.stems.forEach(({ player }) => {
       player.playbackRate = speed
     })
 
-    // Reprocess pitch to compensate for speed-induced pitch change
+    // Reprocess pitch to compensate speed-induced pitch change
     if (this.isLoaded) {
       this.reprocessPitch()
     }
@@ -489,7 +517,7 @@ class AudioEngine {
 
   async dispose(): Promise<void> {
     this.stopTimeUpdater()
-    this._pitchJobId++ // cancel any in-flight pitch processing
+    this._pitchJobId++
     const transport = Tone.getTransport()
     transport.stop()
     transport.cancel()
@@ -519,13 +547,6 @@ class AudioEngine {
     this.isLoaded = false
     this._duration = 0
   }
-}
-
-/** Helper: set buffer on a synced player without breaking Transport sync */
-function player_setBuffer(player: Tone.Player, buffer: Tone.ToneAudioBuffer): void {
-  // Tone.Player doesn't expose a direct buffer setter that preserves sync.
-  // We reassign the internal buffer and let Tone handle the rest.
-  player.buffer = buffer
 }
 
 // Singleton
