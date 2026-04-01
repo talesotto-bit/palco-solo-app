@@ -115,7 +115,7 @@ export default function Demo() {
     // Priority artists are picked first, then fill remaining slots
     function pickBest(pool: Track[]): Track[] {
       const eligible = [...pool]
-        .filter(t => t.stems.length >= 5 && t.stems.length <= 10)
+        .filter(t => t.stems.length >= 2)
       const best: Track[] = []
       const seenArtists = new Set<string>()
       const seenTitles = new Set<string>()
