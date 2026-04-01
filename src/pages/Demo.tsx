@@ -12,7 +12,7 @@ import { semitonesToLabel, speedToLabel } from '@/lib/utils'
 import type { Track } from '@/types/track'
 
 const TRACKS_PER_GENRE = 5
-const CTA_URL = 'https://payfast.greenn.com.br/153173/offer/xIr1QY'
+const CTA_URL = 'https://payfast.greenn.com.br/152815/offer/gxUz6f'
 
 // ─── Sub-genre classification for "rock-pop-mpb" ───────────────────────
 const MPB_ARTISTS = new Set([
@@ -85,8 +85,30 @@ export default function Demo() {
 
     // Priority artists that MUST appear if available in the genre
     const PRIORITY_ARTISTS = [
-      'roberto carlos', 'barões da pisadinha', 'baroes da pisadinha',
-      'bruno e marrone',
+      // Sertanejo
+      'gusttavo lima', 'bruno e marrone', 'henrique e juliano',
+      'marilia mendonca', 'jorge e mateus', 'ze felipe',
+      'ze neto e cristiano', 'ana castela', 'luan santana',
+      // Piseiro
+      'baroes da pisadinha', 'joao gomes', 'nattan',
+      'vitor fernandes', 'tarcisio do acordeon',
+      // Forró
+      'wesley safadao', 'xand aviao', 'jonas esticado',
+      'cavaleiros do forro', 'calcinha preta',
+      // Arrocha
+      'nadson', 'pablo', 'devinho novaes', 'soro silva',
+      // Axé
+      'ivete sangalo', 'leo santana', 'harmonia do samba',
+      'parangole', 'bell marques',
+      // Pagode
+      'ferrugem', 'thiaguinho', 'sorriso maroto',
+      'turma do pagode', 'pericles', 'raca negra',
+      // Gospel
+      'aline barros', 'fernandinho', 'anderson freire',
+      'gabriela rocha',
+      // Rock / MPB
+      'legiao urbana', 'tim maia', 'roberto carlos',
+      'skank', 'barão vermelho',
     ]
 
     // Helper: pick best tracks with unique artists/titles, 5–10 stems
@@ -315,7 +337,7 @@ export default function Demo() {
 
                   {section.totalCount > TRACKS_PER_GENRE && (
                     <a
-                      href={CTA_URL}
+                      href="https://palcosolo.online/#pricing"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 mt-1.5 px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/10 transition-colors group"
@@ -435,7 +457,7 @@ export default function Demo() {
                         rel="noopener noreferrer"
                         className="inline-flex items-center justify-center gap-2 h-10 rounded-full px-6 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity"
                       >
-                        Quero acesso ao plano profissional — R$197
+                        Quero o Avançado — R$197
                         <ArrowRight className="h-4 w-4" />
                       </a>
                     </div>
@@ -476,13 +498,13 @@ export default function Demo() {
                   </li>
                 </ul>
                 <a
-                  href={CTA_URL}
+                  href="https://palcosolo.online/#pricing"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 h-12 rounded-full px-8 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:scale-[1.02] transition-transform"
                 >
                   <Crown className="h-4 w-4" />
-                  Quero acesso ao plano profissional — R$197
+                  Ver planos e preços
                   <ArrowRight className="h-4 w-4" />
                 </a>
               </div>
@@ -511,12 +533,12 @@ export default function Demo() {
               </div>
             </div>
             <a
-              href={CTA_URL}
+              href="https://palcosolo.online/#pricing"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full h-10 rounded-lg text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity"
             >
-              Quero acesso ao plano profissional — R$197
+              Ver planos e preços
               <ArrowRight className="h-4 w-4" />
             </a>
           </div>
@@ -530,12 +552,12 @@ export default function Demo() {
             <span className="text-white font-semibold">Demonstração gratuita</span> — +{DISPLAY_TOTAL} faixas no catálogo completo
           </p>
           <a
-            href={CTA_URL}
+            href="https://palcosolo.online/#pricing"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 h-10 rounded-full px-6 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity shrink-0"
           >
-            Quero acesso ao plano profissional — R$197
+            Ver planos e preços
             <ArrowRight className="h-4 w-4" />
           </a>
         </div>

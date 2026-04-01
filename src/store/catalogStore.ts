@@ -42,12 +42,80 @@ function genreSlugToLabel(slug: string): string {
     'rock-pop-inter': 'Rock / Pop Internacional',
     'brega': 'Brega',
     'axe-carnaval': 'Axé / Carnaval',
+    'axe': 'Axé',
+    'piseiro': 'Piseiro',
+    'arrocha': 'Arrocha',
     'aberturas': 'Aberturas',
     'playbacks': 'Playbacks',
     'shows-multipistas': 'Shows Multipistas',
     'shows-playbacks': 'Shows Playbacks',
   }
   return map[slug] || toTitleCase(slug.replace(/-/g, ' '))
+}
+
+// ─── Sub-genre classification for "atualizacoes" ─────────────────────
+
+const SERTANEJO_ARTISTS = new Set([
+  'gusttavo lima','bruno e marrone','henrique e juliano','marilia mendonca',
+  'jorge e mateus','ze felipe','ze neto e cristiano','maiara e maraisa',
+  'luan santana','leonardo','simone e simaria','naiara azevedo','ana castela',
+  'murilo huff','felipe araujo','matheus e kauan','hugo e guilherme',
+  'israel e rodolffo','gustavo mioto','diego e victor hugo','zeze di camargo',
+  'chitaozinho e xororo','eduardo costa','michel telo','lucas lucco',
+  'fernando e sorocaba','marcos e belutti','joao bosco e vinicius',
+  'cristiano araujo','george henrique e rodrigo','diego e arnaldo',
+])
+
+const PISEIRO_ARTISTS = new Set([
+  'baroes da pisadinha','joao gomes','nattan','vitor fernandes',
+  'tarcisio do acordeon','biu do piseiro','alanzim coreano','japazin',
+  'ze vaqueiro','mari fernandez','raquel dos teclados',
+])
+
+const FORRO_ARTISTS = new Set([
+  'wesley safadao','xand aviao','jonas esticado','saia rodada','cavaleiros do forro',
+  'solange almeida','iguinho e lulinha','eric land','forro real',
+  'avioes do forro','limao com mel','mastruz com leite','calcinha preta',
+  'forro do muido','forro sacode','la furia','os baroes da pisadinha',
+  'flavio jose','rai saia rodada','natanzinho lima','rogeirinho',
+  'flavinho','felipe amorim',
+])
+
+const ARROCHA_ARTISTS = new Set([
+  'nadson','nadson ferinha','pablo','devinho novaes','soro silva',
+  'silvanno salles','tayrone','pablo do arrocha',
+])
+
+const AXE_ARTISTS = new Set([
+  'ivete sangalo','harmonia do samba','leo santana','chiclete com banana',
+  'banda eva','bell marques','claudia leitte','parangole','olodum',
+  'asa de aguia','psirico','daniela mercury',
+])
+
+const PAGODE_ARTISTS = new Set([
+  'ferrugem','thiaguinho','sorriso maroto','turma do pagode','pericles',
+  'grupo revelacao','raca negra','dilsinho','menos e mais','exaltasamba',
+  'grupo chocolate',
+])
+
+function classifyAtualizacoes(name: string, artist: string): string {
+  const lower = name.toLowerCase()
+  const artistLower = artist.toLowerCase().trim()
+
+  // Check explicit genre keywords in name
+  if (lower.includes('piseiro') || lower.includes('pisadinha')) return 'piseiro'
+  if (lower.includes('arrocha')) return 'arrocha'
+  if (lower.includes('axe') || lower.includes('swingueira')) return 'axe'
+
+  // Check artist sets
+  for (const a of PISEIRO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'piseiro'
+  for (const a of ARROCHA_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'arrocha'
+  for (const a of AXE_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'axe'
+  for (const a of PAGODE_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'pagode'
+  for (const a of SERTANEJO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'sertanejo'
+  for (const a of FORRO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'forro'
+
+  return 'atualizacoes'
 }
 
 // ─── Sub-genre classification for rock-pop-mpb ────────────────────────
@@ -205,10 +273,12 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
     return s
   })
 
-  // Reclassify rock-pop-mpb into sub-genres
+  // Reclassify broad genres into sub-genres
   let effectiveGenreSlug = song.genreSlug
   if (song.genreSlug === 'rock-pop-mpb') {
     effectiveGenreSlug = classifyRockPopMpb(artist)
+  } else if (song.genreSlug === 'atualizacoes') {
+    effectiveGenreSlug = classifyAtualizacoes(song.name, artist)
   }
 
   return {
