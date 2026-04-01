@@ -336,12 +336,13 @@ class AudioEngine {
       this.reprocessPitch()
     }
 
-    // Load remaining stems in background (small batches to avoid mobile OOM)
-    const BATCH_SIZE = 2
-    for (let i = 0; i < rest.length; i += BATCH_SIZE) {
+    // Load remaining stems progressively (1 at a time to avoid mobile memory pressure)
+    for (let i = 0; i < rest.length; i++) {
       if (loadId !== this._loadId) break
-      const batch = rest.slice(i, i + BATCH_SIZE)
-      await Promise.all(batch.map(s => loadStem(s)))
+      // Yield between stems so the browser can GC and paint
+      await new Promise(r => setTimeout(r, 50))
+      if (loadId !== this._loadId) break
+      await loadStem(rest[i])
 
       let maxDuration = this._duration
       this.stems.forEach(({ player }) => {

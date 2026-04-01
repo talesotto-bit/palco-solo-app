@@ -13,25 +13,27 @@ import type { Track } from '@/types/track'
 
 const TRACKS_PER_GENRE = 5
 const CTA_URL = 'https://payfast.greenn.com.br/152815/offer/gxUz6f'
-/** Max stems to load in demo mode — prevents mobile OOM with 20+ stem tracks */
-const MAX_DEMO_STEMS = 8
 
-/** Priority order for stem selection when capping */
+/** Max editable stems shown in demo mixer — rest play in background */
+const MAX_MIXER_STEMS = 8
+
+/** Priority order: main instruments first */
 const STEM_PRIORITY = [
-  'main', 'drums', 'bass', 'voice', 'guitar', 'acoustic', 'keys',
-  'percussion', 'brass', 'strings', 'synth', 'choir', 'click',
+  'drums', 'bass', 'voice', 'guitar', 'acoustic', 'keys',
+  'percussion', 'brass', 'strings', 'synth', 'choir', 'click', 'main',
 ]
 
-/** Limit track stems for demo to avoid mobile memory crashes */
-function capStemsForDemo(track: Track): Track {
-  if (track.stems.length <= MAX_DEMO_STEMS) return track
-  const stemsCopy = [...track.stems]
-  stemsCopy.sort((a, b) => {
+/** Return the IDs of the top-priority stems to show in the mixer */
+function priorityStemIds(track: Track): Set<string> {
+  if (track.stems.length <= MAX_MIXER_STEMS) {
+    return new Set(track.stems.map(s => s.id))
+  }
+  const sorted = [...track.stems].sort((a, b) => {
     const aIdx = STEM_PRIORITY.findIndex(p => a.id.toLowerCase().includes(p) || a.label.toLowerCase().includes(p))
     const bIdx = STEM_PRIORITY.findIndex(p => b.id.toLowerCase().includes(p) || b.label.toLowerCase().includes(p))
     return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx)
   })
-  return { ...track, stems: stemsCopy.slice(0, MAX_DEMO_STEMS) }
+  return new Set(sorted.slice(0, MAX_MIXER_STEMS).map(s => s.id))
 }
 
 export default function Demo() {
@@ -182,13 +184,13 @@ export default function Demo() {
   useEffect(() => {
     if (!autoLoadedRef.current && genreSections.length > 0 && genreSections[0].tracks.length > 0 && !currentTrack) {
       autoLoadedRef.current = true
-      loadTrack(capStemsForDemo(genreSections[0].tracks[0])).catch(() => {})
+      loadTrack(genreSections[0].tracks[0]).catch(() => {})
     }
   }, [genreSections]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectTrack = async (track: Track) => {
     try {
-      await loadTrack(capStemsForDemo(track))
+      await loadTrack(track)
     } catch {
       // Silently handle audio load failures on mobile
     }
@@ -422,7 +424,7 @@ export default function Demo() {
                       </div>
                     )}
 
-                    <StemMixer />
+                    <StemMixer visibleStemIds={currentTrack ? priorityStemIds(currentTrack) : undefined} />
 
                     {/* Inline CTA */}
                     <div className="rounded-xl bg-gradient-to-br from-[hsl(var(--primary))]/10 to-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/20 p-5 mt-4">

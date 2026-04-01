@@ -79,7 +79,12 @@ function VuMeter({ active, volume }: { active: boolean; volume: number }) {
   )
 }
 
-export function StemMixer() {
+interface StemMixerProps {
+  /** When set, only these stem IDs are shown in the mixer. Rest still play in background. */
+  visibleStemIds?: Set<string>
+}
+
+export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
   // Individual selectors — prevents re-render on every currentTime update (60fps)
   const track = usePlayerStore(s => s.track)
   const stemStates = usePlayerStore(s => s.stemStates)
@@ -91,7 +96,10 @@ export function StemMixer() {
 
   if (!track) return null
 
-  const stems = track.stems
+  // Show only priority stems if visibleStemIds is provided, rest play in background
+  const stems = visibleStemIds
+    ? track.stems.filter(s => visibleStemIds.has(s.id))
+    : track.stems
   const hasSolo = Object.values(stemStates).some(s => s.solo)
   const anyModified = Object.values(stemStates).some(s => s.muted || s.solo || s.volume !== 0.85)
   const isPlaying = playbackState === 'playing'
@@ -118,7 +126,7 @@ export function StemMixer() {
           <Layers className="h-5 w-5 text-[hsl(var(--primary))]" />
           <div>
             <p className="text-sm font-bold text-white">
-              Mixer — {stems.length} pistas
+              Mixer — {stems.length} pistas{visibleStemIds && track.stems.length > stems.length ? ` de ${track.stems.length}` : ''}
             </p>
             {hasSolo && (
               <p className="text-xs text-[hsl(var(--primary))]">Solo ativo</p>
