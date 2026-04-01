@@ -1,4 +1,4 @@
-import { Minus, Plus, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react'
+import { Minus, Plus, RotateCcw, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,7 @@ export function PitchControl({ compact = false }: PitchControlProps) {
   const pitch = usePlayerStore(s => s.pitch)
   const setPitch = usePlayerStore(s => s.setPitch)
   const resetPitch = usePlayerStore(s => s.resetPitch)
+  const isPitchProcessing = usePlayerStore(s => s.isPitchProcessing)
   const [fineMode, setFineMode] = useState(false)
 
   const semitones = Math.trunc(pitch)
@@ -85,7 +86,13 @@ export function PitchControl({ compact = false }: PitchControlProps) {
             {formatPitch(pitch)}
           </span>
           <span className="text-xs text-[#b3b3b3] ml-1">st</span>
-          {cents !== 0 && (
+          {isPitchProcessing && (
+            <p className="flex items-center justify-center gap-1 text-[10px] text-[hsl(var(--primary))] mt-0.5">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              Processando...
+            </p>
+          )}
+          {!isPitchProcessing && cents !== 0 && (
             <p className="text-[10px] text-[#808080] mt-0.5">
               {cents > 0 ? '+' : ''}{cents} cents
             </p>

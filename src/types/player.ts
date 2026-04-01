@@ -22,6 +22,7 @@ export interface PlayerState {
   precountEnabled: boolean
   precountBeats: number
   error: string | null
+  isPitchProcessing: boolean
 }
 
 export interface PlayerActions {

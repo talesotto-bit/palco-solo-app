@@ -88,6 +88,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         get()._setError(event.message)
         get()._setPlaybackState('error')
         break
+      case 'pitchProcessing':
+        set({ isPitchProcessing: event.active })
+        break
     }
   })
 
@@ -105,6 +108,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     precountEnabled: false,
     precountBeats: 4,
     error: null,
+    isPitchProcessing: false,
 
     // ─── Track loading ──────────────────────────────────────────────────────
     loadTrack: async (track: Track) => {
