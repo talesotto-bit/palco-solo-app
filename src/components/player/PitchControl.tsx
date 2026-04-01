@@ -9,7 +9,9 @@ interface PitchControlProps {
 }
 
 export function PitchControl({ compact = false }: PitchControlProps) {
-  const { pitch, setPitch, resetPitch } = usePlayerStore()
+  const pitch = usePlayerStore(s => s.pitch)
+  const setPitch = usePlayerStore(s => s.setPitch)
+  const resetPitch = usePlayerStore(s => s.resetPitch)
   const [fineMode, setFineMode] = useState(false)
 
   const semitones = Math.trunc(pitch)

@@ -17,7 +17,9 @@ const PLAN_LABELS: Record<string, string> = {
 
 export default function Settings() {
   const user = useAuthStore(s => s.user)
-  const { precountEnabled, precountBeats, togglePrecount } = usePlayerStore()
+  const precountEnabled = usePlayerStore(s => s.precountEnabled)
+  const precountBeats = usePlayerStore(s => s.precountBeats)
+  const togglePrecount = usePlayerStore(s => s.togglePrecount)
 
   return (
     <ScrollArea className="h-full">

@@ -11,11 +11,16 @@ interface PlayerControlsProps {
 }
 
 export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
-  const {
-    playbackState, volume,
-    play, pause, stop, seek, skipBackward, skipForward,
-    setVolume,
-  } = usePlayerStore()
+  // Individual selectors — prevents re-render on every currentTime update (60fps)
+  const playbackState = usePlayerStore(s => s.playbackState)
+  const volume = usePlayerStore(s => s.volume)
+  const play = usePlayerStore(s => s.play)
+  const pause = usePlayerStore(s => s.pause)
+  const stop = usePlayerStore(s => s.stop)
+  const seek = usePlayerStore(s => s.seek)
+  const skipBackward = usePlayerStore(s => s.skipBackward)
+  const skipForward = usePlayerStore(s => s.skipForward)
+  const setVolume = usePlayerStore(s => s.setVolume)
 
   const isPlaying = playbackState === 'playing'
   const isLoading = playbackState === 'loading'

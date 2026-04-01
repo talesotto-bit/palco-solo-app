@@ -19,7 +19,13 @@ import { cn } from '@/lib/utils'
 
 export default function PlayerPage() {
   const navigate = useNavigate()
-  const { track, pitch, speed, playbackState, stemStates, togglePerformanceMode, error } = usePlayerStore()
+  const track = usePlayerStore(s => s.track)
+  const pitch = usePlayerStore(s => s.pitch)
+  const speed = usePlayerStore(s => s.speed)
+  const playbackState = usePlayerStore(s => s.playbackState)
+  const stemStates = usePlayerStore(s => s.stemStates)
+  const togglePerformanceMode = usePlayerStore(s => s.togglePerformanceMode)
+  const error = usePlayerStore(s => s.error)
   const toggleFav = useFavoritesStore(s => s.toggle)
   const isFav = useFavoritesStore(s => s.isFavorite)
   const saveSettings = useTrackSettingsStore(s => s.save)

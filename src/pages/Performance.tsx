@@ -98,8 +98,16 @@ export default function Performance() {
   const currentTime = usePlayerStore(s => s.currentTime)
   const duration = usePlayerStore(s => s.duration)
   const stemStates = usePlayerStore(s => s.stemStates)
-  const { play, pause, seek, skipBackward, skipForward, loadTrack,
-    setStemMuted, setStemSolo, setStemVolume, resetMix } = usePlayerStore()
+  const play = usePlayerStore(s => s.play)
+  const pause = usePlayerStore(s => s.pause)
+  const seek = usePlayerStore(s => s.seek)
+  const skipBackward = usePlayerStore(s => s.skipBackward)
+  const skipForward = usePlayerStore(s => s.skipForward)
+  const loadTrack = usePlayerStore(s => s.loadTrack)
+  const setStemMuted = usePlayerStore(s => s.setStemMuted)
+  const setStemSolo = usePlayerStore(s => s.setStemSolo)
+  const setStemVolume = usePlayerStore(s => s.setStemVolume)
+  const resetMix = usePlayerStore(s => s.resetMix)
 
   // Catalog
   const catalogTracks = useCatalogStore(s => s.tracks)

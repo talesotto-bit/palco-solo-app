@@ -4,7 +4,11 @@ import { formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 export function ProgressBar() {
-  const { currentTime, duration, seek, playbackState } = usePlayerStore()
+  // Individual selectors — only ProgressBar needs currentTime updates
+  const currentTime = usePlayerStore(s => s.currentTime)
+  const duration = usePlayerStore(s => s.duration)
+  const seek = usePlayerStore(s => s.seek)
+  const playbackState = usePlayerStore(s => s.playbackState)
   const barRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [hoverX, setHoverX] = useState<number | null>(null)

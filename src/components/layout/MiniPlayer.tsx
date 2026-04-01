@@ -6,11 +6,17 @@ import { formatTime } from '@/lib/utils'
 
 export function MiniPlayer() {
   const navigate = useNavigate()
-  const {
-    track, playbackState, currentTime, duration,
-    volume,
-    play, pause, skipBackward, skipForward, setVolume, seek,
-  } = usePlayerStore()
+  const track = usePlayerStore(s => s.track)
+  const playbackState = usePlayerStore(s => s.playbackState)
+  const currentTime = usePlayerStore(s => s.currentTime)
+  const duration = usePlayerStore(s => s.duration)
+  const volume = usePlayerStore(s => s.volume)
+  const play = usePlayerStore(s => s.play)
+  const pause = usePlayerStore(s => s.pause)
+  const skipBackward = usePlayerStore(s => s.skipBackward)
+  const skipForward = usePlayerStore(s => s.skipForward)
+  const setVolume = usePlayerStore(s => s.setVolume)
+  const seek = usePlayerStore(s => s.seek)
 
   if (!track) return null
 

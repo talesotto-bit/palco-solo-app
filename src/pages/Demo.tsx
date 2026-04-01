@@ -15,8 +15,18 @@ const TRACKS_PER_GENRE = 5
 const CTA_URL = 'https://payfast.greenn.com.br/152815/offer/gxUz6f'
 
 export default function Demo() {
-  const { tracks, genres, isLoading, loadCatalog } = useCatalogStore()
-  const { track: currentTrack, playbackState, pitch, speed, loadTrack, error } = usePlayerStore()
+  // Individual selectors — prevents re-render on every currentTime update (60fps)
+  const tracks = useCatalogStore(s => s.tracks)
+  const genres = useCatalogStore(s => s.genres)
+  const isLoading = useCatalogStore(s => s.isLoading)
+  const loadCatalog = useCatalogStore(s => s.loadCatalog)
+
+  const currentTrack = usePlayerStore(s => s.track)
+  const playbackState = usePlayerStore(s => s.playbackState)
+  const pitch = usePlayerStore(s => s.pitch)
+  const speed = usePlayerStore(s => s.speed)
+  const loadTrack = usePlayerStore(s => s.loadTrack)
+  const error = usePlayerStore(s => s.error)
   const [showTuning, setShowTuning] = useState(true)
   const [showCta, setShowCta] = useState(false)
   const [dismissedCta, setDismissedCta] = useState(false)

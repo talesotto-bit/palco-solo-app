@@ -52,11 +52,11 @@ function VuMeter({ active, volume }: { active: boolean; volume: number }) {
       const pct2 = Math.round(prev2Ref.current * 100)
       if (barRef.current) {
         barRef.current.style.height = `${Math.min(100, pct)}%`
-        barRef.current.className = `absolute bottom-0 left-0 right-0 rounded-sm transition-none ${pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-400' : 'bg-[hsl(var(--primary))]'}`
+        barRef.current.style.backgroundColor = pct > 85 ? '#ef4444' : pct > 60 ? '#facc15' : 'hsl(var(--primary))'
       }
       if (bar2Ref.current) {
         bar2Ref.current.style.height = `${Math.min(100, pct2)}%`
-        bar2Ref.current.className = `absolute bottom-0 left-0 right-0 rounded-sm transition-none ${pct2 > 85 ? 'bg-red-500' : pct2 > 60 ? 'bg-yellow-400' : 'bg-[hsl(var(--primary))]'}`
+        bar2Ref.current.style.backgroundColor = pct2 > 85 ? '#ef4444' : pct2 > 60 ? '#facc15' : 'hsl(var(--primary))'
       }
       frameRef.current = requestAnimationFrame(animate)
     }
@@ -80,7 +80,14 @@ function VuMeter({ active, volume }: { active: boolean; volume: number }) {
 }
 
 export function StemMixer() {
-  const { track, stemStates, playbackState, setStemMuted, setStemSolo, setStemVolume, resetMix } = usePlayerStore()
+  // Individual selectors — prevents re-render on every currentTime update (60fps)
+  const track = usePlayerStore(s => s.track)
+  const stemStates = usePlayerStore(s => s.stemStates)
+  const playbackState = usePlayerStore(s => s.playbackState)
+  const setStemMuted = usePlayerStore(s => s.setStemMuted)
+  const setStemSolo = usePlayerStore(s => s.setStemSolo)
+  const setStemVolume = usePlayerStore(s => s.setStemVolume)
+  const resetMix = usePlayerStore(s => s.resetMix)
 
   if (!track) return null
 

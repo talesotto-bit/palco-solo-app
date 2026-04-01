@@ -21,7 +21,9 @@ interface SpeedControlProps {
 }
 
 export function SpeedControl({ compact = false }: SpeedControlProps) {
-  const { speed, setSpeed, resetSpeed } = usePlayerStore()
+  const speed = usePlayerStore(s => s.speed)
+  const setSpeed = usePlayerStore(s => s.setSpeed)
+  const resetSpeed = usePlayerStore(s => s.resetSpeed)
   const track = usePlayerStore(s => s.track)
 
   const step = (direction: 1 | -1) => {
