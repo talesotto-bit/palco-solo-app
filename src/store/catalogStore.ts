@@ -42,7 +42,7 @@ interface CatalogState {
   genres: { id: string; label: string; count: number }[]
   isLoading: boolean
   error: string | null
-  loadCatalog: () => Promise<void>
+  loadCatalog: (url?: string) => Promise<void>
 }
 
 // ─── Genre labels ──────────────────────────────────────────────────────
@@ -367,7 +367,7 @@ export const useCatalogStore = create<CatalogState>((set) => ({
   isLoading: false,
   error: null,
 
-  loadCatalog: async () => {
+  loadCatalog: async (url = '/catalog.json') => {
     // Guard: don't load if already loading or already loaded
     const state = useCatalogStore.getState()
     if (state.isLoading || state.tracks.length > 0) return
@@ -376,7 +376,7 @@ export const useCatalogStore = create<CatalogState>((set) => ({
       let catalog: CatalogSong[] = []
 
       try {
-        const res = await fetch('/catalog.json')
+        const res = await fetch(url)
         if (res.ok) {
           const raw = await res.json()
           // Support both compact format (n/s/g/sc/st) and legacy format (name/slug/genreSlug)

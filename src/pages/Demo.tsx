@@ -22,8 +22,8 @@ export default function Demo() {
   const [dismissedCta, setDismissedCta] = useState(false)
 
   useEffect(() => {
-    loadCatalog()
-  }, [loadCatalog])
+    loadCatalog('/demo-catalog.json')
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Show floating CTA after 15s
   useEffect(() => {
@@ -152,12 +152,16 @@ export default function Demo() {
   useEffect(() => {
     if (!autoLoadedRef.current && genreSections.length > 0 && genreSections[0].tracks.length > 0 && !currentTrack) {
       autoLoadedRef.current = true
-      loadTrack(genreSections[0].tracks[0])
+      loadTrack(genreSections[0].tracks[0]).catch(() => {})
     }
   }, [genreSections]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSelectTrack = (track: Track) => {
-    loadTrack(track)
+  const handleSelectTrack = async (track: Track) => {
+    try {
+      await loadTrack(track)
+    } catch {
+      // Silently handle audio load failures on mobile
+    }
     const el = document.getElementById('demo-player')
     if (el && window.innerWidth < 1024) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })

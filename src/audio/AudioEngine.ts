@@ -292,7 +292,11 @@ class AudioEngine {
 
   async play(): Promise<void> {
     if (!this.isLoaded) return
-    await Tone.start()
+    try {
+      await Tone.start()
+    } catch {
+      // iOS may block AudioContext.resume() without user gesture — ignore
+    }
     Tone.getTransport().start()
     this.startTimeUpdater()
   }
