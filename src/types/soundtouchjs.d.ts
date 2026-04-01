@@ -17,9 +17,9 @@ declare module 'soundtouchjs' {
   }
 
   export class FifoSampleBuffer {
-    putSamples(samples: Float32Array, numFrames?: number): void
-    receiveSamples(output: Float32Array, numFrames?: number): number
-    extract(output: Float32Array, numFrames?: number): number
+    putSamples(samples: Float32Array, position?: number, numFrames?: number): void
+    receiveSamples(output: Float32Array, numFrames?: number): void
+    extract(output: Float32Array, position?: number, numFrames?: number): void
     clear(): void
     readonly frameCount: number
     readonly position: number

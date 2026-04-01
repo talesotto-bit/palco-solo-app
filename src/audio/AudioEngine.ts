@@ -1,17 +1,17 @@
 /**
- * AudioEngine — núcleo de reprodução profissional do Palco Solo
+ * AudioEngine — professional playback core for Palco Solo
  *
- * Arquitetura v2 — SoundTouch WSOLA:
- *  - Tone.js para Transport sync + Player loading
- *  - SoundTouch (WSOLA algorithm) para pitch/speed processing
- *  - Qualidade profissional: sem artefatos, sem distorção
+ * Architecture:
+ *  - Tone.js for Transport sync + Player loading
+ *  - SoundTouch (WSOLA algorithm) for pitch shifting
+ *  - Independent pitch control without speed artifacts
  *
  * Audio chain:
  *  Tone.Player → Tone.Gain (stem) → Tone.Panner → MixBus
- *  MixBus → SoundTouch ScriptProcessor → MasterGain → Destination
+ *  MixBus → ScriptProcessor (SoundTouch WSOLA) → MasterGain → Destination
  *
- * Pitch: SoundTouch pitchSemitones (independent of speed)
- * Speed: Player.playbackRate + SoundTouch pitch compensation (WSOLA quality)
+ * Pitch: SoundTouch pitchSemitones (high-quality WSOLA, independent of speed)
+ * Speed: Player.playbackRate + SoundTouch pitch compensation
  */
 
 import * as Tone from 'tone'
@@ -35,11 +35,8 @@ export type AudioEngineEvent =
 
 type EventCallback = (event: AudioEngineEvent) => void
 
-// SoundTouch processing constants — optimized for music quality + low latency
-const BUFFER_SIZE = 2048              // smaller buffer = lower latency (~46ms at 44.1k)
-const SOUNDTOUCH_SEQUENCE_MS = 40     // shorter segments = less smearing on transients
-const SOUNDTOUCH_SEEKWINDOW_MS = 15   // tighter seek = more precise overlap matching
-const SOUNDTOUCH_OVERLAP_MS = 8       // less overlap = cleaner transitions
+// Buffer size for ScriptProcessorNode — 4096 for better mobile stability (~93ms at 44.1k)
+const BUFFER_SIZE = 4096
 
 class AudioEngine {
   private stems: Map<string, LoadedStem> = new Map()
@@ -49,7 +46,10 @@ class AudioEngine {
   // SoundTouch processing
   private soundTouch: SoundTouch | null = null
   private scriptNode: ScriptProcessorNode | null = null
-  private stBypass: GainNode | null = null // bypass node when no processing needed
+
+  // Pre-allocated buffers to avoid GC pressure in audio callback
+  private _interleaveBuf: Float32Array = new Float32Array(BUFFER_SIZE * 2)
+  private _outputBuf: Float32Array = new Float32Array(BUFFER_SIZE * 2)
 
   private _pitch = 0       // semitones (-12..+12)
   private _speed = 1       // ratio (0.5..2.0)
@@ -60,6 +60,7 @@ class AudioEngine {
   private _cancelRaf: (() => void) | null = null
   private isLoaded = false
   private _loadId = 0      // guard against concurrent loads
+  private _soundTouchActive = false // whether SoundTouch is in the signal path
 
   constructor() {}
 
@@ -76,64 +77,99 @@ class AudioEngine {
 
   // ─── SoundTouch setup ─────────────────────────────────────────────────────
 
-  private initSoundTouch(): void {
-    const ctx = Tone.getContext().rawContext as AudioContext
+  private initSoundTouch(): boolean {
+    try {
+      const ctx = Tone.getContext().rawContext as AudioContext
 
-    // Create SoundTouch processor
-    this.soundTouch = new SoundTouch()
+      // Create SoundTouch processor
+      this.soundTouch = new SoundTouch()
 
-    // Configure WSOLA parameters for music quality
-    // @ts-ignore — soundtouchjs internal settings
-    if (this.soundTouch._stretch) {
-      // @ts-ignore
-      this.soundTouch._stretch.sequenceMs = SOUNDTOUCH_SEQUENCE_MS
-      // @ts-ignore
-      this.soundTouch._stretch.seekWindowMs = SOUNDTOUCH_SEEKWINDOW_MS
-      // @ts-ignore
-      this.soundTouch._stretch.overlapMs = SOUNDTOUCH_OVERLAP_MS
-    }
+      // Create ScriptProcessorNode for real-time audio processing
+      this.scriptNode = ctx.createScriptProcessor(BUFFER_SIZE, 2, 2)
 
-    // Create ScriptProcessorNode for real-time audio processing
-    this.scriptNode = ctx.createScriptProcessor(BUFFER_SIZE, 2, 2)
+      // Pre-allocate interleave buffers for this buffer size
+      this._interleaveBuf = new Float32Array(BUFFER_SIZE * 2)
+      this._outputBuf = new Float32Array(BUFFER_SIZE * 2)
 
-    // Audio processing callback
-    this.scriptNode.onaudioprocess = (event: AudioProcessingEvent) => {
-      if (!this.soundTouch) return
+      // Audio processing callback — runs on audio thread
+      this.scriptNode.onaudioprocess = (event: AudioProcessingEvent) => {
+        const st = this.soundTouch
+        if (!st) {
+          // Pass-through: copy input → output
+          for (let ch = 0; ch < 2; ch++) {
+            event.outputBuffer.getChannelData(ch).set(event.inputBuffer.getChannelData(ch))
+          }
+          return
+        }
 
-      const inputL = event.inputBuffer.getChannelData(0)
-      const inputR = event.inputBuffer.getChannelData(1)
-      const outputL = event.outputBuffer.getChannelData(0)
-      const outputR = event.outputBuffer.getChannelData(1)
-      const numFrames = inputL.length
+        const inputL = event.inputBuffer.getChannelData(0)
+        const inputR = event.inputBuffer.getChannelData(1)
+        const outputL = event.outputBuffer.getChannelData(0)
+        const outputR = event.outputBuffer.getChannelData(1)
+        const numFrames = inputL.length
 
-      // Interleave input: [L0, R0, L1, R1, ...]
-      const interleaved = new Float32Array(numFrames * 2)
-      for (let i = 0; i < numFrames; i++) {
-        interleaved[i * 2] = inputL[i]
-        interleaved[i * 2 + 1] = inputR[i]
-      }
+        // Interleave input: [L0, R0, L1, R1, ...]
+        const iBuf = this._interleaveBuf
+        for (let i = 0; i < numFrames; i++) {
+          iBuf[i * 2] = inputL[i]
+          iBuf[i * 2 + 1] = inputR[i]
+        }
 
-      // Push samples into SoundTouch
-      this.soundTouch.inputBuffer.putSamples(interleaved, numFrames)
+        // Push samples into SoundTouch
+        // CRITICAL: putSamples(samples, position, numFrames) — position MUST be 0
+        st.inputBuffer.putSamples(iBuf, 0, numFrames)
 
-      // Process
-      this.soundTouch.process()
+        // Run WSOLA processing
+        st.process()
 
-      // Pull processed samples
-      const outputInterleaved = new Float32Array(numFrames * 2)
-      const received = this.soundTouch.outputBuffer.receiveSamples(outputInterleaved, numFrames)
+        // Pull available output frames (may be fewer than numFrames due to WSOLA latency)
+        const available = st.outputBuffer.frameCount
+        const toRead = Math.min(numFrames, available)
 
-      // De-interleave to output channels
-      for (let i = 0; i < numFrames; i++) {
-        if (i < received) {
-          outputL[i] = outputInterleaved[i * 2]
-          outputR[i] = outputInterleaved[i * 2 + 1]
-        } else {
-          // Fill remaining with silence (SoundTouch may produce fewer frames)
-          outputL[i] = 0
-          outputR[i] = 0
+        const oBuf = this._outputBuf
+        if (toRead > 0) {
+          st.outputBuffer.receiveSamples(oBuf, toRead)
+        }
+
+        // De-interleave to output channels
+        for (let i = 0; i < numFrames; i++) {
+          if (i < toRead) {
+            outputL[i] = oBuf[i * 2]
+            outputR[i] = oBuf[i * 2 + 1]
+          } else {
+            outputL[i] = 0
+            outputR[i] = 0
+          }
         }
       }
+
+      return true
+    } catch (err) {
+      console.warn('[AudioEngine] SoundTouch init failed:', err)
+      this.soundTouch = null
+      if (this.scriptNode) {
+        try { this.scriptNode.disconnect() } catch {}
+        this.scriptNode = null
+      }
+      return false
+    }
+  }
+
+  private connectSoundTouch(): boolean {
+    if (!this.scriptNode || !this.mixBus || !this.masterGain) return false
+
+    try {
+      // Use Tone.js connect() for mixBus → ScriptProcessor (handles Tone→native)
+      // Then native connect for ScriptProcessor → masterGain.input
+      this.mixBus.connect(this.scriptNode as any)
+      this.scriptNode.connect(this.masterGain.input as any)
+      this._soundTouchActive = true
+      return true
+    } catch (err) {
+      console.warn('[AudioEngine] SoundTouch connection failed:', err)
+      try { this.scriptNode.disconnect() } catch {}
+      this._soundTouchActive = false
+      return false
     }
   }
 
@@ -142,20 +178,17 @@ class AudioEngine {
 
     // SoundTouch pitch compensation:
     // Player.playbackRate changes speed AND pitch.
-    // We use SoundTouch to restore the correct pitch.
+    // SoundTouch compensates the unwanted pitch change from playbackRate,
+    // then applies the user's desired pitch shift.
     //
-    // playbackRate of S changes pitch by log2(S)*12 semitones.
-    // So we need to apply: userPitch + (-log2(S)*12) to compensate.
-    //
-    // SoundTouch.pitchSemitones does high-quality WSOLA pitch shifting.
+    // playbackRate of S shifts pitch by +log2(S)*12 semitones.
+    // Compensation: -log2(S)*12 semitones.
+    // Total: userPitch + compensation.
 
     const speedPitchCompensation = -Math.log2(this._speed) * 12
     const totalPitch = this._pitch + speedPitchCompensation
 
     this.soundTouch.pitchSemitones = totalPitch
-
-    // If no processing needed, SoundTouch is still in the chain
-    // but with neutral settings — minimal overhead
   }
 
   // ─── Load ──────────────────────────────────────────────────────────────────
@@ -171,33 +204,15 @@ class AudioEngine {
     // MasterGain: final volume control
     this.masterGain = new Tone.Gain(this._volume)
 
-    // Initialize SoundTouch processing chain
-    let soundTouchConnected = false
-    try {
-      this.initSoundTouch()
-
-      if (this.scriptNode) {
-        // Method: connect Tone output → native ScriptProcessor → Tone input
-        // Tone nodes expose .output (native GainNode) and .input (native GainNode)
-        const mixOutput = this.mixBus.output as unknown as AudioNode
-        const masterInput = this.masterGain.input as unknown as AudioNode
-
-        mixOutput.connect(this.scriptNode)
-        this.scriptNode.connect(masterInput)
-        soundTouchConnected = true
-      }
-    } catch (err) {
-      console.warn('[AudioEngine] SoundTouch init failed, falling back:', err)
-      this.soundTouch = null
-      if (this.scriptNode) {
-        this.scriptNode.disconnect()
-        this.scriptNode = null
-      }
-    }
+    // Initialize and connect SoundTouch processing chain
+    const stInitOk = this.initSoundTouch()
+    const stConnected = stInitOk && this.connectSoundTouch()
 
     // Fallback: direct connection without SoundTouch processing
-    if (!soundTouchConnected) {
+    if (!stConnected) {
+      console.warn('[AudioEngine] Using direct connection (no pitch processing)')
       this.mixBus.connect(this.masterGain)
+      this._soundTouchActive = false
     }
 
     this.masterGain.toDestination()
@@ -342,7 +357,7 @@ class AudioEngine {
   }
 
   // ─── Pitch (semitones, -12..+12) ──────────────────────────────────────────
-  // Uses SoundTouch WSOLA — zero distortion, preserves formants
+  // Uses SoundTouch WSOLA — high quality, preserves formants
 
   setPitch(semitones: number): void {
     this._pitch = semitones
@@ -355,10 +370,8 @@ class AudioEngine {
 
   // ─── Speed (0.5..2.0) ─────────────────────────────────────────────────────
   // Strategy: Player.playbackRate for time sync + SoundTouch WSOLA for pitch fix
-  // The WSOLA algorithm produces dramatically better results than Tone.PitchShift
 
   setSpeed(speed: number): void {
-    const prev = this._speed
     this._speed = speed
 
     // Update playbackRate on all players
@@ -366,20 +379,8 @@ class AudioEngine {
       player.playbackRate = speed
     })
 
-    // Update SoundTouch pitch compensation
+    // Update SoundTouch pitch compensation (no clear needed — WSOLA handles smooth transitions)
     this.updateSoundTouchParams()
-
-    // Adjust transport position to maintain correct time
-    if (Tone.getTransport().state === 'started') {
-      const currentPos = Tone.getTransport().seconds
-      const newPos = currentPos * (prev / speed)
-      Tone.getTransport().seconds = newPos
-    }
-
-    // Clear SoundTouch buffers for clean transition
-    if (this.soundTouch) {
-      this.soundTouch.clear()
-    }
   }
 
   get speed(): number {
@@ -457,7 +458,6 @@ class AudioEngine {
       }
       this.rafId = requestAnimationFrame(update)
     }
-    // Store cancellation function for cleanup
     this._cancelRaf = () => { cancelled = true }
     this.rafId = requestAnimationFrame(update)
   }
@@ -496,7 +496,7 @@ class AudioEngine {
 
     // Cleanup SoundTouch chain
     if (this.scriptNode) {
-      this.scriptNode.disconnect()
+      try { this.scriptNode.disconnect() } catch {}
       this.scriptNode.onaudioprocess = null
       this.scriptNode = null
     }
@@ -504,6 +504,7 @@ class AudioEngine {
       this.soundTouch.clear()
       this.soundTouch = null
     }
+    this._soundTouchActive = false
 
     if (this.mixBus) {
       this.mixBus.dispose()
