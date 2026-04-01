@@ -59,28 +59,109 @@ export function cleanSongName(raw: string): string {
   return name || raw.trim()
 }
 
+// ─── Known artists for extraction from catalog names ────────────────────
+// Catalog names follow "TITLE ARTIST" pattern (no dash separator)
+// Sorted by length desc so longer names match first
+
+const KNOWN_ARTISTS: string[] = [
+  // Sertanejo
+  'GUSTTAVO LIMA','BRUNO E MARRONE','HENRIQUE E JULIANO','MARILIA MENDONCA',
+  'JORGE E MATEUS','ZE NETO E CRISTIANO','MAIARA E MARAISA','LUAN SANTANA',
+  'SIMONE E SIMARIA','NAIARA AZEVEDO','ANA CASTELA','MURILO HUFF',
+  'FELIPE ARAUJO','MATHEUS E KAUAN','HUGO E GUILHERME','ISRAEL E RODOLFFO',
+  'GUSTAVO MIOTO','DIEGO E VICTOR HUGO','EDUARDO COSTA','MICHEL TELO',
+  'LUCAS LUCCO','FERNANDO E SOROCABA','MARCOS E BELUTTI','JOAO BOSCO E VINICIUS',
+  'CRISTIANO ARAUJO','GEORGE HENRIQUE E RODRIGO','ZE FELIPE','LEONARDO',
+  'ZEZE DI CAMARGO','CHITAOZINHO E XORORO',
+  'LAUANA PRADO','SIMONE MENDES','GUILHERME E BENUTO','LUAN PEREIRA',
+  'CLAYTON E ROMARIO','ISRAEL E RODOLFO','BRUNO E BARRETO',
+  'RIO NEGRO E SOLIMOES','ZEZE E LUCIANO','JOAO BOSCO E GABRIEL',
+  'FELIPE E RODRIGO','LEO E RAPHAEL','BRENNO E MATHEUS',
+  'ANTONY E GABRIEL','VICTOR MEIRA',
+  // Piseiro
+  'BAROES DA PISADINHA','JOAO GOMES','VITOR FERNANDES','TARCISIO DO ACORDEON',
+  'BIU DO PISEIRO','ALANZIM COREANO','JAPAZIN','ZE VAQUEIRO','MARI FERNANDEZ','NATTAN',
+  'MARCYNHO SENSACAO','ALDAIR PLAYBOY','PEDRO SAMPAIO',
+  // Forró
+  'WESLEY SAFADAO','XAND AVIAO','JONAS ESTICADO','CAVALEIROS DO FORRO',
+  'SOLANGE ALMEIDA','IGUINHO E LULINHA','ERIC LAND','AVIOES DO FORRO',
+  'LIMAO COM MEL','MASTRUZ COM LEITE','CALCINHA PRETA','RAI SAIA RODADA',
+  'NATANZINHO LIMA','SAIA RODADA','FORRO REAL','FLAVIO JOSE','FLAVINHO',
+  'FELIPE AMORIM','ROGEIRINHO',
+  'HENRY FREITAS','REY VAQUEIRO','CLAUDIO NEY E JULIANA','CLAUDIO NEY',
+  'MATHEUS FERNANDES','LIPE LUCENA','AVINE VINNY','MANO WALTER',
+  'DJ IVIS','KADU MARTINS','THIAGO AQUINO','JUNIOR VIANNA',
+  'LUAN ESTILIZADO','LUKA BASS','NUZIO MEDEIROS','TIERRY',
+  'GABRIEL DINIZ','LUIZA SONZA','MICHELE ANDRADE','PRISCILA SENNA',
+  // Arrocha
+  'NADSON FERINHA','PABLO','DEVINHO NOVAES','SORO SILVA','SILVANNO SALLES','TAYRONE','NADSON',
+  // Axé
+  'IVETE SANGALO','HARMONIA DO SAMBA','LEO SANTANA','CHICLETE COM BANANA',
+  'BANDA EVA','BELL MARQUES','CLAUDIA LEITTE','PARANGOLE','DANIELA MERCURY',
+  'ASA DE AGUIA','PSIRICO',
+  // Pagode
+  'FERRUGEM','THIAGUINHO','SORRISO MAROTO','TURMA DO PAGODE','PERICLES',
+  'GRUPO REVELACAO','RACA NEGRA','DILSINHO','MENOS E MAIS','EXALTASAMBA','GRUPO CHOCOLATE',
+  // Gospel
+  'FERNANDINHO','ALINE BARROS','ANDERSON FREIRE','GABRIELA ROCHA',
+  'PRETO NO BRANCO','MINISTERIO LOUVOR LIVRE','HILLSONG',
+  // MPB / Rock BR
+  'LEGIAO URBANA','TIM MAIA','ROBERTO CARLOS','SKANK','BARAO VERMELHO',
+  'ENGENHEIROS DO HAWAII','CAPITAL INICIAL','RAUL SEIXAS','JOTA QUEST',
+  'DJAVAN','GILBERTO GIL','CAETANO VELOSO','CHICO BUARQUE','JORGE BEN JOR',
+  'MARISA MONTE','ALCEU VALENCA','ZE RAMALHO','BELCHIOR',
+  'CHARLIE BROWN JR','PITTY','NATIRUTS','CIDADE NEGRA','KID ABELHA',
+  'LULU SANTOS','RITA LEE','CASSIA ELLER','PARALAMAS DO SUCESSO',
+  'RAIMUNDOS','MAMONAS ASSASSINAS','O RAPPA','TITÃS',
+  // Rock / Pop Internacional
+  'MICHAEL JACKSON','GUNS N ROSES','LED ZEPPELIN','THE BEATLES',
+  'COLDPLAY','BON JOVI','NIRVANA','ACDC','AC DC',
+  'RED HOT CHILLI PEPPERS','RED HOT CHILI PEPPERS','AEROSMITH',
+  'PINK FLOYD','DIRE STRAITS','TOTO','JOURNEY','EAGLES',
+  'ELTON JOHN','STEVIE WONDER','ELVIS PRESLEY',
+  'MAROON 5','BRUNO MARS','ED SHEERAN','BEYONCE','LADY GAGA',
+  'ERIC CLAPTON','SCORPIONS','METALLICA','QUEEN','U2',
+  'LINKIN PARK','FOO FIGHTERS','OASIS','PEARL JAM','GREEN DAY',
+  'ABBA','BEE GEES','PHIL COLLINS',
+  // Brega / Seresta
+  'REGINALDO ROSSI','AMADO BATISTA','JOSE AUGUSTO','SIDNEY MAGAL','WANDO',
+  'NELSON NED','WALDICK SORIANO','FERNANDO MENDES','AGNALDO TIMOTEO',
+  'PAULO SERGIO','BENITO DI PAULA',
+].sort((a, b) => b.length - a.length)
+
 // ─── Parse Artist / Title ───────────────────────────────────────────────
 
 export function parseFolderName(folderName: string): { artist: string; title: string } {
   const name = cleanSongName(folderName)
 
-  // Pattern: "ARTIST - TITLE"
+  // Pattern 1: "ARTIST - TITLE" or "TITLE - ARTIST"
   const dashMatch = name.match(/^(.+?)\s*[-–—]\s*(.+)$/)
   if (dashMatch) {
     const [, partA, partB] = dashMatch
     const a = partA.trim()
     const b = partB.trim()
 
-    // If partB looks like an artist (short, 1-3 words) and partA is longer, it may be reversed
     const aWords = a.split(/\s+/).length
     const bWords = b.split(/\s+/).length
 
-    // "TITLE - ARTIST" pattern (common in atualizacoes): second part shorter
     if (bWords <= 3 && aWords > 3 && /^(DJ|MC|MR|DR)\s/i.test(b)) {
       return { artist: toTitleCase(b), title: toTitleCase(a) }
     }
 
     return { artist: toTitleCase(a), title: toTitleCase(b) }
+  }
+
+  // Pattern 2: Extract known artist from name
+  // Catalog names follow "TITLE ARTIST" (e.g. "30 CADEADOS GUSTTAVO LIMA")
+  const upper = name.toUpperCase()
+  for (const artist of KNOWN_ARTISTS) {
+    const idx = upper.lastIndexOf(artist)
+    if (idx > 0) {
+      const titlePart = name.slice(0, idx).replace(/[-–—\s]+$/, '').trim()
+      if (titlePart.length > 0) {
+        return { artist: toTitleCase(artist), title: toTitleCase(titlePart) }
+      }
+    }
   }
 
   return { artist: '', title: toTitleCase(name) }

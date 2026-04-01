@@ -64,12 +64,18 @@ const SERTANEJO_ARTISTS = new Set([
   'chitaozinho e xororo','eduardo costa','michel telo','lucas lucco',
   'fernando e sorocaba','marcos e belutti','joao bosco e vinicius',
   'cristiano araujo','george henrique e rodrigo','diego e arnaldo',
+  'lauana prado','simone mendes','guilherme e benuto','luan pereira',
+  'clayton e romario','israel e rodolfo','bruno e barreto',
+  'rio negro e solimoes','zeze e luciano','joao bosco e gabriel',
+  'felipe e rodrigo','leo e raphael','brenno e matheus',
+  'antony e gabriel','victor meira',
 ])
 
 const PISEIRO_ARTISTS = new Set([
   'baroes da pisadinha','joao gomes','nattan','vitor fernandes',
   'tarcisio do acordeon','biu do piseiro','alanzim coreano','japazin',
   'ze vaqueiro','mari fernandez','raquel dos teclados',
+  'marcynho sensacao','aldair playboy','pedro sampaio',
 ])
 
 const FORRO_ARTISTS = new Set([
@@ -79,6 +85,11 @@ const FORRO_ARTISTS = new Set([
   'forro do muido','forro sacode','la furia','os baroes da pisadinha',
   'flavio jose','rai saia rodada','natanzinho lima','rogeirinho',
   'flavinho','felipe amorim',
+  'henry freitas','rey vaqueiro','claudio ney e juliana','claudio ney',
+  'matheus fernandes','lipe lucena','avine vinny','mano walter',
+  'dj ivis','kadu martins','thiago aquino','junior vianna',
+  'luan estilizado','luka bass','nuzio medeiros','tierry',
+  'gabriel diniz','luiza sonza','michele andrade','priscila senna',
 ])
 
 const ARROCHA_ARTISTS = new Set([
@@ -106,6 +117,7 @@ function classifyAtualizacoes(name: string, artist: string): string {
   if (lower.includes('piseiro') || lower.includes('pisadinha')) return 'piseiro'
   if (lower.includes('arrocha')) return 'arrocha'
   if (lower.includes('axe') || lower.includes('swingueira')) return 'axe'
+  if (lower.includes('pagodao')) return 'pagode'
 
   // Check artist sets
   for (const a of PISEIRO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'piseiro'
@@ -115,7 +127,12 @@ function classifyAtualizacoes(name: string, artist: string): string {
   for (const a of SERTANEJO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'sertanejo'
   for (const a of FORRO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'forro'
 
-  return 'atualizacoes'
+  // Keyword-based genre detection in song name
+  if (/versao forro|forro\b|eletrico|vaqueiro|vaquejada|cabare/.test(lower)) return 'forro'
+  if (/pagode\b/.test(lower)) return 'pagode'
+
+  // Remaining unclassified tracks in atualizacoes are mostly sertanejo
+  return 'sertanejo'
 }
 
 // ─── Sub-genre classification for rock-pop-mpb ────────────────────────
@@ -138,21 +155,45 @@ const ROCK_BR_ARTISTS = new Set([
   'cidade negra','kid abelha','blitz','lulu santos','lobão','cazuza',
 ])
 
+const ROCK_POP_INTER_ARTISTS = new Set([
+  'michael jackson','guns n roses','led zeppelin','the beatles','beatles',
+  'coldplay','bon jovi','nirvana','acdc','ac dc',
+  'red hot chilli peppers','red hot chili peppers','aerosmith',
+  'pink floyd','dire straits','toto','journey','eagles',
+  'elton john','stevie wonder','elvis presley',
+  'maroon 5','bruno mars','ed sheeran','beyonce','lady gaga',
+  'eric clapton','scorpions','metallica','queen','u2',
+  'linkin park','foo fighters','oasis','pearl jam','green day',
+  'abba','bee gees','phil collins',
+])
+
 const BREGA_ARTISTS = new Set([
   'reginaldo rossi','amado batista','odair josé','sidney magal','nelson ned',
   'waldick soriano','fernando mendes','josé augusto','agnaldo timóteo',
   'wando','paulo sérgio','benito di paula','luiz ayrão',
 ])
 
-function classifyRockPopMpb(artist: string): string {
+function classifyRockPopMpb(artist: string, songName: string): string {
   const a = artist.toLowerCase().trim()
+  const lower = songName.toLowerCase()
+  // Exact set matches
+  if (ROCK_POP_INTER_ARTISTS.has(a)) return 'rock-pop-inter'
   if (MPB_ARTISTS.has(a)) return 'mpb'
   if (ROCK_BR_ARTISTS.has(a)) return 'rock-nacional'
   if (BREGA_ARTISTS.has(a)) return 'brega'
-  for (const name of MPB_ARTISTS) if (a.includes(name) || name.includes(a)) return 'mpb'
-  for (const name of ROCK_BR_ARTISTS) if (a.includes(name) || name.includes(a)) return 'rock-nacional'
-  for (const name of BREGA_ARTISTS) if (a.includes(name) || name.includes(a)) return 'brega'
-  return 'rock-pop-inter'
+  // Partial artist name matches (only if artist is not empty)
+  if (a.length > 0) {
+    for (const name of ROCK_POP_INTER_ARTISTS) if (a.includes(name) || name.includes(a)) return 'rock-pop-inter'
+    for (const name of MPB_ARTISTS) if (a.includes(name) || name.includes(a)) return 'mpb'
+    for (const name of ROCK_BR_ARTISTS) if (a.includes(name) || name.includes(a)) return 'rock-nacional'
+    for (const name of BREGA_ARTISTS) if (a.includes(name) || name.includes(a)) return 'brega'
+  }
+  // Check the raw song name for artist keywords
+  for (const name of ROCK_POP_INTER_ARTISTS) if (lower.includes(name)) return 'rock-pop-inter'
+  for (const name of ROCK_BR_ARTISTS) if (lower.includes(name)) return 'rock-nacional'
+  for (const name of BREGA_ARTISTS) if (lower.includes(name)) return 'brega'
+  // Default: unrecognized tracks in rock-pop-mpb are mostly Brazilian
+  return 'mpb'
 }
 
 // ─── Cover art gradient generator ──────────────────────────────────────
@@ -276,7 +317,7 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
   // Reclassify broad genres into sub-genres
   let effectiveGenreSlug = song.genreSlug
   if (song.genreSlug === 'rock-pop-mpb') {
-    effectiveGenreSlug = classifyRockPopMpb(artist)
+    effectiveGenreSlug = classifyRockPopMpb(artist, song.name)
   } else if (song.genreSlug === 'atualizacoes') {
     effectiveGenreSlug = classifyAtualizacoes(song.name, artist)
   }
