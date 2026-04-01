@@ -426,6 +426,26 @@ export default function Demo() {
 
                     <StemMixer visibleStemIds={currentTrack ? priorityStemIds(currentTrack) : undefined} />
 
+                    {/* Mixer help hint */}
+                    {currentTrack?.hasStems && currentTrack.stems.length > 1 && (
+                      <div className="rounded-lg bg-white/[0.03] border border-white/5 px-4 py-3 space-y-1.5">
+                        <p className="text-xs text-[#b3b3b3] leading-relaxed">
+                          <strong className="text-white">Mixer:</strong>{' '}
+                          {currentTrack.stems.length > MAX_MIXER_STEMS
+                            ? <>Você pode editar <strong className="text-[hsl(var(--primary))]">{MAX_MIXER_STEMS} pistas principais</strong> aqui no demo. No app completo, todas as <strong className="text-white">{currentTrack.stems.length} pistas</strong> desta música ficam disponíveis para edição.</>
+                            : <>Esta música possui <strong className="text-[hsl(var(--primary))]">{currentTrack.stems.length} pistas</strong> editáveis.</>
+                          }
+                        </p>
+                        <p className="text-[11px] text-[#808080] leading-relaxed">
+                          <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-white/10 text-[10px] font-bold text-[#b3b3b3] align-middle mr-1">M</span>
+                          Muta a pista (silencia o instrumento)
+                          <span className="mx-2 text-white/10">·</span>
+                          <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-white/10 text-[10px] font-bold text-[#b3b3b3] align-middle mr-1">S</span>
+                          Solo (ouve apenas aquela pista)
+                        </p>
+                      </div>
+                    )}
+
                     {/* Inline CTA */}
                     <div className="rounded-xl bg-gradient-to-br from-[hsl(var(--primary))]/10 to-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/20 p-5 mt-4">
                       <div className="flex items-start gap-3 mb-3">
