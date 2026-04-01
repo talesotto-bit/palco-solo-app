@@ -435,7 +435,7 @@ export default function Demo() {
                         rel="noopener noreferrer"
                         className="inline-flex items-center justify-center gap-2 h-10 rounded-full px-6 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity"
                       >
-                        Ver planos e preços
+                        Quero acesso ao plano profissional — R$197
                         <ArrowRight className="h-4 w-4" />
                       </a>
                     </div>
@@ -482,7 +482,7 @@ export default function Demo() {
                   className="inline-flex items-center gap-2 h-12 rounded-full px-8 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:scale-[1.02] transition-transform"
                 >
                   <Crown className="h-4 w-4" />
-                  Quero acesso completo
+                  Quero acesso ao plano profissional — R$197
                   <ArrowRight className="h-4 w-4" />
                 </a>
               </div>
@@ -516,7 +516,7 @@ export default function Demo() {
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full h-10 rounded-lg text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity"
             >
-              Ver planos
+              Quero acesso ao plano profissional — R$197
               <ArrowRight className="h-4 w-4" />
             </a>
           </div>
@@ -535,7 +535,7 @@ export default function Demo() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 h-10 rounded-full px-6 text-sm font-bold bg-[hsl(var(--primary))] text-black hover:opacity-90 transition-opacity shrink-0"
           >
-            Quero acesso completo
+            Quero acesso ao plano profissional — R$197
             <ArrowRight className="h-4 w-4" />
           </a>
         </div>
