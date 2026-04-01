@@ -123,7 +123,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0 })
       try {
         cleanupPreviousBlobUrls()
-        const resolvedTrack = await resolveTrackUrls(track)
+        let resolvedTrack: Track
+        try {
+          resolvedTrack = await resolveTrackUrls(track)
+        } catch {
+          // IndexedDB may fail (private browsing, quota) — fall back to raw URLs
+          resolvedTrack = track
+        }
         await audioEngine.load(resolvedTrack.stems)
 
         // Apply saved pitch/speed/stems to engine

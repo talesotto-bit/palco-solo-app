@@ -29,14 +29,18 @@ const activeBlobUrls = new Map<string, string>()
 export const AudioCache = {
   /** Guarda um File no IndexedDB e retorna a chave */
   async store(key: string, file: File): Promise<void> {
-    const db = await openDB()
-    const buffer = await file.arrayBuffer()
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite')
-      tx.objectStore(STORE).put({ buffer, type: file.type || 'audio/mpeg' }, key)
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-    })
+    try {
+      const db = await openDB()
+      const buffer = await file.arrayBuffer()
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite')
+        tx.objectStore(STORE).put({ buffer, type: file.type || 'audio/mpeg' }, key)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    } catch (err) {
+      console.warn('[AudioCache] store failed (quota/IDB error):', err)
+    }
   },
 
   /** Recupera um blob URL temporário para uma chave armazenada */
@@ -69,10 +73,14 @@ export const AudioCache = {
 
   /** Resolve múltiplas chaves de uma vez */
   async resolveMany(keys: string[]): Promise<Record<string, string>> {
-    const entries = await Promise.all(
+    const results = await Promise.allSettled(
       keys.map(async k => [k, await this.getUrl(k)] as const)
     )
-    return Object.fromEntries(entries.filter(([, url]) => url !== null)) as Record<string, string>
+    const entries = results
+      .filter((r): r is PromiseFulfilledResult<readonly [string, string | null]> => r.status === 'fulfilled')
+      .map(r => r.value)
+      .filter(([, url]) => url !== null)
+    return Object.fromEntries(entries) as Record<string, string>
   },
 
   /** Remove um arquivo do cache */

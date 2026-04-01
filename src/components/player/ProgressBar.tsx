@@ -13,11 +13,12 @@ export function ProgressBar() {
   const [isDragging, setIsDragging] = useState(false)
   const [hoverX, setHoverX] = useState<number | null>(null)
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+  const rawProgress = duration > 0 ? (currentTime / duration) * 100 : 0
+  const progress = Number.isFinite(rawProgress) ? Math.min(100, Math.max(0, rawProgress)) : 0
   const isLoading = playbackState === 'loading'
 
   const getTimeFromEvent = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
-    if (!barRef.current || duration === 0) return 0
+    if (!barRef.current || !duration || duration <= 0) return 0
     const rect = barRef.current.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     return ratio * duration
@@ -66,7 +67,7 @@ export function ProgressBar() {
         {hoverTime !== null && (
           <div
             className="absolute -top-8 -translate-x-1/2 px-2 py-0.5 rounded bg-[#2a2a2a] text-white text-[10px] font-medium tabular-nums opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-            style={{ left: `${hoverX! * 100}%` }}
+            style={{ left: `${(hoverX ?? 0) * 100}%` }}
           >
             {formatTime(hoverTime)}
           </div>

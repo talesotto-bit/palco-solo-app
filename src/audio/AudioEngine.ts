@@ -191,8 +191,17 @@ class AudioEngine {
   private _isProcessingPitch = false
 
   constructor() {
-    // Register unlock listeners immediately so first user gesture unlocks audio
     ensureAudioUnlock()
+
+    // Resume AudioContext when tab returns from background (mobile browsers suspend it)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.isLoaded) {
+        const ctx = Tone.getContext().rawContext
+        if (ctx.state === 'suspended') {
+          (ctx as AudioContext).resume().catch(() => {})
+        }
+      }
+    })
   }
 
   // ─── Event system ──────────────────────────────────────────────────────────
@@ -213,34 +222,34 @@ class AudioEngine {
    * Briefly pauses transport, swaps all buffers, then resumes from same position.
    */
   private applyBuffersToPlayers(bufferMap: Map<string, AudioBuffer>): void {
-    const transport = Tone.getTransport()
-    const wasPlaying = transport.state === 'started'
-    const pos = transport.seconds
+    try {
+      const transport = Tone.getTransport()
+      const wasPlaying = transport.state === 'started'
+      const pos = transport.seconds
 
-    // Pause to safely swap buffers
-    if (wasPlaying) transport.pause()
+      // Pause to safely swap buffers
+      if (wasPlaying) transport.pause()
 
-    for (const [id, buf] of bufferMap) {
-      const stem = this.stems.get(id)
-      if (!stem) continue
+      for (const [id, buf] of bufferMap) {
+        const stem = this.stems.get(id)
+        if (!stem) continue
 
-      // Unsync → stop → swap → re-sync
-      try {
-        stem.player.unsync()
-        stem.player.stop()
-      } catch { /* ok if already stopped */ }
+        try {
+          stem.player.unsync()
+          stem.player.stop()
+        } catch { /* ok if already stopped */ }
 
-      // Replace buffer contents (ToneAudioBuffer.set replaces internal AudioBuffer ref)
-      stem.player.buffer.set(buf)
+        stem.player.buffer.set(buf)
+        stem.player.sync().start(0)
+        stem.player.playbackRate = this._speed
+      }
 
-      // Re-sync to Transport and restore playback rate
-      stem.player.sync().start(0)
-      stem.player.playbackRate = this._speed
+      // Resume from same position
+      transport.seconds = pos
+      if (wasPlaying) transport.start()
+    } catch (err) {
+      console.warn('[AudioEngine] applyBuffersToPlayers failed:', err)
     }
-
-    // Resume from same position
-    transport.seconds = pos
-    if (wasPlaying) transport.start()
   }
 
   // ─── Offline pitch processing (debounced + locked) ─────────────────────────
@@ -306,10 +315,15 @@ class AudioEngine {
         await new Promise(r => setTimeout(r, 0))
         if (jobId !== this._pitchJobId) return
 
-        // Clone before processing to protect the original reference
-        const safeBuf = cloneAudioBuffer(stem.originalBuffer)
-        const result = processBufferWSola(safeBuf, totalSemitones)
-        processed.set(id, result)
+        try {
+          const safeBuf = cloneAudioBuffer(stem.originalBuffer)
+          const result = processBufferWSola(safeBuf, totalSemitones)
+          processed.set(id, result)
+        } catch (err) {
+          console.warn(`[AudioEngine] Pitch processing failed for stem ${id}:`, err)
+          // Use original buffer as fallback — better than crashing
+          processed.set(id, stem.originalBuffer)
+        }
       }
 
       if (jobId !== this._pitchJobId) return
@@ -363,8 +377,14 @@ class AudioEngine {
           ),
         ])
 
-        if (!player.buffer || !player.buffer.duration || player.buffer.duration < 0.5) {
+        const bufDur = player.buffer?.duration ?? 0
+        if (!player.buffer || !Number.isFinite(bufDur) || bufDur < 0.5) {
           console.warn(`[AudioEngine] Stem ${stem.id} has invalid buffer, skipping`)
+          player.dispose()
+          return false
+        }
+
+        if (!this.mixBus) {
           player.dispose()
           return false
         }
@@ -374,7 +394,7 @@ class AudioEngine {
 
         player.connect(gain)
         gain.connect(panner)
-        panner.connect(this.mixBus!)
+        panner.connect(this.mixBus)
 
         player.sync().start(0)
         player.playbackRate = this._speed
