@@ -1,10 +1,10 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  Home, Search, Library, Mic2, Settings, LogOut,
-  Crown, Music2, Wand2,
+  Home, Library, Mic2, Settings, LogOut,
+  Music2, Wand2, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore, isAdmin } from '@/store/authStore'
 import { usePlayerStore } from '@/store/playerStore'
 
 const NAV_MAIN = [
@@ -100,6 +100,25 @@ export function Sidebar() {
         )}
 
         <div className="flex-1" />
+
+        {/* Admin (only for admin users) */}
+        {isAdmin(user) && (
+          <div className="px-2 lg:px-3 mb-1">
+            <NavLink
+              to="/app/admin"
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-4 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
+                  'justify-center lg:justify-start',
+                  isActive ? 'text-[hsl(var(--primary))]' : 'text-[#b3b3b3] hover:text-white'
+                )
+              }
+            >
+              <ShieldCheck className="h-5 w-5 shrink-0" />
+              <span className="hidden lg:block">Admin</span>
+            </NavLink>
+          </div>
+        )}
 
         {/* Settings */}
         <div className="px-2 lg:px-3 mb-2">

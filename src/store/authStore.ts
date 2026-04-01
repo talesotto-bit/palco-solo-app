@@ -39,6 +39,12 @@ function mapSupabaseUser(su: SupaUser): User {
   }
 }
 
+const ADMIN_EMAILS = ['talesotto@gmail.com']
+
+export function isAdmin(user: User | null): boolean {
+  return !!user && ADMIN_EMAILS.includes(user.email.toLowerCase())
+}
+
 export const useAuthStore = create<AuthStore>()((set, get) => ({
   user: null,
   isLoading: false,

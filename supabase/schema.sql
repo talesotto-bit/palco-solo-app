@@ -114,6 +114,24 @@ CREATE POLICY "Usuário gerencia itens do setlist" ON setlist_items
 CREATE POLICY "Usuário gerencia favoritos" ON favorites
   FOR ALL USING (auth.uid() = user_id);
 
+-- Compradores aprovados (populated by webhook + admin)
+CREATE TABLE IF NOT EXISTS approved_buyers (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  plan TEXT NOT NULL DEFAULT 'basic',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE approved_buyers ENABLE ROW LEVEL SECURITY;
+
+-- Anon/authenticated can SELECT (needed for registration check before user has JWT)
+CREATE POLICY "Anon pode checar email na aprovacao" ON approved_buyers
+  FOR SELECT USING (true);
+
+-- Admin can do everything
+CREATE POLICY "Admin gerencia approved_buyers" ON approved_buyers
+  FOR ALL USING (auth.jwt()->>'email' = 'talesotto@gmail.com');
+
 -- Seed: gêneros
 INSERT INTO genres (id, name, slug) VALUES
   ('atualizacoes', 'Atualizações 2017-2026', 'atualizacoes'),

@@ -13,6 +13,7 @@ import Library from '@/pages/Library'
 import PlayerPage from '@/pages/PlayerPage'
 import Performance from '@/pages/Performance'
 import Settings from '@/pages/Settings'
+import Admin from '@/pages/Admin'
 import SeparatePage from '@/pages/SeparatePage'
 import NotFound from '@/pages/NotFound'
 import Demo from '@/pages/Demo'
@@ -81,6 +82,7 @@ export default function App() {
               <Route path="player" element={<PlayerPage />} />
               <Route path="separar" element={<SeparatePage />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="admin" element={<Admin />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
