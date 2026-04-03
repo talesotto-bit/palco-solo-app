@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Layers, Music2, Gauge, ChevronDown, ChevronUp, Loader2, Lock, Play, Crown, ArrowRight, Sparkles, CheckCircle2, X } from 'lucide-react'
+import { Layers, Music2, Gauge, ChevronDown, ChevronUp, Loader2, Lock, Play, Crown, ArrowRight, Sparkles, CheckCircle2, X, Volume2 } from 'lucide-react'
 import { useCatalogStore } from '@/store/catalogStore'
 import { usePlayerStore } from '@/store/playerStore'
 import { PlayerControls } from '@/components/player/PlayerControls'
@@ -232,6 +232,14 @@ export default function Demo() {
       {/* Main scrollable area */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
+
+          {/* Audio tip */}
+          <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <Volume2 className="w-5 h-5 text-amber-400 shrink-0" />
+            <p className="text-xs sm:text-sm text-amber-200">
+              <strong>Sem som?</strong> Desative o modo silencioso do celular. Apenas aumentar o volume nao e suficiente.
+            </p>
+          </div>
 
           {/* Stats bar */}
           <div className="flex items-center gap-4 mb-6 flex-wrap">
