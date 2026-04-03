@@ -10,6 +10,7 @@ import { StemMixer } from '@/components/player/StemMixer'
 import { cn } from '@/lib/utils'
 import { semitonesToLabel, speedToLabel } from '@/lib/utils'
 import type { Track } from '@/types/track'
+import WhatsAppButton from '@/components/WhatsAppButton'
 
 const TRACKS_PER_GENRE = 5
 const CTA_URL = 'https://payfast.greenn.com.br/152815/offer/gxUz6f'
@@ -586,6 +587,7 @@ export default function Demo() {
           </a>
         </div>
       </div>
+      <WhatsAppButton />
     </div>
   )
 }
