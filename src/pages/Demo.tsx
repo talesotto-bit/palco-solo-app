@@ -54,6 +54,7 @@ export default function Demo() {
   const [showCta, setShowCta] = useState(false)
   const [dismissedCta, setDismissedCta] = useState(false)
   const [showDownloadPopup, setShowDownloadPopup] = useState(false)
+  const [showCatalogPopup, setShowCatalogPopup] = useState(false)
 
   useEffect(() => {
     loadCatalog('/demo-catalog.json')
@@ -339,19 +340,15 @@ export default function Demo() {
                     })}
                   </div>
 
-                  {section.totalCount > TRACKS_PER_GENRE && (
-                    <a
-                      href="https://palcosolo.online/#pricing"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 mt-1.5 px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/10 transition-colors group"
-                    >
-                      <Lock className="h-3.5 w-3.5 text-[#808080] group-hover:text-[hsl(var(--primary))]" />
-                      <span className="text-xs text-[#808080] group-hover:text-white transition-colors">
-                        +{DISPLAY_TOTAL} faixas no plano completo
-                      </span>
-                    </a>
-                  )}
+                  <button
+                    onClick={() => setShowCatalogPopup(true)}
+                    className="flex items-center gap-2 mt-1.5 px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/10 transition-colors group w-full text-left"
+                  >
+                    <Lock className="h-3.5 w-3.5 text-[#808080] group-hover:text-[hsl(var(--primary))]" />
+                    <span className="text-xs text-[#808080] group-hover:text-white transition-colors">
+                      +{DISPLAY_TOTAL} VS no plano avançado
+                    </span>
+                  </button>
                 </div>
               ))}
             </div>
@@ -676,6 +673,80 @@ export default function Demo() {
               <p className="text-[11px] text-[#535353] mt-3">
                 Pagamento único · Sem mensalidade · Garantia 30 dias
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Catalog conversion popup ── */}
+      {showCatalogPopup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md rounded-2xl bg-gradient-to-b from-[#1e1e1e] to-[#141414] border border-white/10 shadow-2xl shadow-black/80 overflow-hidden">
+            {/* Close */}
+            <button
+              onClick={() => setShowCatalogPopup(false)}
+              className="absolute top-3 right-3 p-1.5 text-[#808080] hover:text-white transition-colors z-10"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Glow accent */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1 bg-gradient-to-r from-transparent via-[hsl(var(--primary))] to-transparent" />
+
+            <div className="px-6 pt-8 pb-6 text-center">
+              {/* Icon */}
+              <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-[hsl(var(--primary))]/15 flex items-center justify-center">
+                <Layers className="h-8 w-8 text-[hsl(var(--primary))]" />
+              </div>
+
+              <h3 className="text-xl font-extrabold text-white mb-2">
+                +{DISPLAY_TOTAL} faixas te esperando
+              </h3>
+              <p className="text-sm text-[#b3b3b3] leading-relaxed mb-5">
+                No plano completo você desbloqueia o acervo inteiro — com tudo separado por pista, pronto pra usar no seu show.
+              </p>
+
+              {/* Benefits */}
+              <div className="space-y-2.5 mb-6 text-left">
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]"><strong className="text-white">Todos os gêneros</strong> — sertanejo, gospel, pagode, forró, axé, piseiro, MPB, rock, internacional e mais</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]"><strong className="text-white">Todos os formatos</strong> — VS Multipista, Playback MP3, Karaokê com letra</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]"><strong className="text-white">A maioria dos cantores</strong> que você precisa já está no acervo</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]">Não achou? <strong className="text-white">Fale com o suporte</strong> e a gente adiciona pra você</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]"><strong className="text-white">Atualizações semanais</strong> com lançamentos em primeira mão</span>
+                </div>
+              </div>
+
+              {/* CTA */}
+              <a
+                href="https://palcosolo.online/#pricing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full h-12 rounded-full text-sm font-bold bg-[hsl(var(--primary))] text-black hover:scale-[1.02] transition-transform"
+              >
+                <Crown className="h-4 w-4" />
+                Ver planos e preços
+                <ArrowRight className="h-4 w-4" />
+              </a>
+
+              <button
+                onClick={() => setShowCatalogPopup(false)}
+                className="mt-3 text-xs text-[#535353] hover:text-[#808080] transition-colors"
+              >
+                Voltar para as amostras
+              </button>
             </div>
           </div>
         </div>
