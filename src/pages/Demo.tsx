@@ -424,7 +424,7 @@ export default function Demo() {
                     <ProgressBar />
                     <PlayerControls size="large" />
 
-                    {/* Download mix */}
+                    {/* Download */}
                     <button
                       onClick={downloadMix}
                       disabled={isExporting || playbackState === 'loading'}
@@ -435,7 +435,7 @@ export default function Demo() {
                       ) : (
                         <Download className="h-3.5 w-3.5" />
                       )}
-                      {isExporting ? 'Exportando...' : 'Baixar mix'}
+                      {isExporting ? 'Exportando...' : 'Baixar'}
                     </button>
 
                     <button

@@ -256,27 +256,49 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     downloadMix: async () => {
       const { track, stemStates, pitch, speed } = get()
       if (!track) return
-      set({ isExporting: true })
+      set({ isExporting: true, error: null })
       try {
-        // Yield to let UI update before heavy computation
+        // Yield so the UI can show the loading state
         await new Promise(r => setTimeout(r, 50))
+
         const blob = audioEngine.exportMixdown(stemStates)
-        if (!blob) {
-          set({ isExporting: false })
+        if (!blob || blob.size < 100) {
+          set({ error: 'Não foi possível exportar. Toque a faixa primeiro e tente novamente.' })
           return
         }
+
         const pitchStr = pitch !== 0 ? `_${pitch > 0 ? '+' : ''}${pitch}st` : ''
         const speedStr = speed !== 1 ? `_${speed}x` : ''
         const filename = `${track.title} - ${track.artist}${pitchStr}${speedStr}.mp3`
 
+        // iOS Safari doesn't support <a download> for blob URLs — use Web Share API
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+        if (isIOS && navigator.share) {
+          try {
+            const file = new File([blob], filename, { type: 'audio/mpeg' })
+            await navigator.share({ files: [file] })
+            return
+          } catch {
+            // User cancelled share or not supported — fall through to standard download
+          }
+        }
+
+        // Standard download (works on Android, desktop, and iOS fallback)
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
         a.download = filename
+        a.style.display = 'none'
         document.body.appendChild(a)
         a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
+        // Delay cleanup so the browser can start the download
+        setTimeout(() => {
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        }, 500)
+      } catch (err) {
+        console.error('[Export] Failed:', err)
+        set({ error: 'Erro ao exportar. Tente novamente.' })
       } finally {
         set({ isExporting: false })
       }
