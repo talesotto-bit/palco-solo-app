@@ -16,7 +16,7 @@ export function encodeMp3(buffer: AudioBuffer): Blob {
   const channels = Math.min(buffer.numberOfChannels, 2)
 
   const encoder = new lamejs.Mp3Encoder(channels, sampleRate, KBPS)
-  const mp3Parts: Int8Array[] = []
+  const mp3Parts: BlobPart[] = []
 
   // Convert float [-1,1] → Int16 [-32768,32767]
   const srcL = buffer.getChannelData(0)
@@ -35,19 +35,23 @@ export function encodeMp3(buffer: AudioBuffer): Blob {
     const chunkL = left.subarray(offset, end)
     const chunkR = right.subarray(offset, end)
 
-    const mp3buf = channels > 1
+    const mp3buf: Int8Array = channels > 1
       ? encoder.encodeBuffer(chunkL, chunkR)
       : encoder.encodeBuffer(chunkL)
 
     if (mp3buf.length > 0) {
-      mp3Parts.push(new Int8Array(mp3buf))
+      const copy = new Uint8Array(mp3buf.length)
+      for (let i = 0; i < mp3buf.length; i++) copy[i] = mp3buf[i] & 0xff
+      mp3Parts.push(copy.buffer as ArrayBuffer)
     }
   }
 
   // Flush remaining
-  const tail = encoder.flush()
+  const tail: Int8Array = encoder.flush()
   if (tail.length > 0) {
-    mp3Parts.push(new Int8Array(tail))
+    const copy = new Uint8Array(tail.length)
+    for (let i = 0; i < tail.length; i++) copy[i] = tail[i] & 0xff
+    mp3Parts.push(copy.buffer as ArrayBuffer)
   }
 
   return new Blob(mp3Parts, { type: 'audio/mpeg' })
