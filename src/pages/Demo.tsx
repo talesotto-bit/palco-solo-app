@@ -50,11 +50,10 @@ export default function Demo() {
   const speed = usePlayerStore(s => s.speed)
   const loadTrack = usePlayerStore(s => s.loadTrack)
   const error = usePlayerStore(s => s.error)
-  const isExporting = usePlayerStore(s => s.isExporting)
-  const downloadMix = usePlayerStore(s => s.downloadMix)
   const [showTuning, setShowTuning] = useState(true)
   const [showCta, setShowCta] = useState(false)
   const [dismissedCta, setDismissedCta] = useState(false)
+  const [showDownloadPopup, setShowDownloadPopup] = useState(false)
 
   useEffect(() => {
     loadCatalog('/demo-catalog.json')
@@ -424,18 +423,14 @@ export default function Demo() {
                     <ProgressBar />
                     <PlayerControls size="large" />
 
-                    {/* Download */}
+                    {/* Download — opens conversion popup */}
                     <button
-                      onClick={downloadMix}
-                      disabled={isExporting || playbackState === 'loading'}
+                      onClick={() => setShowDownloadPopup(true)}
+                      disabled={playbackState === 'loading'}
                       className="flex items-center gap-2 h-9 px-4 rounded-full text-xs font-semibold bg-white/5 text-[#b3b3b3] hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:pointer-events-none transition-colors"
                     >
-                      {isExporting ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Download className="h-3.5 w-3.5" />
-                      )}
-                      {isExporting ? 'Exportando...' : 'Baixar'}
+                      <Download className="h-3.5 w-3.5" />
+                      Baixar
                     </button>
 
                     <button
@@ -617,6 +612,74 @@ export default function Demo() {
         </div>
       </div>
       <WhatsAppButton />
+
+      {/* ── Download conversion popup ── */}
+      {showDownloadPopup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md rounded-2xl bg-gradient-to-b from-[#1e1e1e] to-[#141414] border border-white/10 shadow-2xl shadow-black/80 overflow-hidden">
+            {/* Close */}
+            <button
+              onClick={() => setShowDownloadPopup(false)}
+              className="absolute top-3 right-3 p-1.5 text-[#808080] hover:text-white transition-colors z-10"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Glow accent */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1 bg-gradient-to-r from-transparent via-[hsl(var(--primary))] to-transparent" />
+
+            <div className="px-6 pt-8 pb-6 text-center">
+              {/* Icon */}
+              <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-[hsl(var(--primary))]/15 flex items-center justify-center">
+                <Download className="h-8 w-8 text-[hsl(var(--primary))]" />
+              </div>
+
+              <h3 className="text-xl font-extrabold text-white mb-2">
+                Quer baixar suas faixas personalizadas?
+              </h3>
+              <p className="text-sm text-[#b3b3b3] leading-relaxed mb-5">
+                No plano completo, você pode <strong className="text-white">baixar qualquer faixa</strong> depois de ajustar o tom, a velocidade e remover os instrumentos que quiser. O arquivo sai pronto, do seu jeito.
+              </p>
+
+              {/* Benefits */}
+              <div className="space-y-2.5 mb-6 text-left">
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]">Baixe em <strong className="text-white">MP3 profissional</strong> com seus ajustes</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]">Tom ajustado com <strong className="text-white">I.A sem perder qualidade</strong></span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]">Remova <strong className="text-white">qualquer instrumento</strong> antes de baixar</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                  <span className="text-[#b3b3b3]"><strong className="text-white">Downloads ilimitados</strong> — acesso vitalício</span>
+                </div>
+              </div>
+
+              {/* CTA */}
+              <a
+                href="https://palcosolo.online/#pricing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full h-12 rounded-full text-sm font-bold bg-[hsl(var(--primary))] text-black hover:scale-[1.02] transition-transform"
+              >
+                <Crown className="h-4 w-4" />
+                Ver planos e preços
+                <ArrowRight className="h-4 w-4" />
+              </a>
+
+              <p className="text-[11px] text-[#535353] mt-3">
+                Pagamento único · Sem mensalidade · Garantia 30 dias
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
