@@ -54,6 +54,8 @@ interface PlayerStore extends PlayerState {
   resetSpeed: () => void
   togglePerformanceMode: () => void
   togglePrecount: () => void
+  isExporting: boolean
+  downloadMix: () => Promise<void>
   // Internal — called by AudioEngine event listener
   _setTime: (currentTime: number, duration: number) => void
   _setPlaybackState: (state: PlayerState['playbackState']) => void
@@ -246,6 +248,38 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const stemStates = buildStemStates(track)
       audioEngine.resetMix()
       set({ stemStates })
+    },
+
+    // ─── Export ──────────────────────────────────────────────────────────────
+    isExporting: false,
+
+    downloadMix: async () => {
+      const { track, stemStates, pitch, speed } = get()
+      if (!track) return
+      set({ isExporting: true })
+      try {
+        // Yield to let UI update before heavy computation
+        await new Promise(r => setTimeout(r, 50))
+        const blob = audioEngine.exportMixdown(stemStates)
+        if (!blob) {
+          set({ isExporting: false })
+          return
+        }
+        const pitchStr = pitch !== 0 ? `_${pitch > 0 ? '+' : ''}${pitch}st` : ''
+        const speedStr = speed !== 1 ? `_${speed}x` : ''
+        const filename = `${track.title} - ${track.artist}${pitchStr}${speedStr}.mp3`
+
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      } finally {
+        set({ isExporting: false })
+      }
     },
 
     // ─── UI state ───────────────────────────────────────────────────────────

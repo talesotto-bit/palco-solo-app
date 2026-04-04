@@ -19,6 +19,7 @@ import * as Tone from 'tone'
 import { SoundTouch } from 'soundtouchjs'
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
+import { encodeMp3 } from '@/lib/mp3Encoder'
 
 // ─── Audio Context unlock ───────────────────────────────────────────────────
 // Browsers block AudioContext until user gesture. This ensures it's resumed
@@ -625,6 +626,85 @@ class AudioEngine {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
     }
+  }
+
+  // ─── Export mixdown ─────────────────────────────────────────────────────────
+
+  /**
+   * Mix all stems into a single stereo WAV Blob, respecting current
+   * pitch (already baked into player buffers), speed, and stem states.
+   */
+  exportMixdown(stemStates: Record<string, StemState>): Blob | null {
+    if (!this.isLoaded || this.stems.size === 0) return null
+
+    const hasSolo = Object.values(stemStates).some(s => s.solo)
+
+    // Collect audible stems with effective volumes
+    const audible: { buffer: AudioBuffer; volume: number }[] = []
+    let maxLength = 0
+
+    for (const [id, loaded] of this.stems) {
+      const state = stemStates[id]
+      if (!state) continue
+
+      let vol: number
+      if (hasSolo) {
+        vol = state.solo ? state.volume : 0
+      } else {
+        vol = state.muted ? 0 : state.volume
+      }
+      if (vol === 0) continue
+
+      const buf = loaded.player.buffer.get() as AudioBuffer | null
+      if (!buf || buf.length < 1) continue
+
+      audible.push({ buffer: buf, volume: vol * this._volume })
+      if (buf.length > maxLength) maxLength = buf.length
+    }
+
+    if (audible.length === 0 || maxLength === 0) return null
+
+    const sampleRate = audible[0].buffer.sampleRate
+
+    // Mix all audible stems into stereo
+    const outL = new Float32Array(maxLength)
+    const outR = new Float32Array(maxLength)
+
+    for (const { buffer, volume } of audible) {
+      const srcL = buffer.getChannelData(0)
+      const srcR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : srcL
+      const len = buffer.length
+      for (let i = 0; i < len; i++) {
+        outL[i] += srcL[i] * volume
+        outR[i] += srcR[i] * volume
+      }
+    }
+
+    // Resample for speed if needed
+    let finalL = outL
+    let finalR = outR
+    let finalLength = maxLength
+
+    if (Math.abs(this._speed - 1) > 0.001) {
+      finalLength = Math.round(maxLength / this._speed)
+      finalL = new Float32Array(finalLength)
+      finalR = new Float32Array(finalLength)
+      for (let i = 0; i < finalLength; i++) {
+        const srcIdx = i * this._speed
+        const idx0 = Math.floor(srcIdx)
+        const idx1 = Math.min(idx0 + 1, maxLength - 1)
+        const frac = srcIdx - idx0
+        finalL[i] = outL[idx0] * (1 - frac) + outL[idx1] * frac
+        finalR[i] = outR[idx0] * (1 - frac) + outR[idx1] * frac
+      }
+    }
+
+    // Build AudioBuffer and encode
+    const mixed = new AudioBuffer({ numberOfChannels: 2, length: finalLength, sampleRate })
+    mixed.getChannelData(0).set(finalL)
+    mixed.getChannelData(1).set(finalR)
+
+    return encodeMp3(mixed)
   }
 
   // ─── Cleanup ───────────────────────────────────────────────────────────────

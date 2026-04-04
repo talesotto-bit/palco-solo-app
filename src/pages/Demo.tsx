@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Layers, Music2, Gauge, ChevronDown, ChevronUp, Loader2, Lock, Play, Crown, ArrowRight, Sparkles, CheckCircle2, X, Volume2 } from 'lucide-react'
+import { Layers, Music2, Gauge, ChevronDown, ChevronUp, Loader2, Lock, Play, Crown, ArrowRight, Sparkles, CheckCircle2, X, Volume2, Download } from 'lucide-react'
 import { useCatalogStore } from '@/store/catalogStore'
 import { usePlayerStore } from '@/store/playerStore'
 import { PlayerControls } from '@/components/player/PlayerControls'
@@ -50,6 +50,8 @@ export default function Demo() {
   const speed = usePlayerStore(s => s.speed)
   const loadTrack = usePlayerStore(s => s.loadTrack)
   const error = usePlayerStore(s => s.error)
+  const isExporting = usePlayerStore(s => s.isExporting)
+  const downloadMix = usePlayerStore(s => s.downloadMix)
   const [showTuning, setShowTuning] = useState(true)
   const [showCta, setShowCta] = useState(false)
   const [dismissedCta, setDismissedCta] = useState(false)
@@ -195,12 +197,10 @@ export default function Demo() {
     } catch {
       // Silently handle audio load failures on mobile
     }
-    // Scroll to player/mixer after load completes and UI renders
+    // Scroll to player after load completes and UI renders
     setTimeout(() => {
-      const mixer = document.getElementById('demo-mixer')
       const player = document.getElementById('demo-player')
-      const target = (window.innerWidth < 1024 ? (mixer ?? player) : player) ?? player
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      player?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 150)
   }
 
@@ -233,14 +233,6 @@ export default function Demo() {
       {/* Main scrollable area */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
-
-          {/* Audio tip */}
-          <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-            <Volume2 className="w-5 h-5 text-amber-400 shrink-0" />
-            <p className="text-xs sm:text-sm text-amber-200">
-              <strong>Sem som?</strong> Desative o modo silencioso do celular. Apenas aumentar o volume nao e suficiente.
-            </p>
-          </div>
 
           {/* WhatsApp support badge */}
           <a
@@ -367,6 +359,14 @@ export default function Demo() {
 
             {/* ─── RIGHT: Player (sticky) ─── */}
             <div id="demo-player" className="flex-1 min-w-0 lg:sticky lg:top-4 lg:self-start">
+              {/* Audio tip — right above the player */}
+              <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <Volume2 className="w-5 h-5 text-amber-400 shrink-0" />
+                <p className="text-xs sm:text-sm text-amber-200">
+                  <strong>Sem som?</strong> Desative o modo silencioso do celular. Apenas aumentar o volume não é suficiente.
+                </p>
+              </div>
+
               <div className="space-y-5">
                 {currentTrack ? (
                   <>
@@ -423,6 +423,20 @@ export default function Demo() {
 
                     <ProgressBar />
                     <PlayerControls size="large" />
+
+                    {/* Download mix */}
+                    <button
+                      onClick={downloadMix}
+                      disabled={isExporting || playbackState === 'loading'}
+                      className="flex items-center gap-2 h-9 px-4 rounded-full text-xs font-semibold bg-white/5 text-[#b3b3b3] hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                    >
+                      {isExporting ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                      {isExporting ? 'Exportando...' : 'Baixar mix'}
+                    </button>
 
                     <button
                       onClick={() => setShowTuning(!showTuning)}
