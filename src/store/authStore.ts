@@ -96,26 +96,20 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   register: async (name: string, email: string, password: string) => {
     set({ isLoading: true, error: null })
 
-    // Check if buyer has an approved payment
+    // Check if buyer has an approved payment (optional — assigns plan if found)
     const { data: buyer } = await supabase
       .from('approved_buyers')
       .select('plan')
       .eq('email', email.toLowerCase().trim())
       .maybeSingle()
 
-    if (!buyer) {
-      set({
-        error: 'Você precisa adquirir um plano antes de criar sua conta.',
-        isLoading: false,
-      })
-      return
-    }
+    const plan = buyer?.plan || 'professional'
 
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { name, plan: buyer.plan || 'basic' },
+        data: { name, plan },
       },
     })
 
