@@ -16,7 +16,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || ''
 
 const ZAPI_BASE = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`
 
-const AVANCADO_URL = 'https://payfast.greenn.com.br/152815/offer/gxUz6f'
+const AVANCADO_URL = 'https://payfast.greenn.com.br/153173/offer/uQvM0g'
 const DEMO_URL = 'https://palco-solo-app.vercel.app/demo'
 const AMOSTRAS_URL = 'https://www.palcosolo.online/amostras'
 
@@ -70,7 +70,7 @@ ETAPA 6 — PLANOS (so quando ele perguntar preco OU demonstrar que quer):
 "Tem tres opcoes, tudo pagamento unico, sem mensalidade:
 
 *Basico* — R$47: playbacks MP3 + acesso a plataforma
-*Profissional* — R$127: tudo do basico + VS Multipista + karaoke com letra
+*Profissional* — R$129,90: tudo do basico + VS Multipista + karaoke com letra
 *Avancado* — R$197: tudo + IA de tom + artes pra redes + aula de canto + curso de trafego pago
 
 O Avancado e o que a maioria pega porque vem completo. Mas qual faz mais sentido pra voce?"

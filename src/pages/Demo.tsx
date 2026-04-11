@@ -13,7 +13,7 @@ import type { Track } from '@/types/track'
 import WhatsAppButton from '@/components/WhatsAppButton'
 
 const TRACKS_PER_GENRE = 5
-const CTA_URL = 'https://payfast.greenn.com.br/152815/offer/gxUz6f'
+const CTA_URL = 'https://payfast.greenn.com.br/153173/offer/uQvM0g'
 
 /** Max editable stems shown in demo mixer — rest play in background */
 const MAX_MIXER_STEMS = 8
