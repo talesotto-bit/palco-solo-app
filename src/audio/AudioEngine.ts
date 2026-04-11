@@ -660,6 +660,7 @@ class AudioEngine {
         if (vol === 0) continue
 
         // Tone.Player.buffer is a ToneAudioBuffer — get the raw AudioBuffer
+        // Fall back to originalBuffer if player buffer is unavailable
         let buf: AudioBuffer | null = null
         try {
           const toneBuffer = loaded.player.buffer
@@ -669,8 +670,10 @@ class AudioEngine {
             buf = toneBuffer as unknown as AudioBuffer
           }
         } catch {
-          console.warn(`[AudioEngine] Could not read buffer for stem ${id}`)
-          continue
+          // player buffer unavailable — will use originalBuffer below
+        }
+        if (!buf || !buf.length || buf.length < 1) {
+          buf = loaded.originalBuffer
         }
         if (!buf || !buf.length || buf.length < 1) continue
 
