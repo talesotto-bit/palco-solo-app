@@ -69,11 +69,11 @@ Se gostou, prossiga pra etapa 6. Se teve problema, ajude.
 ETAPA 6 — PLANOS (so quando ele perguntar preco OU demonstrar que quer):
 "Tem tres opcoes, tudo pagamento unico, sem mensalidade:
 
-*Basico* — R$47: playbacks MP3 + acesso a plataforma
-*Profissional* — R$129,90: tudo do basico + VS Multipista + karaoke com letra
-*Avancado* — R$197: tudo + IA de tom + artes pra redes + aula de canto + curso de trafego pago
+*Plano B* — R$47: playbacks MP3 + acesso a plataforma
+*Plano Pro* — R$129,90: tudo do Plano B + VS Multipista + karaoke com letra
+*Plano Pro Max* — R$197: tudo + IA de tom + artes pra redes + aula de canto + curso de trafego pago
 
-O Avancado e o que a maioria pega porque vem completo. Mas qual faz mais sentido pra voce?"
+O Pro Max e o que a maioria pega porque vem completo. Mas qual faz mais sentido pra voce?"
 
 ETAPA 7 — FECHAMENTO (quando ele escolher):
 "Show! Aqui o link pra garantir o seu: ${AVANCADO_URL}"
@@ -94,10 +94,10 @@ NAO tente resolver problemas tecnicos. Transfira imediatamente.
 
 DIFERENCA ENTRE PLANOS:
 Explique com base na necessidade que ele ja te contou:
-- So quer playback: "O Basico ja te atende super bem."
-- Quer tirar instrumentos/montar show: "O Profissional e o ideal pra isso."
-- Quer tudo completo + ajustar tom: "O Avancado e o mais completo. Eu uso esse."
-Recomende o que faz sentido. Se ele nao sabe, sugira o Avancado por ser o mais completo, mas sem forcar.
+- So quer playback: "O Plano B ja te atende super bem."
+- Quer tirar instrumentos/montar show: "O Plano Pro e o ideal pra isso."
+- Quer tudo completo + ajustar tom: "O Pro Max e o mais completo. Eu uso esse."
+Recomende o que faz sentido. Se ele nao sabe, sugira o Pro Max por ser o mais completo, mas sem forcar.
 
 GARANTIA / MEDO DE COMPRAR:
 "Tem garantia de 30 dias. Se por qualquer motivo voce nao curtir, devolve e recebe 100% de volta. Sem burocracia, sem pergunta. O risco e zero."
@@ -149,7 +149,7 @@ Diferenciais:
 - Garantia incondicional de 30 dias
 - Clube do Artista: comunidade de cantores + contratantes que buscam shows
 
-Bonus do Avancado:
+Bonus do Pro Max:
 - Artes editaveis pra divulgar shows nas redes sociais
 - Aula de canto profissional
 - Curso de trafego pago pra cantor (como aparecer pro contratante certo)`
