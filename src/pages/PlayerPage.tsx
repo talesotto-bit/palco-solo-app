@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Mic2, Layers, Music2,
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp,
-  Gauge, Heart, Save, Check,
+  Gauge, Heart, Save, Check, Download, Loader2,
 } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
@@ -31,6 +31,8 @@ export default function PlayerPage() {
   const saveSettings = useTrackSettingsStore(s => s.save)
   const hasSaved = useTrackSettingsStore(s => s.has)
   const removeSettings = useTrackSettingsStore(s => s.remove)
+  const isExporting = usePlayerStore(s => s.isExporting)
+  const downloadMix = usePlayerStore(s => s.downloadMix)
   const [showTuning, setShowTuning] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
 
@@ -190,6 +192,23 @@ export default function PlayerPage() {
                       <><Save className="h-4 w-4" /> Ajustes Salvos</>
                     ) : (
                       <><Save className="h-4 w-4" /> Salvar Ajustes</>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={downloadMix}
+                    disabled={isExporting || playbackState === 'loading'}
+                    className={cn(
+                      'flex items-center gap-1.5 h-9 rounded-full px-4 text-xs font-semibold transition-colors',
+                      isExporting
+                        ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] cursor-wait'
+                        : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
+                    )}
+                  >
+                    {isExporting ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Exportando...</>
+                    ) : (
+                      <><Download className="h-4 w-4" /> Baixar Música</>
                     )}
                   </button>
                 </div>
