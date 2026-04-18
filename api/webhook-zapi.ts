@@ -16,7 +16,9 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || ''
 
 const ZAPI_BASE = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`
 
-const AVANCADO_URL = 'https://payfast.greenn.com.br/153173/offer/uQvM0g'
+const PLANO_B_URL = 'https://seguroamplopay.com/checkout/cmo3fg2fi008z1yk35wodi5j1?offer=UGYPPYA'
+const PRO_URL = 'https://seguroamplopay.com/checkout/cmo3fg2fi008z1yk35wodi5j1?offer=HSP60FF'
+const PRO_MAX_URL = 'https://seguroamplopay.com/checkout/cmo3fg2fi008z1yk35wodi5j1?offer=PYJFPQG'
 const DEMO_URL = 'https://palco-solo-app.vercel.app/demo'
 const AMOSTRAS_URL = 'https://www.palcosolo.online/amostras'
 
@@ -76,8 +78,12 @@ ETAPA 6 — PLANOS (so quando ele perguntar preco OU demonstrar que quer):
 O Pro Max e o que a maioria pega porque vem completo. Mas qual faz mais sentido pra voce?"
 
 ETAPA 7 — FECHAMENTO (quando ele escolher):
-"Show! Aqui o link pra garantir o seu: ${AVANCADO_URL}"
-Se quiser outro plano: "Me fala qual que eu te mando o link certo 👊"
+Envie o link correto do plano que ele escolheu:
+- Se escolheu Plano B: "Show! Aqui o link pra garantir o seu: ${PLANO_B_URL}"
+- Se escolheu Plano Pro: "Show! Aqui o link pra garantir o seu: ${PRO_URL}"
+- Se escolheu Plano Pro Max: "Show! Aqui o link pra garantir o seu: ${PRO_MAX_URL}"
+Se nao especificou qual, sugira o Pro Max: "Show! Aqui o link do Pro Max, o mais completo: ${PRO_MAX_URL}"
+Se quiser trocar: "Tranquilo! Me fala qual que eu te mando o link certo 👊"
 Depois: "Qualquer duvida e so me chamar aqui. Bem-vindo ao Palco Solo!"
 
 ═══════════════════════════════════════
