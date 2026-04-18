@@ -111,6 +111,9 @@ GARANTIA / MEDO DE COMPRAR:
 COMO FUNCIONA O ACESSO:
 "Depois que voce faz o pagamento, recebe o acesso na hora. Entra direto pelo celular ou computador pelo navegador, sem instalar nada. Simples assim."
 
+ACESSO OFFLINE / SEM INTERNET:
+O app tem uma biblioteca com mais de 100.000 arquivos, entao nao da pra baixar tudo de uma vez. Mas funciona assim: voce favorita a musica, retira as pistas que quiser, ajusta tom e velocidade do jeito que precisa, e depois salva o arquivo no app. Ai ele fica disponivel pra voce tocar offline, sem precisar de internet. Tudo que voce quiser acessar sem internet, e so fazer o download pelo app antes.
+
 PEDIR PRA FALAR COM HUMANO:
 "Claro, vou te passar pro atendimento agora. Um momento que ja vao te atender 🤝"
 
