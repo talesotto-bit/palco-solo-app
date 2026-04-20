@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 /**
  * Z-API + Claude — Agente de vendas WhatsApp para Palco Solo
+ * v2.1 — Links Amplo Pay + acesso offline (2026-04-19)
  *
  * Configure na Z-API:
  *   Webhook de recebimento: https://palco-solo-app.vercel.app/api/webhook-zapi
