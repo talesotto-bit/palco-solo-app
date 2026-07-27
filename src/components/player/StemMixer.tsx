@@ -1,4 +1,4 @@
-import { Volume2, VolumeX, RotateCcw, Layers } from 'lucide-react'
+import { VolumeX, RotateCcw, Layers } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { Slider } from '@/components/ui/slider'
 import { INSTRUMENT_LABELS, INSTRUMENT_ICONS } from '@/types/track'
@@ -101,7 +101,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
     ? track.stems.filter(s => visibleStemIds.has(s.id))
     : track.stems
   const hasSolo = Object.values(stemStates).some(s => s.solo)
-  const anyModified = Object.values(stemStates).some(s => s.muted || s.solo || s.volume !== 0.85)
+  const anyModified = Object.values(stemStates).some(s => s.muted || s.solo || s.volume !== 1)
   const isPlaying = playbackState === 'playing'
 
   if (!track.hasStems || stems.length <= 1) {

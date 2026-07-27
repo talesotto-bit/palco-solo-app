@@ -119,9 +119,10 @@ function processBufferWSola(
     }
   }
 
-  // Flush: feed silence to get remaining buffered output
+  // Flush: feed silence until no more output is produced
   const silence = new Float32Array(CHUNK * 2)
-  for (let flush = 0; flush < 3; flush++) {
+  let emptyFlushes = 0
+  while (emptyFlushes < 3) {
     st.inputBuffer.putSamples(silence, 0, CHUNK)
     st.process()
     const avail = st.outputBuffer.frameCount
@@ -130,6 +131,9 @@ function processBufferWSola(
       st.outputBuffer.receiveSamples(out, avail)
       outputChunks.push(out)
       totalOutput += avail
+      emptyFlushes = 0
+    } else {
+      emptyFlushes++
     }
   }
 
@@ -158,19 +162,6 @@ function processBufferWSola(
   return outBuffer
 }
 
-/** Clone a raw AudioBuffer (deep copy of channel data) */
-function cloneAudioBuffer(buf: AudioBuffer): AudioBuffer {
-  const clone = new AudioBuffer({
-    numberOfChannels: buf.numberOfChannels,
-    length: buf.length,
-    sampleRate: buf.sampleRate,
-  })
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    clone.getChannelData(ch).set(buf.getChannelData(ch))
-  }
-  return clone
-}
-
 // ─── AudioEngine ────────────────────────────────────────────────────────────
 
 class AudioEngine {
@@ -196,7 +187,7 @@ class AudioEngine {
 
     // Resume AudioContext when tab returns from background (mobile browsers suspend it)
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && this.isLoaded) {
+      if (document.visibilityState === 'visible') {
         const ctx = Tone.getContext().rawContext
         if (ctx.state === 'suspended') {
           (ctx as AudioContext).resume().catch(() => {})
@@ -317,8 +308,7 @@ class AudioEngine {
         if (jobId !== this._pitchJobId) return
 
         try {
-          const safeBuf = cloneAudioBuffer(stem.originalBuffer)
-          const result = processBufferWSola(safeBuf, totalSemitones)
+          const result = processBufferWSola(stem.originalBuffer, totalSemitones)
           processed.set(id, result)
         } catch (err) {
           console.warn(`[AudioEngine] Pitch processing failed for stem ${id}:`, err)
@@ -490,11 +480,11 @@ class AudioEngine {
     Tone.getTransport().stop()
     Tone.getTransport().position = 0
     this.stopTimeUpdater()
-    this.emit({ type: 'timeupdate', currentTime: 0, duration: this._duration })
+    this.emit({ type: 'timeupdate', currentTime: 0, duration: this.duration })
   }
 
   seek(seconds: number): void {
-    const clamped = Math.max(0, Math.min(seconds, this._duration - 0.1))
+    const clamped = Math.max(0, Math.min(seconds, this.duration - 0.1))
     Tone.getTransport().seconds = clamped
   }
 
@@ -503,7 +493,7 @@ class AudioEngine {
   }
 
   get duration(): number {
-    return this._duration
+    return this._speed > 0 ? this._duration / this._speed : this._duration
   }
 
   get isPlaying(): boolean {
@@ -604,9 +594,10 @@ class AudioEngine {
     const update = () => {
       if (cancelled || !this.isLoaded) return
       const ct = Tone.getTransport().seconds
-      this.emit({ type: 'timeupdate', currentTime: ct, duration: this._duration })
+      const effectiveDur = this.duration
+      this.emit({ type: 'timeupdate', currentTime: ct, duration: effectiveDur })
 
-      if (this._duration > 0 && ct >= this._duration - 0.1) {
+      if (effectiveDur > 0 && ct >= effectiveDur - 0.1) {
         this.stop()
         this.emit({ type: 'ended' })
         return
@@ -771,6 +762,8 @@ class AudioEngine {
 
     this.isLoaded = false
     this._duration = 0
+    this._pitch = 0
+    this._speed = 1
   }
 }
 

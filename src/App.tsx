@@ -63,7 +63,7 @@ export default function App() {
               path="/app/performance"
               element={
                 <ProtectedRoute>
-                  <Performance />
+                  <ErrorBoundary><Performance /></ErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -73,7 +73,7 @@ export default function App() {
               path="/app"
               element={
                 <ProtectedRoute>
-                  <AppLayout />
+                  <ErrorBoundary><AppLayout /></ErrorBoundary>
                 </ProtectedRoute>
               }
             >

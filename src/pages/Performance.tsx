@@ -162,16 +162,20 @@ export default function Performance() {
 
   // Auto-advance
   const prevState = useRef(playbackState)
+  const setlistRef = useRef(setlist)
+  setlistRef.current = setlist
+  const playFromSetlistRef = useRef(playFromSetlist)
+  playFromSetlistRef.current = playFromSetlist
   useEffect(() => {
     if (prevState.current === 'playing' && playbackState === 'stopped' && duration > 0) {
-      // Song ended, play next
-      const next = setlist.currentIdx + 1
-      if (next < setlist.songs.length) {
-        playFromSetlist(next)
+      const sl = setlistRef.current
+      const next = sl.currentIdx + 1
+      if (next < sl.songs.length) {
+        playFromSetlistRef.current(next)
       }
     }
     prevState.current = playbackState
-  }, [playbackState])
+  }, [playbackState, duration])
 
   // Search results
   const results = useMemo(() => {

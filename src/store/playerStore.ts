@@ -18,6 +18,8 @@ function cleanupPreviousBlobUrls() {
 }
 import { useTrackSettingsStore } from './trackSettingsStore'
 
+let _trackLoadId = 0
+
 /** Resolve cache:// URLs para blob URLs reais antes de carregar no engine */
 async function resolveTrackUrls(track: Track): Promise<Track> {
   const cacheKeys = track.stems
@@ -114,10 +116,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
     // ─── Track loading ──────────────────────────────────────────────────────
     loadTrack: async (track: Track) => {
+      const loadId = ++_trackLoadId
       const defaultStems = buildStemStates(track)
       const saved = useTrackSettingsStore.getState().get(track.id)
 
-      // Apply saved settings if available, otherwise use defaults
       const stemStates = saved ? { ...defaultStems, ...saved.stemStates } : defaultStems
       const pitch = saved?.pitch ?? 0
       const speed = saved?.speed ?? 1
@@ -129,18 +131,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         try {
           resolvedTrack = await resolveTrackUrls(track)
         } catch {
-          // IndexedDB may fail (private browsing, quota) — fall back to raw URLs
           resolvedTrack = track
         }
+        if (loadId !== _trackLoadId) return
         await audioEngine.load(resolvedTrack.stems)
+        if (loadId !== _trackLoadId) return
 
-        // Apply saved pitch/speed/stems to engine
-        if (pitch !== 0) audioEngine.setPitch(pitch)
-        if (speed !== 1) audioEngine.setSpeed(speed)
+        audioEngine.setPitch(pitch)
+        audioEngine.setSpeed(speed)
         if (saved) audioEngine.setStemStates(stemStates)
 
         set({ playbackState: 'paused', duration: audioEngine.duration })
       } catch (err) {
+        if (loadId !== _trackLoadId) return
         set({ playbackState: 'error', error: 'Falha ao carregar a faixa. Tente novamente.' })
       }
     },

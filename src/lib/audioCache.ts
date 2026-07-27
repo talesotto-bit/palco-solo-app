@@ -12,13 +12,21 @@ const DB_NAME = 'palco-solo-audio-cache'
 const DB_VERSION = 1
 const STORE = 'files'
 
+let _cachedDB: IDBDatabase | null = null
+
 function openDB(): Promise<IDBDatabase> {
+  if (_cachedDB) return Promise.resolve(_cachedDB)
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
       req.result.createObjectStore(STORE)
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onsuccess = () => {
+      _cachedDB = req.result
+      _cachedDB.onclose = () => { _cachedDB = null }
+      _cachedDB.onerror = () => { _cachedDB = null }
+      resolve(_cachedDB)
+    }
     req.onerror = () => reject(req.error)
   })
 }

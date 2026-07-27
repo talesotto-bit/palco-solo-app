@@ -406,16 +406,21 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
 
 // ─── Store ─────────────────────────────────────────────────────────────
 
-export const useCatalogStore = create<CatalogState>((set) => ({
+interface CatalogStateInternal extends CatalogState {
+  _loadedUrl: string | null
+}
+
+export const useCatalogStore = create<CatalogStateInternal>((set) => ({
   tracks: [],
   genres: [],
   isLoading: false,
   error: null,
+  _loadedUrl: null,
 
   loadCatalog: async (url = '/catalog.json') => {
-    // Guard: don't load if already loading or already loaded
     const state = useCatalogStore.getState()
-    if (state.isLoading || state.tracks.length > 0) return
+    if (state.isLoading) return
+    if (state.tracks.length > 0 && state._loadedUrl === url) return
     set({ isLoading: true, error: null })
     try {
       let catalog: CatalogSong[] = []
@@ -451,7 +456,7 @@ export const useCatalogStore = create<CatalogState>((set) => ({
         count,
       })).sort((a, b) => b.count - a.count)
 
-      set({ tracks, genres, isLoading: false })
+      set({ tracks, genres, isLoading: false, _loadedUrl: url })
     } catch (err: any) {
       set({ error: err.message, isLoading: false })
     }

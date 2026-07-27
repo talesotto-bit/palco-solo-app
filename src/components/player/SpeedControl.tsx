@@ -27,7 +27,7 @@ export function SpeedControl({ compact = false }: SpeedControlProps) {
   const track = usePlayerStore(s => s.track)
 
   const step = (direction: 1 | -1) => {
-    const next = Math.round((speed + direction * 0.01) * 100) / 100
+    const next = Math.round((speed + direction * 0.05) * 100) / 100
     if (next >= 0.5 && next <= 2.0) setSpeed(next)
   }
 

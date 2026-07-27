@@ -43,7 +43,7 @@ export function MiniPlayer() {
       </div>
 
       {/* Content */}
-      <div className="flex items-center h-[54px] md:h-[72px] px-3 md:px-4 gap-2 md:gap-0">
+      <div className="relative flex items-center h-[54px] md:h-[72px] px-3 md:px-4 gap-2 md:gap-0">
         {/* Left — Track info */}
         <div
           className="flex items-center gap-2.5 md:gap-3 flex-1 md:flex-none md:w-[30%] min-w-0 cursor-pointer"

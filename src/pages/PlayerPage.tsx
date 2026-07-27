@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import {
-  Mic2, Layers, Music2,
+  Mic2, Layers, Music2, Type,
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp,
   Gauge, Heart, Save, Check, Download, Loader2,
 } from 'lucide-react'
@@ -12,7 +12,7 @@ import { ProgressBar } from '@/components/player/ProgressBar'
 import { PitchControl } from '@/components/player/PitchControl'
 import { SpeedControl } from '@/components/player/SpeedControl'
 import { StemMixer } from '@/components/player/StemMixer'
-import { Badge } from '@/components/ui/badge'
+import { LyricsPanel } from '@/components/player/LyricsPanel'
 import { semitonesToLabel, speedToLabel } from '@/lib/utils'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -24,7 +24,6 @@ export default function PlayerPage() {
   const speed = usePlayerStore(s => s.speed)
   const playbackState = usePlayerStore(s => s.playbackState)
   const stemStates = usePlayerStore(s => s.stemStates)
-  const togglePerformanceMode = usePlayerStore(s => s.togglePerformanceMode)
   const error = usePlayerStore(s => s.error)
   const toggleFav = useFavoritesStore(s => s.toggle)
   const isFav = useFavoritesStore(s => s.isFavorite)
@@ -34,6 +33,7 @@ export default function PlayerPage() {
   const isExporting = usePlayerStore(s => s.isExporting)
   const downloadMix = usePlayerStore(s => s.downloadMix)
   const [showTuning, setShowTuning] = useState(false)
+  const [showLyrics, setShowLyrics] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
 
   if (!track) {
@@ -82,7 +82,7 @@ export default function PlayerPage() {
 
             <div className="flex items-center gap-2">
               <button
-                onClick={togglePerformanceMode}
+                onClick={() => navigate('/app/performance')}
                 className="flex items-center gap-2 h-8 rounded-full px-4 text-xs font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors"
               >
                 <Mic2 className="h-3.5 w-3.5" />
@@ -254,6 +254,22 @@ export default function PlayerPage() {
           <div id="player-mixer" className="scroll-mt-4">
             <StemMixer />
           </div>
+
+          {/* Lyrics toggle */}
+          <button
+            onClick={() => setShowLyrics(!showLyrics)}
+            className="flex items-center gap-2 text-sm font-semibold text-[#b3b3b3] hover:text-white transition-colors"
+          >
+            <Type className="h-4 w-4" />
+            Letra da Música
+            {showLyrics ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+
+          {showLyrics && (
+            <div className="animate-fade-in">
+              <LyricsPanel />
+            </div>
+          )}
         </div>
       </div>
     </div>
