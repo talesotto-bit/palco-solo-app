@@ -6,6 +6,8 @@ import { useFavoritesStore } from '@/store/favoritesStore'
 import { TrackCard } from '@/components/library/TrackCard'
 import { cn } from '@/lib/utils'
 
+const MAX_RESULTS = 80
+
 export default function Library() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -28,7 +30,7 @@ export default function Library() {
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value)
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => setDebouncedSearch(value), 250)
+    debounceRef.current = setTimeout(() => setDebouncedSearch(value), 350)
   }, [])
 
   useEffect(() => () => clearTimeout(debounceRef.current), [])
@@ -37,7 +39,7 @@ export default function Library() {
 
   const isFiltering = debouncedSearch.trim() !== '' || genre !== 'all' || showFavs
 
-  const filtered = useMemo(() => {
+  const { filtered, totalCount } = useMemo(() => {
     let list = tracks
 
     if (showFavs) {
@@ -57,26 +59,30 @@ export default function Library() {
       list = list.filter(t => t.genre === genre || (t.tags || []).includes(genre))
     }
 
-    return list.sort((a, b) => a.title.localeCompare(b.title))
+    list.sort((a, b) => a.title.localeCompare(b.title))
+    const totalCount = list.length
+    return { filtered: list.slice(0, MAX_RESULTS), totalCount }
   }, [tracks, debouncedSearch, genre, showFavs, favIds])
 
-  // Grouped by first letter for alphabetical sections
-  const alphabetSections = useMemo(() => {
-    if (!isFiltering && genre === 'all') return null
-    const sections: { letter: string; tracks: typeof filtered }[] = []
-    const map = new Map<string, typeof filtered>()
+  const hasMore = totalCount > MAX_RESULTS
+  const [showAll, setShowAll] = useState(false)
 
-    for (const t of filtered) {
-      const letter = (t.title[0] || '#').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z]/, '#')
-      if (!map.has(letter)) map.set(letter, [])
-      map.get(letter)!.push(t)
-    }
+  useEffect(() => { setShowAll(false) }, [debouncedSearch, genre, showFavs])
 
-    for (const [letter, tracks] of [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-      sections.push({ letter, tracks })
+  const displayTracks = showAll ? (() => {
+    let list = tracks
+    if (showFavs) list = list.filter(t => favIds.includes(t.id))
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase()
+      list = list.filter(t =>
+        t.title.toLowerCase().includes(q) ||
+        t.artist.toLowerCase().includes(q) ||
+        (t.tags || []).some(tag => tag.toLowerCase().includes(q))
+      )
     }
-    return sections
-  }, [filtered, isFiltering, genre, showFavs])
+    if (genre !== 'all') list = list.filter(t => t.genre === genre || (t.tags || []).includes(genre))
+    return list.sort((a, b) => a.title.localeCompare(b.title))
+  })() : filtered
 
   // Genre sections for browse mode
   const genreSections = useMemo(() => {
@@ -149,7 +155,7 @@ export default function Library() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#808080]" />
           <input
             type="text"
-            placeholder="Buscar por título ou artista..."
+            placeholder="Buscar por titulo ou artista..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full h-10 rounded-lg bg-[#2a2a2a] pl-10 pr-10 text-sm text-white placeholder:text-[#808080] border-0 outline-none focus:ring-1 focus:ring-white/20 transition"
@@ -217,7 +223,7 @@ export default function Library() {
         {catalogLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Loader2 className="h-6 w-6 animate-spin text-white/40" />
-            <p className="text-sm text-[#808080]">Carregando catálogo...</p>
+            <p className="text-sm text-[#808080]">Carregando catalogo...</p>
           </div>
         )}
 
@@ -226,24 +232,24 @@ export default function Library() {
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
             <p className="text-lg font-semibold text-white">Biblioteca vazia</p>
             <p className="text-sm text-[#808080] max-w-xs">
-              Use a página "Separar" para importar suas músicas.
+              Use a pagina "Separar" para importar suas musicas.
             </p>
           </div>
         )}
 
         {/* No results */}
-        {!catalogLoading && tracks.length > 0 && filtered.length === 0 && (
+        {!catalogLoading && tracks.length > 0 && totalCount === 0 && isFiltering && (
           <div className="flex flex-col items-center py-20 gap-2">
             {showFavs ? (
               <>
                 <Heart className="h-10 w-10 text-[#808080] mb-2" />
                 <p className="text-base font-semibold text-white">Nenhum favorito</p>
-                <p className="text-sm text-[#808080]">Toque no cora\u00e7\u00e3o de uma m\u00fasica para adicion\u00e1-la aqui.</p>
+                <p className="text-sm text-[#808080]">Toque no coracao de uma musica para adiciona-la aqui.</p>
               </>
             ) : (
               <>
                 <p className="text-base font-semibold text-white">Nenhum resultado</p>
-                <p className="text-sm text-[#808080]">Tente outro termo ou g\u00eanero.</p>
+                <p className="text-sm text-[#808080]">Tente outro termo ou genero.</p>
               </>
             )}
             <button
@@ -291,42 +297,48 @@ export default function Library() {
               </section>
             ))}
 
-            {/* End-of-list search hint */}
             <div className="flex items-center justify-center gap-2 py-8 text-[#808080]">
               <Search className="h-4 w-4 shrink-0" />
               <p className="text-xs text-center">
-                Para uma melhor experiência, busque por título ou artista na barra acima.
+                Para uma melhor experiencia, busque por titulo ou artista na barra acima.
               </p>
             </div>
           </div>
         )}
 
-        {/* Filtered results with alphabetical sections */}
-        {alphabetSections && alphabetSections.length > 0 && (
-          <div className="space-y-5">
-            {alphabetSections.map(section => (
-              <section key={section.letter}>
-                <div className="sticky top-0 z-[5] bg-[#121212] py-1 mb-1">
-                  <span className="text-xs font-bold text-[#808080] uppercase tracking-wider">
-                    {section.letter}
-                  </span>
-                </div>
+        {/* Filtered results — flat list (no alphabetical grouping to avoid DOM explosion) */}
+        {isFiltering && totalCount > 0 && (
+          <div>
+            {/* Result count */}
+            <p className="text-xs text-[#808080] mb-3">
+              {totalCount} resultado{totalCount !== 1 ? 's' : ''}
+              {hasMore && !showAll && ` (mostrando ${MAX_RESULTS})`}
+            </p>
 
-                {viewMode === 'grid' ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
-                    {section.tracks.map(track => (
-                      <TrackCard key={track.id} track={track} view="grid" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-0.5">
-                    {section.tracks.map((track, i) => (
-                      <TrackCard key={track.id} track={track} view="list" index={i + 1} />
-                    ))}
-                  </div>
-                )}
-              </section>
-            ))}
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+                {displayTracks.map(track => (
+                  <TrackCard key={track.id} track={track} view="grid" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {displayTracks.map((track, i) => (
+                  <TrackCard key={track.id} track={track} view="list" index={i + 1} />
+                ))}
+              </div>
+            )}
+
+            {hasMore && !showAll && (
+              <div className="flex justify-center py-6">
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="h-9 rounded-full px-6 text-xs font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors"
+                >
+                  Mostrar todos ({totalCount})
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

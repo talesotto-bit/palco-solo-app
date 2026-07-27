@@ -111,18 +111,20 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       }
 
       const data = await res.json()
+      const plain = data.plainLyrics || data.lyrics || ''
+      const synced = data.syncedLyrics || null
       setCache(key, {
-        plainLyrics: data.plainLyrics,
-        syncedLyrics: data.syncedLyrics,
+        plainLyrics: plain,
+        syncedLyrics: synced,
         source: data.source,
       })
 
       if (get().trackId !== trackId) return
 
-      const synced = data.syncedLyrics ? parseLrc(data.syncedLyrics) : null
+      const parsed = synced ? parseLrc(synced) : null
       set({
-        plainLyrics: data.plainLyrics || null,
-        syncedLines: synced && synced.length > 0 ? synced : null,
+        plainLyrics: plain || null,
+        syncedLines: parsed && parsed.length > 0 ? parsed : null,
         source: data.source,
         isLoading: false,
       })

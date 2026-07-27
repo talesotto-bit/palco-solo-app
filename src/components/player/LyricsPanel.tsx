@@ -78,7 +78,7 @@ export function LyricsPanel() {
   if (!track) return null
 
   return (
-    <div className="flex flex-col h-full rounded-lg bg-white/5 overflow-hidden">
+    <div className="flex flex-col min-h-[300px] lg:h-full rounded-lg bg-white/5 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <p className="text-sm font-bold text-white">Letra</p>
