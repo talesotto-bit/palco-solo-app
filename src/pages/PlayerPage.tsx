@@ -13,6 +13,7 @@ import { PitchControl } from '@/components/player/PitchControl'
 import { SpeedControl } from '@/components/player/SpeedControl'
 import { StemMixer } from '@/components/player/StemMixer'
 import { LyricsPanel } from '@/components/player/LyricsPanel'
+import { useCoverArt } from '@/hooks/useCoverArt'
 import { semitonesToLabel, speedToLabel } from '@/lib/utils'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -34,6 +35,7 @@ export default function PlayerPage() {
   const downloadMix = usePlayerStore(s => s.downloadMix)
   const [showTuning, setShowTuning] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
+  const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
   if (!track) {
     return (
@@ -107,9 +109,9 @@ export default function PlayerPage() {
                 <div className="w-full max-w-[200px] mx-auto md:mx-0 md:max-w-none md:w-56 shrink-0">
                   <div className="relative aspect-square rounded-lg overflow-hidden shadow-2xl shadow-black/60">
                     <img
-                      src={track.coverUrl}
+                      src={coverUrl}
                       alt={track.title}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover bg-[#2a2a2a]"
                     />
                     {isPlaying && (
                       <div className="absolute bottom-3 left-3 flex items-end gap-1 h-5">

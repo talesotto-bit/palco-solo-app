@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Play, Pause, SkipBack, SkipForward, ChevronUp, Volume2, VolumeX } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
+import { useCoverArt } from '@/hooks/useCoverArt'
 import { Slider } from '@/components/ui/slider'
 import { formatTime } from '@/lib/utils'
 
@@ -17,6 +18,8 @@ export function MiniPlayer() {
   const skipForward = usePlayerStore(s => s.skipForward)
   const setVolume = usePlayerStore(s => s.setVolume)
   const seek = usePlayerStore(s => s.seek)
+
+  const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
   if (!track) return null
 
@@ -50,9 +53,9 @@ export function MiniPlayer() {
           onClick={() => navigate('/app/player')}
         >
           <img
-            src={track.coverUrl}
+            src={coverUrl}
             alt={track.title}
-            className="h-10 w-10 md:h-14 md:w-14 rounded-md object-cover shrink-0 shadow-lg"
+            className="h-10 w-10 md:h-14 md:w-14 rounded-md object-cover shrink-0 shadow-lg bg-[#2a2a2a]"
           />
           <div className="min-w-0 flex-1">
             <p className="text-xs md:text-sm font-medium text-white truncate">
