@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 
+export interface LrcLine {
+  time: number
+  text: string
+}
+
 interface LyricsState {
-  lyrics: string | null
+  plainLyrics: string | null
+  syncedLines: LrcLine[] | null
   isLoading: boolean
   error: string | null
   trackId: string | null
@@ -10,10 +16,16 @@ interface LyricsState {
   clear: () => void
 }
 
-const CACHE_KEY = 'palco-lyrics-cache'
+const CACHE_KEY = 'palco-lyrics-cache-v2'
 const MAX_CACHE = 200
 
-function getCache(): Record<string, { lyrics: string; source: string }> {
+interface CacheEntry {
+  plainLyrics: string
+  syncedLyrics: string | null
+  source: string
+}
+
+function getCache(): Record<string, CacheEntry> {
   try {
     return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}')
   } catch {
@@ -21,10 +33,10 @@ function getCache(): Record<string, { lyrics: string; source: string }> {
   }
 }
 
-function setCache(key: string, lyrics: string, source: string) {
+function setCache(key: string, entry: CacheEntry) {
   try {
     const cache = getCache()
-    cache[key] = { lyrics, source }
+    cache[key] = entry
     const keys = Object.keys(cache)
     if (keys.length > MAX_CACHE) {
       keys.slice(0, keys.length - MAX_CACHE).forEach(k => delete cache[k])
@@ -33,28 +45,54 @@ function setCache(key: string, lyrics: string, source: string) {
   } catch {}
 }
 
-function cacheKey(artist: string, title: string): string {
+function cacheKeyFor(artist: string, title: string): string {
   return `${artist.toLowerCase().trim()}::${title.toLowerCase().trim()}`
 }
 
+function parseLrc(lrc: string): LrcLine[] {
+  const lines: LrcLine[] = []
+  for (const raw of lrc.split('\n')) {
+    const match = raw.match(/^\[(\d{2}):(\d{2})\.(\d{2,3})\]\s*(.*)$/)
+    if (!match) continue
+    const mins = parseInt(match[1], 10)
+    const secs = parseInt(match[2], 10)
+    const ms = match[3].length === 2
+      ? parseInt(match[3], 10) * 10
+      : parseInt(match[3], 10)
+    const time = mins * 60 + secs + ms / 1000
+    const text = match[4].trim()
+    if (text) lines.push({ time, text })
+  }
+  return lines.sort((a, b) => a.time - b.time)
+}
+
 export const useLyricsStore = create<LyricsState>((set, get) => ({
-  lyrics: null,
+  plainLyrics: null,
+  syncedLines: null,
   isLoading: false,
   error: null,
   trackId: null,
   source: null,
 
   fetchLyrics: async (artist: string, title: string, trackId: string) => {
-    if (get().trackId === trackId && get().lyrics) return
+    if (get().trackId === trackId && (get().plainLyrics || get().syncedLines)) return
 
-    const key = cacheKey(artist, title)
+    const key = cacheKeyFor(artist, title)
     const cached = getCache()[key]
     if (cached) {
-      set({ lyrics: cached.lyrics, source: cached.source, trackId, isLoading: false, error: null })
+      const synced = cached.syncedLyrics ? parseLrc(cached.syncedLyrics) : null
+      set({
+        plainLyrics: cached.plainLyrics || null,
+        syncedLines: synced && synced.length > 0 ? synced : null,
+        source: cached.source,
+        trackId,
+        isLoading: false,
+        error: null,
+      })
       return
     }
 
-    set({ isLoading: true, error: null, trackId, lyrics: null, source: null })
+    set({ isLoading: true, error: null, trackId, plainLyrics: null, syncedLines: null, source: null })
 
     try {
       const params = new URLSearchParams({ artist, title })
@@ -67,25 +105,39 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
         return
       }
 
-      if (res.status === 503) {
-        set({ isLoading: false, error: 'not_configured' })
-        return
-      }
-
       if (!res.ok) {
         set({ isLoading: false, error: 'fetch_error' })
         return
       }
 
       const data = await res.json()
-      setCache(key, data.lyrics, data.source)
+      setCache(key, {
+        plainLyrics: data.plainLyrics,
+        syncedLyrics: data.syncedLyrics,
+        source: data.source,
+      })
+
       if (get().trackId !== trackId) return
-      set({ lyrics: data.lyrics, source: data.source, isLoading: false })
+
+      const synced = data.syncedLyrics ? parseLrc(data.syncedLyrics) : null
+      set({
+        plainLyrics: data.plainLyrics || null,
+        syncedLines: synced && synced.length > 0 ? synced : null,
+        source: data.source,
+        isLoading: false,
+      })
     } catch {
       if (get().trackId !== trackId) return
       set({ isLoading: false, error: 'fetch_error' })
     }
   },
 
-  clear: () => set({ lyrics: null, isLoading: false, error: null, trackId: null, source: null }),
+  clear: () => set({
+    plainLyrics: null,
+    syncedLines: null,
+    isLoading: false,
+    error: null,
+    trackId: null,
+    source: null,
+  }),
 }))

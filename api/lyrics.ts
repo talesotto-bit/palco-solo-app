@@ -2,7 +2,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 const VAGALUME_KEY = process.env.VAGALUME_API_KEY || ''
 
-async function fetchFromLrclib(artist: string, title: string): Promise<{ lyrics: string; source: string } | null> {
+interface LyricsResult {
+  plainLyrics: string
+  syncedLyrics: string | null
+  source: string
+}
+
+async function fetchFromLrclib(artist: string, title: string): Promise<LyricsResult | null> {
   try {
     const params = new URLSearchParams({ artist_name: artist, track_name: title })
     const res = await fetch(`https://lrclib.net/api/get?${params}`, {
@@ -18,18 +24,26 @@ async function fetchFromLrclib(artist: string, title: string): Promise<{ lyrics:
       const results = await searchRes.json()
       if (!results.length) return null
       const best = results[0]
-      const text = best.plainLyrics || best.syncedLyrics
-      return text ? { lyrics: text, source: 'LRCLIB' } : null
+      if (!best.plainLyrics && !best.syncedLyrics) return null
+      return {
+        plainLyrics: best.plainLyrics || '',
+        syncedLyrics: best.syncedLyrics || null,
+        source: 'LRCLIB',
+      }
     }
     const data = await res.json()
-    const text = data.plainLyrics || data.syncedLyrics
-    return text ? { lyrics: text, source: 'LRCLIB' } : null
+    if (!data.plainLyrics && !data.syncedLyrics) return null
+    return {
+      plainLyrics: data.plainLyrics || '',
+      syncedLyrics: data.syncedLyrics || null,
+      source: 'LRCLIB',
+    }
   } catch {
     return null
   }
 }
 
-async function fetchFromVagalume(artist: string, title: string): Promise<{ lyrics: string; source: string } | null> {
+async function fetchFromVagalume(artist: string, title: string): Promise<LyricsResult | null> {
   if (!VAGALUME_KEY) return null
   try {
     const url = new URL('https://api.vagalume.com.br/search.php')
@@ -44,7 +58,8 @@ async function fetchFromVagalume(artist: string, title: string): Promise<{ lyric
     const data = await res.json()
     if (data.type === 'notfound' || data.type === 'song_notfound' || !data.mus?.length) return null
     const text = data.mus[0].text
-    return text?.trim() ? { lyrics: text, source: 'Vagalume' } : null
+    if (!text?.trim()) return null
+    return { plainLyrics: text, syncedLyrics: null, source: 'Vagalume' }
   } catch {
     return null
   }
@@ -72,7 +87,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
   return res.status(200).json({
-    lyrics: result.lyrics,
+    plainLyrics: result.plainLyrics,
+    syncedLyrics: result.syncedLyrics,
     artist: a,
     title: t,
     source: result.source,

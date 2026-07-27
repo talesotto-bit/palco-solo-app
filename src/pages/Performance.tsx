@@ -6,13 +6,13 @@
 import { useNavigate } from 'react-router-dom'
 import {
   Play, Pause, SkipBack, SkipForward,
-  X, Plus, Search, Trash2, Volume2, VolumeX,
-  ChevronLeft, ChevronRight, Clock,
+  X, Plus, Search, Trash2, VolumeX,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useCatalogStore } from '@/store/catalogStore'
 import { useLocalTracksStore } from '@/store/localTracksStore'
-import { useTrackSettingsStore } from '@/store/trackSettingsStore'
+import { useLyricsStore } from '@/store/lyricsStore'
 import { Slider } from '@/components/ui/slider'
 import { formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -119,12 +119,24 @@ export default function Performance() {
   // Setlist
   const setlist = useSimpleSetlist()
 
+  // Lyrics
+  const plainLyrics = useLyricsStore(s => s.plainLyrics)
+  const syncedLines = useLyricsStore(s => s.syncedLines)
+  const lyricsLoading = useLyricsStore(s => s.isLoading)
+  const lyricsTrackId = useLyricsStore(s => s.trackId)
+  const fetchLyrics = useLyricsStore(s => s.fetchLyrics)
+
   // UI
   const [showAdd, setShowAdd] = useState(false)
   const [search, setSearch] = useState('')
   const [showStems, setShowStems] = useState(false)
   const [clock, setClock] = useState('')
+  const [bottomTab, setBottomTab] = useState<'setlist' | 'lyrics'>('setlist')
   const searchRef = useRef<HTMLInputElement>(null)
+  const lyricsScrollRef = useRef<HTMLDivElement>(null)
+  const lyricLineRefs = useRef<Map<number, HTMLParagraphElement>>(new Map())
+  const userScrolledLyricsRef = useRef(false)
+  const lyricScrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   // Load catalog
   useEffect(() => {
@@ -138,6 +150,35 @@ export default function Performance() {
     const id = setInterval(tick, 10000)
     return () => clearInterval(id)
   }, [])
+
+  // Fetch lyrics when track changes
+  useEffect(() => {
+    if (!track) return
+    if (lyricsTrackId === track.id) return
+    fetchLyrics(track.artist, track.title, track.id)
+  }, [track?.id])
+
+  // Synced lyrics active line
+  const activeLyricLine = syncedLines
+    ? (() => { let idx = -1; for (let i = 0; i < syncedLines.length; i++) { if (syncedLines[i].time <= currentTime) idx = i; else break; } return idx })()
+    : -1
+
+  // Auto-scroll lyrics
+  useEffect(() => {
+    if (!syncedLines || activeLyricLine < 0 || userScrolledLyricsRef.current || bottomTab !== 'lyrics') return
+    const el = lyricLineRefs.current.get(activeLyricLine)
+    if (!el || !lyricsScrollRef.current) return
+    const container = lyricsScrollRef.current
+    const elTop = el.offsetTop - container.offsetTop
+    const target = elTop - container.clientHeight / 3
+    container.scrollTo({ top: target, behavior: 'smooth' })
+  }, [activeLyricLine, syncedLines, bottomTab])
+
+  useEffect(() => {
+    userScrolledLyricsRef.current = false
+  }, [track?.id])
+
+  useEffect(() => () => clearTimeout(lyricScrollTimerRef.current), [])
 
   const isPlaying = playbackState === 'playing'
   const isLoading = playbackState === 'loading'
@@ -335,86 +376,164 @@ export default function Performance() {
         </div>
       )}
 
-      {/* ═══ SETLIST ═══ */}
+      {/* ═══ BOTTOM TABS: SETLIST / LYRICS ═══ */}
       <div className="flex-1 flex flex-col min-h-0 border-t border-white/10">
-        {/* Setlist header */}
-        <div className="flex items-center justify-between px-4 py-2 shrink-0">
-          <span className="text-xs font-semibold text-[#808080]">
-            SETLIST {setlist.songs.length > 0 && `(${setlist.songs.length})`}
-          </span>
-          <div className="flex items-center gap-2">
-            {setlist.songs.length > 0 && (
-              <button onClick={() => setlist.clear()}
-                className="text-[10px] text-[#808080] active:text-red-400 px-2 py-1">
-                Limpar
-              </button>
+        {/* Tab bar */}
+        <div className="flex items-center shrink-0 border-b border-white/5">
+          <button
+            onClick={() => setBottomTab('setlist')}
+            className={cn(
+              'flex-1 py-2.5 text-xs font-bold text-center transition-colors',
+              bottomTab === 'setlist' ? 'text-white border-b-2 border-[hsl(var(--primary))]' : 'text-[#808080]'
             )}
-            <button onClick={() => { setShowAdd(true); setSearch(''); setTimeout(() => searchRef.current?.focus(), 100) }}
-              className="flex items-center gap-1 text-xs font-semibold text-[hsl(var(--primary))] active:opacity-70 px-2 py-1">
-              <Plus className="h-3.5 w-3.5" /> Adicionar
-            </button>
-          </div>
+          >
+            SETLIST {setlist.songs.length > 0 && `(${setlist.songs.length})`}
+          </button>
+          <button
+            onClick={() => setBottomTab('lyrics')}
+            className={cn(
+              'flex-1 py-2.5 text-xs font-bold text-center transition-colors',
+              bottomTab === 'lyrics' ? 'text-white border-b-2 border-[hsl(var(--primary))]' : 'text-[#808080]'
+            )}
+          >
+            LETRA
+            {syncedLines && <span className="ml-1 text-[9px] text-[hsl(var(--primary))]">SYNC</span>}
+          </button>
         </div>
 
-        {/* Song list */}
-        <div className="flex-1 overflow-y-auto px-2" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' }}>
-          {setlist.songs.length === 0 && (
-            <div className="flex flex-col items-center py-10 gap-3">
-              <p className="text-sm text-[#808080]">Nenhuma música no setlist</p>
-              <button onClick={() => { setShowAdd(true); setSearch('') }}
-                className="text-sm font-semibold text-[hsl(var(--primary))] active:opacity-70 py-2 px-4">
-                + Adicionar músicas
+        {/* ── Setlist tab ── */}
+        {bottomTab === 'setlist' && (
+          <>
+            <div className="flex items-center justify-between px-4 py-2 shrink-0">
+              <div className="flex items-center gap-2">
+                {setlist.songs.length > 0 && (
+                  <button onClick={() => setlist.clear()}
+                    className="text-[10px] text-[#808080] active:text-red-400 px-2 py-1">
+                    Limpar
+                  </button>
+                )}
+              </div>
+              <button onClick={() => { setShowAdd(true); setSearch(''); setTimeout(() => searchRef.current?.focus(), 100) }}
+                className="flex items-center gap-1 text-xs font-semibold text-[hsl(var(--primary))] active:opacity-70 px-2 py-1">
+                <Plus className="h-3.5 w-3.5" /> Adicionar
               </button>
             </div>
-          )}
 
-          {setlist.songs.map((song, i) => {
-            const isCurrent = track?.id === song.id
-            const isSongPlaying = isCurrent && isPlaying
+            <div className="flex-1 overflow-y-auto px-2" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' }}>
+              {setlist.songs.length === 0 && (
+                <div className="flex flex-col items-center py-10 gap-3">
+                  <p className="text-sm text-[#808080]">Nenhuma musica no setlist</p>
+                  <button onClick={() => { setShowAdd(true); setSearch('') }}
+                    className="text-sm font-semibold text-[hsl(var(--primary))] active:opacity-70 py-2 px-4">
+                    + Adicionar musicas
+                  </button>
+                </div>
+              )}
 
-            return (
-              <div key={`${song.id}-${i}`}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2.5 mb-0.5 active:bg-white/10 transition-colors',
-                  isCurrent ? 'bg-white/10' : ''
-                )}
-                onClick={() => playFromSetlist(i)}>
+              {setlist.songs.map((song, i) => {
+                const isCurrent = track?.id === song.id
+                const isSongPlaying = isCurrent && isPlaying
 
-                {/* Number / EQ */}
-                <div className="w-5 text-center shrink-0">
-                  {isSongPlaying ? (
-                    <div className="flex items-end justify-center gap-[2px] h-4">
-                      <span className="eq-bar" style={{ animationDuration: '0.6s' }} />
-                      <span className="eq-bar" style={{ animationDuration: '0.8s' }} />
-                      <span className="eq-bar" style={{ animationDuration: '0.5s' }} />
+                return (
+                  <div key={`${song.id}-${i}`}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg px-3 py-2.5 mb-0.5 active:bg-white/10 transition-colors',
+                      isCurrent ? 'bg-white/10' : ''
+                    )}
+                    onClick={() => playFromSetlist(i)}>
+                    <div className="w-5 text-center shrink-0">
+                      {isSongPlaying ? (
+                        <div className="flex items-end justify-center gap-[2px] h-4">
+                          <span className="eq-bar" style={{ animationDuration: '0.6s' }} />
+                          <span className="eq-bar" style={{ animationDuration: '0.8s' }} />
+                          <span className="eq-bar" style={{ animationDuration: '0.5s' }} />
+                        </div>
+                      ) : (
+                        <span className={cn('text-xs tabular-nums font-bold', isCurrent ? 'text-[hsl(var(--primary))]' : 'text-[#808080]')}>
+                          {i + 1}
+                        </span>
+                      )}
                     </div>
-                  ) : (
-                    <span className={cn('text-xs tabular-nums font-bold', isCurrent ? 'text-[hsl(var(--primary))]' : 'text-[#808080]')}>
-                      {i + 1}
-                    </span>
-                  )}
-                </div>
+                    <img src={song.coverUrl} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className={cn('text-sm font-medium truncate', isCurrent ? 'text-[hsl(var(--primary))]' : 'text-white')}>
+                        {song.title}
+                      </p>
+                      <p className="text-[10px] text-[#808080] truncate">{song.artist}</p>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); setlist.remove(i) }}
+                      className="h-8 w-8 flex items-center justify-center rounded-full text-[#808080] active:text-red-400 shrink-0">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
 
-                {/* Cover */}
-                <img src={song.coverUrl} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
-
-                {/* Info */}
-                <div className="min-w-0 flex-1">
-                  <p className={cn('text-sm font-medium truncate', isCurrent ? 'text-[hsl(var(--primary))]' : 'text-white')}>
-                    {song.title}
-                  </p>
-                  <p className="text-[10px] text-[#808080] truncate">{song.artist}</p>
-                </div>
-
-                {/* Remove */}
-                <button onClick={(e) => { e.stopPropagation(); setlist.remove(i) }}
-                  className="h-8 w-8 flex items-center justify-center rounded-full text-[#808080] active:text-red-400 shrink-0">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+        {/* ── Lyrics tab ── */}
+        {bottomTab === 'lyrics' && (
+          <div
+            ref={lyricsScrollRef}
+            className="flex-1 overflow-y-auto px-4 scroll-smooth"
+            style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' }}
+            onWheel={() => {
+              if (playbackState !== 'playing') return
+              userScrolledLyricsRef.current = true
+              clearTimeout(lyricScrollTimerRef.current)
+              lyricScrollTimerRef.current = setTimeout(() => { userScrolledLyricsRef.current = false }, 4000)
+            }}
+            onTouchMove={() => {
+              if (playbackState !== 'playing') return
+              userScrolledLyricsRef.current = true
+              clearTimeout(lyricScrollTimerRef.current)
+              lyricScrollTimerRef.current = setTimeout(() => { userScrolledLyricsRef.current = false }, 4000)
+            }}
+          >
+            {lyricsLoading && (
+              <div className="flex flex-col items-center gap-3 py-10">
+                <div className="h-5 w-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                <p className="text-xs text-[#808080]">Buscando letra...</p>
               </div>
-            )
-          })}
-        </div>
+            )}
+
+            {!lyricsLoading && !syncedLines && !plainLyrics && track && (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <p className="text-sm text-[#808080]">Letra indisponivel</p>
+              </div>
+            )}
+
+            {syncedLines && syncedLines.length > 0 && (
+              <div className="space-y-0.5 py-4">
+                {syncedLines.map((line, i) => (
+                  <p
+                    key={i}
+                    ref={el => { if (el) lyricLineRefs.current.set(i, el); else lyricLineRefs.current.delete(i) }}
+                    className={cn(
+                      'py-1.5 px-2 rounded-md leading-relaxed transition-all duration-300',
+                      i === activeLyricLine
+                        ? 'text-white font-bold text-lg scale-[1.02] bg-white/5'
+                        : i < activeLyricLine
+                          ? 'text-[#666]'
+                          : 'text-[#aaa]'
+                    )}
+                    onClick={() => { seek(line.time); userScrolledLyricsRef.current = false }}
+                  >
+                    {line.text}
+                  </p>
+                ))}
+                <div className="h-24" />
+              </div>
+            )}
+
+            {!syncedLines && plainLyrics && (
+              <div className="whitespace-pre-wrap leading-relaxed text-[#ccc] text-base py-4">
+                {plainLyrics}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ═══ ADD SONGS MODAL ═══ */}

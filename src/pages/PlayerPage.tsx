@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import {
-  Mic2, Layers, Music2, Type,
+  Mic2, Layers, Music2,
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp,
   Gauge, Heart, Save, Check, Download, Loader2,
 } from 'lucide-react'
@@ -33,7 +33,6 @@ export default function PlayerPage() {
   const isExporting = usePlayerStore(s => s.isExporting)
   const downloadMix = usePlayerStore(s => s.downloadMix)
   const [showTuning, setShowTuning] = useState(false)
-  const [showLyrics, setShowLyrics] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
 
   if (!track) {
@@ -45,7 +44,7 @@ export default function PlayerPage() {
         <div className="text-center">
           <h2 className="text-xl font-bold text-white">Nenhuma faixa carregada</h2>
           <p className="text-[#b3b3b3] text-sm mt-2 max-w-xs">
-            Selecione uma faixa na biblioteca para começar.
+            Selecione uma faixa na biblioteca para comecar.
           </p>
         </div>
         <button
@@ -62,16 +61,15 @@ export default function PlayerPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      {/* Dynamic gradient background based on playback */}
       <div className={cn(
         'min-h-full transition-colors duration-1000',
         isPlaying
           ? 'bg-gradient-to-b from-[#1e3a2f] via-[#171717] to-[#121212]'
           : 'bg-gradient-to-b from-[#2a2a2a] via-[#171717] to-[#121212]'
       )}>
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 md:py-6 space-y-5 md:space-y-6">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-5">
             <button
               onClick={() => navigate(-1)}
               className="flex items-center gap-2 text-[#b3b3b3] hover:text-white transition-colors text-sm font-medium"
@@ -93,124 +91,123 @@ export default function PlayerPage() {
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3">
+            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 mb-5">
               <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
               <p className="text-sm text-red-300">{error}</p>
             </div>
           )}
 
-          {/* Main player area */}
-          <div className="flex flex-col md:flex-row gap-5 md:gap-8 items-start">
-            {/* Album art */}
-            <div className="w-full max-w-[240px] mx-auto md:mx-0 md:max-w-none md:w-80 shrink-0">
-              <div className="relative aspect-square rounded-lg overflow-hidden shadow-2xl shadow-black/60">
-                <img
-                  src={track.coverUrl}
-                  alt={track.title}
-                  className="h-full w-full object-cover"
-                />
-                {isPlaying && (
-                  <div className="absolute bottom-4 left-4 flex items-end gap-1 h-6">
-                    <span className="eq-bar w-1" style={{ animationDuration: '0.6s' }} />
-                    <span className="eq-bar w-1" style={{ animationDuration: '0.8s' }} />
-                    <span className="eq-bar w-1" style={{ animationDuration: '0.5s' }} />
-                    <span className="eq-bar w-1" style={{ animationDuration: '0.7s' }} />
+          {/* Main two-column layout: controls left, lyrics right */}
+          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+            {/* LEFT COLUMN — player controls */}
+            <div className="flex-1 min-w-0 space-y-5 md:space-y-6">
+              {/* Album art + track info */}
+              <div className="flex flex-col md:flex-row gap-5 md:gap-8 items-start">
+                {/* Album art */}
+                <div className="w-full max-w-[200px] mx-auto md:mx-0 md:max-w-none md:w-56 shrink-0">
+                  <div className="relative aspect-square rounded-lg overflow-hidden shadow-2xl shadow-black/60">
+                    <img
+                      src={track.coverUrl}
+                      alt={track.title}
+                      className="h-full w-full object-cover"
+                    />
+                    {isPlaying && (
+                      <div className="absolute bottom-3 left-3 flex items-end gap-1 h-5">
+                        <span className="eq-bar w-1" style={{ animationDuration: '0.6s' }} />
+                        <span className="eq-bar w-1" style={{ animationDuration: '0.8s' }} />
+                        <span className="eq-bar w-1" style={{ animationDuration: '0.5s' }} />
+                        <span className="eq-bar w-1" style={{ animationDuration: '0.7s' }} />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Track info + controls */}
-            <div className="flex-1 min-w-0 w-full space-y-5">
-              {/* Title */}
-              <div>
-                <h1 className="text-lg md:text-3xl font-extrabold text-white leading-tight line-clamp-2">
-                  {track.title}
-                </h1>
-                <p className="text-sm md:text-base text-[#b3b3b3] mt-1">{track.artist}</p>
-
-                {/* Tags + Actions */}
-                <div className="flex flex-wrap items-center gap-2 mt-3">
-                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/10 text-white">
-                    {track.genreLabel}
-                  </span>
-                  {track.hasStems && (
-                    <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">
-                      <Layers className="h-3 w-3" />
-                      {track.stems.length} stems
-                    </span>
-                  )}
-                  {pitch !== 0 && (
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">
-                      {semitonesToLabel(pitch)}
-                    </span>
-                  )}
-                  {speed !== 1 && (
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/10 text-white/70">
-                      {speedToLabel(speed)}
-                    </span>
-                  )}
                 </div>
 
-                {/* Favorite + Save settings */}
-                <div className="flex items-center gap-3 mt-3">
-                  <button
-                    onClick={() => toggleFav(track.id)}
-                    className="flex items-center gap-1.5 h-9 rounded-full px-4 text-xs font-semibold transition-colors bg-white/5 hover:bg-white/10"
-                  >
-                    <Heart className={cn(
-                      'h-4 w-4 transition-colors',
-                      isFav(track.id)
-                        ? 'fill-red-500 text-red-500'
-                        : 'text-[#b3b3b3]'
-                    )} />
-                    <span className={isFav(track.id) ? 'text-red-400' : 'text-[#b3b3b3]'}>
-                      {isFav(track.id) ? 'Favoritada' : 'Favoritar'}
+                {/* Track info */}
+                <div className="flex-1 min-w-0 w-full">
+                  <h1 className="text-lg md:text-2xl font-extrabold text-white leading-tight line-clamp-2">
+                    {track.title}
+                  </h1>
+                  <p className="text-sm text-[#b3b3b3] mt-1">{track.artist}</p>
+
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/10 text-white">
+                      {track.genreLabel}
                     </span>
-                  </button>
+                    {track.hasStems && (
+                      <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">
+                        <Layers className="h-3 w-3" />
+                        {track.stems.length} stems
+                      </span>
+                    )}
+                    {pitch !== 0 && (
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">
+                        {semitonesToLabel(pitch)}
+                      </span>
+                    )}
+                    {speed !== 1 && (
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/10 text-white/70">
+                        {speedToLabel(speed)}
+                      </span>
+                    )}
+                  </div>
 
-                  <button
-                    onClick={() => {
-                      if (hasSaved(track.id)) {
-                        removeSettings(track.id)
-                      } else {
-                        saveSettings(track.id, pitch, speed, stemStates)
-                        setJustSaved(true)
-                        setTimeout(() => setJustSaved(false), 2000)
-                      }
-                    }}
-                    className={cn(
-                      'flex items-center gap-1.5 h-9 rounded-full px-4 text-xs font-semibold transition-colors',
-                      hasSaved(track.id)
-                        ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] hover:bg-red-500/20 hover:text-red-400'
-                        : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
-                    )}
-                  >
-                    {justSaved ? (
-                      <><Check className="h-4 w-4" /> Salvo!</>
-                    ) : hasSaved(track.id) ? (
-                      <><Save className="h-4 w-4" /> Ajustes Salvos</>
-                    ) : (
-                      <><Save className="h-4 w-4" /> Salvar Ajustes</>
-                    )}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
+                    <button
+                      onClick={() => toggleFav(track.id)}
+                      className="flex items-center gap-1.5 h-8 rounded-full px-3 text-xs font-semibold transition-colors bg-white/5 hover:bg-white/10"
+                    >
+                      <Heart className={cn(
+                        'h-3.5 w-3.5 transition-colors',
+                        isFav(track.id) ? 'fill-red-500 text-red-500' : 'text-[#b3b3b3]'
+                      )} />
+                      <span className={cn('hidden sm:inline', isFav(track.id) ? 'text-red-400' : 'text-[#b3b3b3]')}>
+                        {isFav(track.id) ? 'Favoritada' : 'Favoritar'}
+                      </span>
+                    </button>
 
-                  <button
-                    onClick={downloadMix}
-                    disabled={isExporting || playbackState === 'loading'}
-                    className={cn(
-                      'flex items-center gap-1.5 h-9 rounded-full px-4 text-xs font-semibold transition-colors',
-                      isExporting
-                        ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] cursor-wait'
-                        : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
-                    )}
-                  >
-                    {isExporting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> Exportando...</>
-                    ) : (
-                      <><Download className="h-4 w-4" /> Baixar Música</>
-                    )}
-                  </button>
+                    <button
+                      onClick={() => {
+                        if (hasSaved(track.id)) {
+                          removeSettings(track.id)
+                        } else {
+                          saveSettings(track.id, pitch, speed, stemStates)
+                          setJustSaved(true)
+                          setTimeout(() => setJustSaved(false), 2000)
+                        }
+                      }}
+                      className={cn(
+                        'flex items-center gap-1.5 h-8 rounded-full px-3 text-xs font-semibold transition-colors',
+                        hasSaved(track.id)
+                          ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] hover:bg-red-500/20 hover:text-red-400'
+                          : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
+                      )}
+                    >
+                      {justSaved ? (
+                        <><Check className="h-3.5 w-3.5" /> Salvo!</>
+                      ) : hasSaved(track.id) ? (
+                        <><Save className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Ajustes Salvos</span></>
+                      ) : (
+                        <><Save className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Salvar</span></>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={downloadMix}
+                      disabled={isExporting || playbackState === 'loading'}
+                      className={cn(
+                        'flex items-center gap-1.5 h-8 rounded-full px-3 text-xs font-semibold transition-colors',
+                        isExporting
+                          ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] cursor-wait'
+                          : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
+                      )}
+                    >
+                      {isExporting ? (
+                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> <span className="hidden sm:inline">Exportando...</span></>
+                      ) : (
+                        <><Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Baixar</span></>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -220,7 +217,7 @@ export default function PlayerPage() {
               {/* Controls */}
               <PlayerControls size="large" />
 
-              {/* Pitch & Speed toggle */}
+              {/* Pitch & Speed */}
               <button
                 onClick={() => setShowTuning(!showTuning)}
                 className="flex items-center gap-2 text-sm font-semibold text-[#b3b3b3] hover:text-white transition-colors"
@@ -247,29 +244,18 @@ export default function PlayerPage() {
                   </div>
                 </div>
               )}
+
+              {/* Stem Mixer */}
+              <div id="player-mixer" className="scroll-mt-4">
+                <StemMixer />
+              </div>
             </div>
-          </div>
 
-          {/* Stem Mixer */}
-          <div id="player-mixer" className="scroll-mt-4">
-            <StemMixer />
-          </div>
-
-          {/* Lyrics toggle */}
-          <button
-            onClick={() => setShowLyrics(!showLyrics)}
-            className="flex items-center gap-2 text-sm font-semibold text-[#b3b3b3] hover:text-white transition-colors"
-          >
-            <Type className="h-4 w-4" />
-            Letra da Música
-            {showLyrics ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-
-          {showLyrics && (
-            <div className="animate-fade-in">
+            {/* RIGHT COLUMN — lyrics (always visible) */}
+            <div className="lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:sticky lg:top-4 lg:h-[calc(100vh-6rem)]">
               <LyricsPanel />
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
