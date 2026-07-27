@@ -13,7 +13,7 @@ export const GENRES: GenreInfo[] = [
   { id: 'piseiro', label: 'Piseiro', emoji: '👢', color: '#B45309' },
   { id: 'internacional', label: 'Internacional', emoji: '🌎', color: '#1351AA' },
   { id: 'catolica', label: 'Católica', emoji: '🙏', color: '#5B21B6' },
-  { id: 'axe', label: 'Axé', emoji: '🌴', color: '#047857' },
+  { id: 'axe-carnaval', label: 'Axé', emoji: '🌴', color: '#047857' },
   { id: 'seresta', label: 'Seresta', emoji: '🌙', color: '#9D174D' },
   { id: 'gaucha', label: 'Gaúcha', emoji: '🐴', color: '#92400E' },
   { id: 'romantico', label: 'Romântico', emoji: '❤️', color: '#E11D48' },

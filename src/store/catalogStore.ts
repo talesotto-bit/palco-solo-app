@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Track, Stem } from '@/types/track'
+import type { Track, Stem, Genre } from '@/types/track'
 import { cleanSongName, parseFolderName, detectInstrument, stemLabel, toTitleCase } from '@/lib/stemDetection'
 import { INSTRUMENT_LABELS } from '@/types/track'
 
@@ -59,14 +59,14 @@ function genreSlugToLabel(slug: string): string {
     'mpb': 'MPB',
     'rock-pop-inter': 'Rock / Pop Internacional',
     'brega': 'Brega',
-    'axe-carnaval': 'Axé / Carnaval',
-    'axe': 'Axé',
+    'axe-carnaval': 'Axé',
     'piseiro': 'Piseiro',
     'arrocha': 'Arrocha',
     'aberturas': 'Aberturas',
     'playbacks': 'Playbacks',
     'shows-multipistas': 'Shows Multipistas',
     'shows-playbacks': 'Shows Playbacks',
+    'importado': 'Importados',
   }
   return map[slug] || toTitleCase(slug.replace(/-/g, ' '))
 }
@@ -146,13 +146,13 @@ function classifyAtualizacoes(name: string, artist: string): string {
   // Check explicit genre keywords in name
   if (lower.includes('piseiro') || lower.includes('pisadinha')) return 'piseiro'
   if (lower.includes('arrocha')) return 'arrocha'
-  if (lower.includes('axe') || lower.includes('swingueira')) return 'axe'
+  if (lower.includes('axe') || lower.includes('swingueira')) return 'axe-carnaval'
   if (lower.includes('pagodao')) return 'pagode'
 
   // Check artist sets
   for (const a of PISEIRO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'piseiro'
   for (const a of ARROCHA_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'arrocha'
-  for (const a of AXE_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'axe'
+  for (const a of AXE_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'axe-carnaval'
   for (const a of PAGODE_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'pagode'
   for (const a of SERTANEJO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'sertanejo'
   for (const a of FORRO_ARTISTS) if (artistLower.includes(a) || lower.includes(a)) return 'forro'
@@ -389,7 +389,7 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
     id: `r2-${song.genreSlug}-${song.slug}`,
     title,
     artist: artist || genreSlugToLabel(effectiveGenreSlug),
-    genre: effectiveGenreSlug as any,
+    genre: effectiveGenreSlug as Genre,
     genreLabel: genreSlugToLabel(effectiveGenreSlug),
     bpm,
     keyNote,
@@ -447,7 +447,7 @@ export const useCatalogStore = create<CatalogStateInternal>((set) => ({
 
       const genreMap = new Map<string, number>()
       for (const track of tracks) {
-        const gId = track.tags[0] || 'other'
+        const gId = (track.tags && track.tags[0]) || 'other'
         genreMap.set(gId, (genreMap.get(gId) || 0) + 1)
       }
       const genres = Array.from(genreMap.entries()).map(([id, count]) => ({

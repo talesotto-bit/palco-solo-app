@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Search, X, Loader2, LayoutGrid, List, Heart } from 'lucide-react'
 import { useLocalTracksStore } from '@/store/localTracksStore'
 import { useCatalogStore } from '@/store/catalogStore'
@@ -8,9 +8,11 @@ import { cn } from '@/lib/utils'
 
 export default function Library() {
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [genre, setGenre] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showFavs, setShowFavs] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   const localTracks = useLocalTracksStore(s => s.tracks)
   const catalogTracks = useCatalogStore(s => s.tracks)
@@ -23,9 +25,17 @@ export default function Library() {
     if (catalogTracks.length === 0 && !catalogLoading) loadCatalog()
   }, [])
 
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value)
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDebouncedSearch(value), 250)
+  }, [])
+
+  useEffect(() => () => clearTimeout(debounceRef.current), [])
+
   const tracks = useMemo(() => [...localTracks, ...catalogTracks], [localTracks, catalogTracks])
 
-  const isFiltering = search.trim() !== '' || genre !== 'all' || showFavs
+  const isFiltering = debouncedSearch.trim() !== '' || genre !== 'all' || showFavs
 
   const filtered = useMemo(() => {
     let list = tracks
@@ -34,21 +44,21 @@ export default function Library() {
       list = list.filter(t => favIds.includes(t.id))
     }
 
-    if (search.trim()) {
-      const q = search.toLowerCase()
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase()
       list = list.filter(t =>
         t.title.toLowerCase().includes(q) ||
         t.artist.toLowerCase().includes(q) ||
-        t.tags.some(tag => tag.toLowerCase().includes(q))
+        (t.tags || []).some(tag => tag.toLowerCase().includes(q))
       )
     }
 
     if (genre !== 'all') {
-      list = list.filter(t => t.genre === genre || t.tags.includes(genre))
+      list = list.filter(t => t.genre === genre || (t.tags || []).includes(genre))
     }
 
     return list.sort((a, b) => a.title.localeCompare(b.title))
-  }, [tracks, search, genre, showFavs, favIds])
+  }, [tracks, debouncedSearch, genre, showFavs, favIds])
 
   // Grouped by first letter for alphabetical sections
   const alphabetSections = useMemo(() => {
@@ -57,7 +67,7 @@ export default function Library() {
     const map = new Map<string, typeof filtered>()
 
     for (const t of filtered) {
-      const letter = (t.title[0] || '#').toUpperCase().replace(/[^A-Z]/, '#')
+      const letter = (t.title[0] || '#').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z]/, '#')
       if (!map.has(letter)) map.set(letter, [])
       map.get(letter)!.push(t)
     }
@@ -75,7 +85,7 @@ export default function Library() {
     const genreMap = new Map<string, typeof tracks>()
 
     for (const t of tracks) {
-      const gId = t.tags[0] || 'other'
+      const gId = (t.tags && t.tags[0]) || 'other'
       if (!genreMap.has(gId)) genreMap.set(gId, [])
       genreMap.get(gId)!.push(t)
     }
@@ -141,12 +151,12 @@ export default function Library() {
             type="text"
             placeholder="Buscar por título ou artista..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full h-10 rounded-lg bg-[#2a2a2a] pl-10 pr-10 text-sm text-white placeholder:text-[#808080] border-0 outline-none focus:ring-1 focus:ring-white/20 transition"
           />
           {search && (
             <button
-              onClick={() => setSearch('')}
+              onClick={() => { setSearch(''); setDebouncedSearch(''); clearTimeout(debounceRef.current) }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-[#808080] hover:text-white"
             >
               <X className="h-4 w-4" />
@@ -237,7 +247,7 @@ export default function Library() {
               </>
             )}
             <button
-              onClick={() => { setSearch(''); setGenre('all'); setShowFavs(false) }}
+              onClick={() => { setSearch(''); setDebouncedSearch(''); clearTimeout(debounceRef.current); setGenre('all'); setShowFavs(false) }}
               className="mt-3 h-8 rounded-full px-5 text-xs font-semibold bg-white text-black hover:scale-105 transition-transform"
             >
               Limpar filtros

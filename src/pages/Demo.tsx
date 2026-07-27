@@ -159,7 +159,7 @@ export default function Demo() {
 
     const genreMap = new Map<string, Track[]>()
     for (const t of tracks) {
-      const gId = t.tags[0] || 'other'
+      const gId = (t.tags && t.tags[0]) || 'other'
       if (!genreMap.has(gId)) genreMap.set(gId, [])
       genreMap.get(gId)!.push(t)
     }

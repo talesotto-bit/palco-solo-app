@@ -11,11 +11,19 @@ export type Genre =
   | 'piseiro'
   | 'internacional'
   | 'catolica'
-  | 'axe'
+  | 'axe-carnaval'
   | 'seresta'
   | 'gaucha'
   | 'romantico'
   | 'modao'
+  | 'rock-pop-inter'
+  | 'rock-nacional'
+  | 'brega'
+  | 'aberturas'
+  | 'playbacks'
+  | 'shows-multipistas'
+  | 'shows-playbacks'
+  | 'importado'
 
 export type InstrumentId =
   | 'main'       // mix estéreo completo
