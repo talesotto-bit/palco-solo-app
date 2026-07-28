@@ -13,6 +13,7 @@ interface LyricsState {
   trackId: string | null
   source: string | null
   fetchLyrics: (artist: string, title: string, trackId: string) => Promise<void>
+  searchManual: (query: string, trackId: string) => Promise<void>
   clear: () => void
 }
 
@@ -109,6 +110,72 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
 
     try {
       const params = new URLSearchParams({ artist, title: cleanedTitle })
+      const res = await fetch(`/api/lyrics?${params}`)
+
+      if (get().trackId !== trackId) return
+
+      if (res.status === 404) {
+        set({ isLoading: false, error: 'not_found' })
+        return
+      }
+
+      if (!res.ok) {
+        set({ isLoading: false, error: 'fetch_error' })
+        return
+      }
+
+      const data = await res.json()
+      const plain = data.plainLyrics || data.lyrics || ''
+      const synced = data.syncedLyrics || null
+      setCache(key, {
+        plainLyrics: plain,
+        syncedLyrics: synced,
+        source: data.source,
+      })
+
+      if (get().trackId !== trackId) return
+
+      const parsed = synced ? parseLrc(synced) : null
+      set({
+        plainLyrics: plain || null,
+        syncedLines: parsed && parsed.length > 0 ? parsed : null,
+        source: data.source,
+        isLoading: false,
+      })
+    } catch {
+      if (get().trackId !== trackId) return
+      set({ isLoading: false, error: 'fetch_error' })
+    }
+  },
+
+  searchManual: async (query: string, trackId: string) => {
+    const parts = query.split(/\s*[-–—]\s*/)
+    let artist = ''
+    let title = query.trim()
+    if (parts.length >= 2) {
+      artist = parts[0].trim()
+      title = parts.slice(1).join(' - ').trim()
+    }
+
+    const key = cacheKeyFor(artist || '_manual', title)
+    const cached = getCache()[key]
+    if (cached) {
+      const synced = cached.syncedLyrics ? parseLrc(cached.syncedLyrics) : null
+      set({
+        plainLyrics: cached.plainLyrics || null,
+        syncedLines: synced && synced.length > 0 ? synced : null,
+        source: cached.source,
+        trackId,
+        isLoading: false,
+        error: null,
+      })
+      return
+    }
+
+    set({ isLoading: true, error: null, plainLyrics: null, syncedLines: null, source: null })
+
+    try {
+      const params = new URLSearchParams({ artist, title })
       const res = await fetch(`/api/lyrics?${params}`)
 
       if (get().trackId !== trackId) return

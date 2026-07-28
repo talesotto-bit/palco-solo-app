@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Loader2, AlertCircle, Music2 } from 'lucide-react'
+import { Loader2, AlertCircle, Music2, Search } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useLyricsStore } from '@/store/lyricsStore'
 import type { LrcLine } from '@/store/lyricsStore'
@@ -26,7 +26,9 @@ export function LyricsPanel() {
   const source = useLyricsStore(s => s.source)
   const trackId = useLyricsStore(s => s.trackId)
   const fetchLyrics = useLyricsStore(s => s.fetchLyrics)
+  const searchManual = useLyricsStore(s => s.searchManual)
   const [fontIdx, setFontIdx] = useState(2)
+  const [manualQuery, setManualQuery] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const lineRefs = useRef<Map<number, HTMLParagraphElement>>(new Map())
   const userScrolledRef = useRef(false)
@@ -121,12 +123,37 @@ export function LyricsPanel() {
         )}
 
         {error === 'not_found' && (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
             <Music2 className="h-8 w-8 text-[#535353]" />
-            <p className="text-sm font-medium text-white">Letra indisponivel</p>
+            <p className="text-sm font-medium text-white">Letra nao encontrada</p>
             <p className="text-xs text-[#808080] max-w-xs">
-              A letra de "{track.title}" ainda nao esta na base.
+              Busque manualmente pelo artista e titulo da musica.
             </p>
+            <form
+              className="w-full max-w-xs mt-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (manualQuery.trim()) searchManual(manualQuery.trim(), track.id)
+              }}
+            >
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#808080]" />
+                <input
+                  type="text"
+                  value={manualQuery}
+                  onChange={(e) => setManualQuery(e.target.value)}
+                  placeholder="Ex: Roberto Carlos - Detalhes"
+                  className="w-full h-9 rounded-lg bg-[#2a2a2a] pl-9 pr-3 text-xs text-white placeholder:text-[#606060] border-0 outline-none focus:ring-1 focus:ring-white/20 transition"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!manualQuery.trim()}
+                className="mt-2 w-full h-8 rounded-full text-xs font-semibold bg-white text-black hover:bg-white/90 disabled:opacity-30 disabled:cursor-default transition-colors"
+              >
+                Buscar letra
+              </button>
+            </form>
           </div>
         )}
 
