@@ -33,7 +33,7 @@ export default function PlayerPage() {
   const removeSettings = useTrackSettingsStore(s => s.remove)
   const isExporting = usePlayerStore(s => s.isExporting)
   const downloadMix = usePlayerStore(s => s.downloadMix)
-  const [showTuning, setShowTuning] = useState(false)
+  const [showTuning, setShowTuning] = useState(true)
   const [justSaved, setJustSaved] = useState(false)
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 

@@ -3,7 +3,6 @@ import { Loader2, AlertCircle, Music2 } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useLyricsStore } from '@/store/lyricsStore'
 import type { LrcLine } from '@/store/lyricsStore'
-import { cn } from '@/lib/utils'
 
 const FONT_SIZES = [14, 16, 18, 20, 24]
 
@@ -57,7 +56,7 @@ export function LyricsPanel() {
     clearTimeout(scrollTimerRef.current)
     scrollTimerRef.current = setTimeout(() => {
       userScrolledRef.current = false
-    }, 4000)
+    }, 5000)
   }, [playbackState])
 
   useEffect(() => {
@@ -144,22 +143,15 @@ export function LyricsPanel() {
           </div>
         )}
 
-        {/* Synced lyrics — line by line with highlighting */}
+        {/* Synced lyrics — line by line, uniform style */}
         {syncedLines && syncedLines.length > 0 && (
           <div className="space-y-1 py-4">
             {syncedLines.map((line, i) => (
               <p
                 key={i}
                 ref={el => setLineRef(i, el)}
-                className={cn(
-                  'py-1.5 px-2 rounded-md leading-relaxed transition-all duration-300 cursor-pointer',
-                  i === activeLine
-                    ? 'text-white font-bold scale-[1.02] bg-white/5'
-                    : i < activeLine
-                      ? 'text-[#808080]'
-                      : 'text-[#b3b3b3]'
-                )}
-                style={{ fontSize: i === activeLine ? `${fontSize + 2}px` : `${fontSize}px` }}
+                className="py-1.5 px-2 rounded-md leading-relaxed text-[#e0e0e0] cursor-pointer hover:bg-white/5 transition-colors"
+                style={{ fontSize: `${fontSize}px` }}
                 onClick={() => {
                   const seek = usePlayerStore.getState().seek
                   seek(line.time)
