@@ -93,7 +93,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         get()._setPlaybackState('error')
         break
       case 'pitchProcessing':
-        set({ isPitchProcessing: event.active })
         break
     }
   })
