@@ -31,10 +31,10 @@ function buildQueries(artist: string, title: string): { artist: string; title: s
 
   // 1. Original as-is
   if (artist) queries.push({ artist, title })
-  // 2. With cleaned title
+  // 2. With cleaned title + artist
   if (artist && cleanedTitle !== title) queries.push({ artist, title: cleanedTitle })
-  // 3. Title-only search (empty artist) — useful when artist wasn't detected
-  if (!artist) queries.push({ artist: '', title: cleanedTitle })
+  // 3. Cleaned title without artist (covers cross-artist versions)
+  queries.push({ artist: '', title: cleanedTitle })
 
   return queries
 }
