@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { Search, X, Loader2, LayoutGrid, List, Heart } from 'lucide-react'
+import { Search, X, Loader2, LayoutGrid, List, Heart, ChevronDown } from 'lucide-react'
 import { useLocalTracksStore } from '@/store/localTracksStore'
 import { useCatalogStore } from '@/store/catalogStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
 import { TrackCard } from '@/components/library/TrackCard'
 import { cn } from '@/lib/utils'
 
-const MAX_RESULTS = 80
+const BATCH_SIZE = 60
 
 export default function Library() {
   const [search, setSearch] = useState('')
@@ -14,6 +14,7 @@ export default function Library() {
   const [genre, setGenre] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showFavs, setShowFavs] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   const localTracks = useLocalTracksStore(s => s.tracks)
@@ -35,12 +36,15 @@ export default function Library() {
 
   useEffect(() => () => clearTimeout(debounceRef.current), [])
 
-  const tracks = useMemo(() => [...localTracks, ...catalogTracks], [localTracks, catalogTracks])
+  const allTracks = useMemo(
+    () => [...localTracks, ...catalogTracks].sort((a, b) => a.title.localeCompare(b.title)),
+    [localTracks, catalogTracks]
+  )
 
-  const isFiltering = debouncedSearch.trim() !== '' || genre !== 'all' || showFavs
+  useEffect(() => { setVisibleCount(BATCH_SIZE) }, [debouncedSearch, genre, showFavs])
 
-  const { filtered, totalCount } = useMemo(() => {
-    let list = tracks
+  const filtered = useMemo(() => {
+    let list = allTracks
 
     if (showFavs) {
       list = list.filter(t => favIds.includes(t.id))
@@ -59,74 +63,30 @@ export default function Library() {
       list = list.filter(t => t.genre === genre || (t.tags || []).includes(genre))
     }
 
-    list.sort((a, b) => a.title.localeCompare(b.title))
-    const totalCount = list.length
-    return { filtered: list.slice(0, MAX_RESULTS), totalCount }
-  }, [tracks, debouncedSearch, genre, showFavs, favIds])
+    return list
+  }, [allTracks, debouncedSearch, genre, showFavs, favIds])
 
-  const hasMore = totalCount > MAX_RESULTS
-  const [showAll, setShowAll] = useState(false)
-
-  useEffect(() => { setShowAll(false) }, [debouncedSearch, genre, showFavs])
-
-  const displayTracks = showAll ? (() => {
-    let list = tracks
-    if (showFavs) list = list.filter(t => favIds.includes(t.id))
-    if (debouncedSearch.trim()) {
-      const q = debouncedSearch.toLowerCase()
-      list = list.filter(t =>
-        t.title.toLowerCase().includes(q) ||
-        t.artist.toLowerCase().includes(q) ||
-        (t.tags || []).some(tag => tag.toLowerCase().includes(q))
-      )
-    }
-    if (genre !== 'all') list = list.filter(t => t.genre === genre || (t.tags || []).includes(genre))
-    return list.sort((a, b) => a.title.localeCompare(b.title))
-  })() : filtered
-
-  // Genre sections for browse mode
-  const genreSections = useMemo(() => {
-    if (isFiltering || genre !== 'all') return null
-    const sections: { id: string; label: string; tracks: typeof tracks }[] = []
-    const genreMap = new Map<string, typeof tracks>()
-
-    for (const t of tracks) {
-      const gId = (t.tags && t.tags[0]) || 'other'
-      if (!genreMap.has(gId)) genreMap.set(gId, [])
-      genreMap.get(gId)!.push(t)
-    }
-
-    const sorted = [...genreMap.entries()].sort((a, b) => b[1].length - a[1].length)
-    for (const [id, genreTracks] of sorted) {
-      const cg = catalogGenres.find(g => g.id === id)
-      sections.push({
-        id,
-        label: cg?.label || id,
-        tracks: genreTracks.sort((a, b) => a.title.localeCompare(b.title)),
-      })
-    }
-    return sections
-  }, [tracks, isFiltering, genre, showFavs, catalogGenres])
+  const displayTracks = filtered.slice(0, visibleCount)
+  const hasMore = visibleCount < filtered.length
+  const totalCount = filtered.length
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="sticky top-0 z-10 px-4 md:px-6 pt-4 md:pt-6 pb-2 bg-[#1a1a1a]">
-        {/* Title row */}
         <div className="flex items-center justify-between mb-3">
           <div>
             <h1 className="text-lg md:text-2xl font-bold text-white">
               {catalogLoading ? 'Carregando...' : 'Biblioteca'}
             </h1>
-            {genre !== 'all' && (
-              <p className="text-[11px] md:text-xs text-[#808080] mt-0.5">
-                {catalogGenres.find(g => g.id === genre)?.label || genre}
-              </p>
-            )}
+            <p className="text-[11px] md:text-xs text-[#808080] mt-0.5">
+              {catalogLoading ? '' : genre !== 'all'
+                ? catalogGenres.find(g => g.id === genre)?.label || genre
+                : `${allTracks.length} faixas`}
+            </p>
           </div>
 
-          {/* View toggle */}
-          {!catalogLoading && tracks.length > 0 && (
+          {!catalogLoading && allTracks.length > 0 && (
             <div className="flex items-center bg-[#2a2a2a] rounded-lg p-0.5">
               <button
                 onClick={() => setViewMode('grid')}
@@ -211,6 +171,7 @@ export default function Library() {
                 )}
               >
                 {g.label}
+                <span className="ml-1 text-[10px] opacity-50">{g.count}</span>
               </button>
             ))}
           </div>
@@ -219,7 +180,6 @@ export default function Library() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-4">
-        {/* Loading */}
         {catalogLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Loader2 className="h-6 w-6 animate-spin text-white/40" />
@@ -227,8 +187,7 @@ export default function Library() {
           </div>
         )}
 
-        {/* Empty */}
-        {!catalogLoading && tracks.length === 0 && (
+        {!catalogLoading && allTracks.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
             <p className="text-lg font-semibold text-white">Biblioteca vazia</p>
             <p className="text-sm text-[#808080] max-w-xs">
@@ -237,8 +196,7 @@ export default function Library() {
           </div>
         )}
 
-        {/* No results */}
-        {!catalogLoading && tracks.length > 0 && totalCount === 0 && isFiltering && (
+        {!catalogLoading && allTracks.length > 0 && totalCount === 0 && (
           <div className="flex flex-col items-center py-20 gap-2">
             {showFavs ? (
               <>
@@ -261,59 +219,14 @@ export default function Library() {
           </div>
         )}
 
-        {/* Browse mode — genre sections */}
-        {genreSections && genreSections.length > 0 && (
-          <div className="space-y-8 md:space-y-10">
-            {genreSections.map(section => (
-              <section key={section.id}>
-                <div className="flex items-center justify-between mb-3">
-                  <h2
-                    className="text-base md:text-lg font-bold text-white cursor-pointer hover:underline"
-                    onClick={() => setGenre(section.id)}
-                  >
-                    {section.label}
-                  </h2>
-                  <button
-                    onClick={() => setGenre(section.id)}
-                    className="text-xs font-semibold text-[#808080] hover:text-white transition-colors"
-                  >
-                    Ver tudo
-                  </button>
-                </div>
-
-                {viewMode === 'grid' ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
-                    {section.tracks.slice(0, 12).map(track => (
-                      <TrackCard key={track.id} track={track} view="grid" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-0.5">
-                    {section.tracks.slice(0, 10).map((track, i) => (
-                      <TrackCard key={track.id} track={track} view="list" index={i + 1} />
-                    ))}
-                  </div>
-                )}
-              </section>
-            ))}
-
-            <div className="flex items-center justify-center gap-2 py-8 text-[#808080]">
-              <Search className="h-4 w-4 shrink-0" />
-              <p className="text-xs text-center">
-                Para uma melhor experiencia, busque por titulo ou artista na barra acima.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Filtered results — flat list (no alphabetical grouping to avoid DOM explosion) */}
-        {isFiltering && totalCount > 0 && (
+        {/* Track list */}
+        {!catalogLoading && totalCount > 0 && (
           <div>
-            {/* Result count */}
-            <p className="text-xs text-[#808080] mb-3">
-              {totalCount} resultado{totalCount !== 1 ? 's' : ''}
-              {hasMore && !showAll && ` (mostrando ${MAX_RESULTS})`}
-            </p>
+            {(debouncedSearch || genre !== 'all' || showFavs) && (
+              <p className="text-xs text-[#808080] mb-3">
+                {totalCount} resultado{totalCount !== 1 ? 's' : ''}
+              </p>
+            )}
 
             {viewMode === 'grid' ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
@@ -329,15 +242,25 @@ export default function Library() {
               </div>
             )}
 
-            {hasMore && !showAll && (
-              <div className="flex justify-center py-6">
+            {hasMore && (
+              <div className="flex flex-col items-center gap-2 py-6">
+                <p className="text-[11px] text-[#808080]">
+                  Mostrando {displayTracks.length} de {totalCount}
+                </p>
                 <button
-                  onClick={() => setShowAll(true)}
-                  className="h-9 rounded-full px-6 text-xs font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors"
+                  onClick={() => setVisibleCount(v => v + BATCH_SIZE)}
+                  className="flex items-center gap-2 h-9 rounded-full px-6 text-xs font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors"
                 >
-                  Mostrar todos ({totalCount})
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  Carregar mais
                 </button>
               </div>
+            )}
+
+            {!hasMore && totalCount > BATCH_SIZE && (
+              <p className="text-center text-[11px] text-[#808080] py-6">
+                Todas as {totalCount} faixas carregadas
+              </p>
             )}
           </div>
         )}
