@@ -49,6 +49,16 @@ function cacheKeyFor(artist: string, title: string): string {
   return `${artist.toLowerCase().trim()}::${title.toLowerCase().trim()}`
 }
 
+function cleanTitleForSearch(raw: string): string {
+  let t = raw.trim()
+  t = t.replace(/\s*[-–]?\s*vers[aã]o\s+\w+(\s+\w+)?$/i, '')
+  t = t.replace(/\s*[-–]?\s*(dvd\s+\w+(\s+\w+)*|ao\s+vivo(\s+\w+)*|eletr[io]co|original|pagod[aã]o|cabar[eé]\s*\d*)$/i, '')
+  t = t.replace(/\s+a\s+lenda\s+ws\s+safad[aã]o$/i, '')
+  t = t.replace(/\s+\d{1,2}$/, '')
+  t = t.replace(/\s+embaixador\s+\w+(\s+\w+)*$/i, '')
+  return t.trim() || raw.trim()
+}
+
 function parseLrc(lrc: string): LrcLine[] {
   const lines: LrcLine[] = []
   for (const raw of lrc.split('\n')) {
@@ -77,7 +87,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   fetchLyrics: async (artist: string, title: string, trackId: string) => {
     if (get().trackId === trackId && (get().plainLyrics || get().syncedLines)) return
 
-    const key = cacheKeyFor(artist, title)
+    const cleanedTitle = cleanTitleForSearch(title)
+    const key = cacheKeyFor(artist, cleanedTitle)
     const cached = getCache()[key]
     if (cached) {
       const synced = cached.syncedLyrics ? parseLrc(cached.syncedLyrics) : null
@@ -95,7 +106,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     set({ isLoading: true, error: null, trackId, plainLyrics: null, syncedLines: null, source: null })
 
     try {
-      const params = new URLSearchParams({ artist, title })
+      const params = new URLSearchParams({ artist, title: cleanedTitle })
       const res = await fetch(`/api/lyrics?${params}`)
 
       if (get().trackId !== trackId) return
