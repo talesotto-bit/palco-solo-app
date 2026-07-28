@@ -14,6 +14,7 @@ interface LyricsState {
   source: string | null
   fetchLyrics: (artist: string, title: string, trackId: string) => Promise<void>
   searchManual: (query: string, trackId: string) => Promise<void>
+  resetToSearch: () => void
   clear: () => void
 }
 
@@ -213,6 +214,14 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       set({ isLoading: false, error: 'fetch_error' })
     }
   },
+
+  resetToSearch: () => set({
+    plainLyrics: null,
+    syncedLines: null,
+    isLoading: false,
+    error: 'not_found',
+    source: null,
+  }),
 
   clear: () => set({
     plainLyrics: null,

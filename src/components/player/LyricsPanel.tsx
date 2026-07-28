@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Loader2, AlertCircle, Music2, Search } from 'lucide-react'
+import { Loader2, AlertCircle, Search, RotateCcw } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useLyricsStore } from '@/store/lyricsStore'
 import type { LrcLine } from '@/store/lyricsStore'
@@ -27,6 +27,7 @@ export function LyricsPanel() {
   const trackId = useLyricsStore(s => s.trackId)
   const fetchLyrics = useLyricsStore(s => s.fetchLyrics)
   const searchManual = useLyricsStore(s => s.searchManual)
+  const resetToSearch = useLyricsStore(s => s.resetToSearch)
   const [fontIdx, setFontIdx] = useState(2)
   const [manualQuery, setManualQuery] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -123,14 +124,12 @@ export function LyricsPanel() {
         )}
 
         {error === 'not_found' && (
-          <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <Music2 className="h-8 w-8 text-[#535353]" />
-            <p className="text-sm font-medium text-white">Letra nao encontrada</p>
-            <p className="text-xs text-[#808080] max-w-xs">
-              Busque manualmente pelo artista e titulo da musica.
+          <div className="flex flex-col items-center gap-3 py-8">
+            <p className="text-xs text-[#808080] text-center">
+              Busque pelo artista e titulo da musica
             </p>
             <form
-              className="w-full max-w-xs mt-2"
+              className="w-full max-w-xs"
               onSubmit={(e) => {
                 e.preventDefault()
                 if (manualQuery.trim()) searchManual(manualQuery.trim(), track.id)
@@ -206,6 +205,21 @@ export function LyricsPanel() {
           <p className="mt-4 text-[10px] text-[#535353] text-center pb-2">
             Fonte: {source}
           </p>
+        )}
+
+        {hasLyrics && (
+          <div className="flex justify-center pb-4">
+            <button
+              onClick={() => {
+                setManualQuery('')
+                resetToSearch()
+              }}
+              className="flex items-center gap-1.5 text-[11px] text-[#808080] hover:text-white transition-colors"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Letra incorreta? Buscar outra
+            </button>
+          </div>
         )}
       </div>
     </div>
