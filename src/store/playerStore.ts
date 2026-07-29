@@ -133,6 +133,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
           resolvedTrack = track
         }
         if (loadId !== _trackLoadId) return
+
+        audioEngine.setPitch(pitch)
+        audioEngine.setSpeed(speed)
+
         await audioEngine.load(resolvedTrack.stems)
         if (loadId !== _trackLoadId) return
 
@@ -142,8 +146,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
         set({ playbackState: 'paused', duration: audioEngine.duration })
       } catch (err) {
+        console.error('[PlayerStore] loadTrack failed:', err)
         if (loadId !== _trackLoadId) return
-        set({ playbackState: 'error', error: 'Falha ao carregar a faixa. Tente novamente.' })
+        set({ playbackState: 'error', error: 'Falha ao carregar a faixa. Verifique sua conexão e tente novamente.' })
       }
     },
 
@@ -153,9 +158,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       if (state === 'loading' || state === 'playing') return
       try {
         await audioEngine.play()
-        set({ playbackState: 'playing' })
-      } catch {
-        // Tone.start() may fail if no user gesture — ignore silently
+        if (audioEngine.isPlaying) {
+          set({ playbackState: 'playing' })
+        }
+      } catch (err) {
+        console.error('[PlayerStore] play failed:', err)
       }
     },
 

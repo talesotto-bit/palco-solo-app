@@ -119,9 +119,9 @@ class AudioEngine {
     await this.dispose()
 
     try { await Tone.start() } catch {}
-    const ctx = Tone.getContext().rawContext
+    const ctx = Tone.getContext().rawContext as AudioContext
     if (ctx.state === 'suspended') {
-      try { await (ctx as AudioContext).resume() } catch {}
+      try { await ctx.resume() } catch {}
     }
 
     // Audio chain: stems → mixBus → pitchShift → masterGain → destination
@@ -143,11 +143,15 @@ class AudioEngine {
 
         await Promise.race([
           new Promise<void>((resolve, reject) => {
+            if (player.buffer.loaded) {
+              resolve()
+              return
+            }
             player.buffer.onload = () => resolve()
-            ;(player as any).onerror = reject
+            ;(player as any).onerror = (err: any) => reject(err || new Error('Load error'))
           }),
           new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout')), 20000)
+            setTimeout(() => reject(new Error('Timeout')), 30000)
           ),
         ])
 
@@ -224,11 +228,21 @@ class AudioEngine {
   async play(): Promise<void> {
     if (!this.isLoaded) return
 
-    try { await Tone.start() } catch {}
+    const ctx = Tone.getContext().rawContext as AudioContext
 
-    const ctx = Tone.getContext().rawContext
-    if (ctx.state === 'suspended') {
-      try { await (ctx as AudioContext).resume() } catch {}
+    const getState = () => ctx.state as string
+    if (getState() !== 'running') {
+      try { await Tone.start() } catch {}
+      if (getState() === 'suspended') {
+        try { await ctx.resume() } catch {}
+      }
+      if (getState() !== 'running') {
+        await new Promise(r => setTimeout(r, 100))
+      }
+      if (getState() !== 'running') {
+        this.emit({ type: 'error', message: 'Toque na tela para ativar o áudio e tente novamente.' })
+        return
+      }
     }
 
     Tone.getTransport().start()
@@ -350,11 +364,23 @@ class AudioEngine {
     let cancelled = false
     const update = () => {
       if (cancelled || !this.isLoaded) return
-      const ct = Tone.getTransport().seconds
+
+      const transport = Tone.getTransport()
+      if (transport.state !== 'started') {
+        this.rafId = requestAnimationFrame(update)
+        return
+      }
+
+      const ct = transport.seconds
+      if (!Number.isFinite(ct) || ct < 0) {
+        this.rafId = requestAnimationFrame(update)
+        return
+      }
+
       const effectiveDur = this.duration
       this.emit({ type: 'timeupdate', currentTime: ct, duration: effectiveDur })
 
-      if (effectiveDur > 0 && ct >= effectiveDur - 0.1) {
+      if (effectiveDur > 0 && ct >= effectiveDur - 0.15) {
         this.stop()
         this.emit({ type: 'ended' })
         return
@@ -463,33 +489,29 @@ class AudioEngine {
     transport.cancel()
 
     this.stems.forEach(({ player, gain, panner }) => {
-      try {
-        player.unsync()
-        player.stop()
-        player.dispose()
-        gain.dispose()
-        panner.dispose()
-      } catch {}
+      try { player.unsync() } catch {}
+      try { player.stop() } catch {}
+      try { player.dispose() } catch {}
+      try { gain.dispose() } catch {}
+      try { panner.dispose() } catch {}
     })
     this.stems.clear()
 
     if (this.pitchShift) {
-      this.pitchShift.dispose()
+      try { this.pitchShift.dispose() } catch {}
       this.pitchShift = null
     }
     if (this.mixBus) {
-      this.mixBus.dispose()
+      try { this.mixBus.dispose() } catch {}
       this.mixBus = null
     }
     if (this.masterGain) {
-      this.masterGain.dispose()
+      try { this.masterGain.dispose() } catch {}
       this.masterGain = null
     }
 
     this.isLoaded = false
     this._duration = 0
-    this._pitch = 0
-    this._speed = 1
   }
 }
 

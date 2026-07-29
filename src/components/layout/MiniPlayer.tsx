@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
 import { Play, Pause, SkipBack, SkipForward, ChevronUp, Volume2, VolumeX } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useCoverArt } from '@/hooks/useCoverArt'
@@ -9,8 +10,6 @@ export function MiniPlayer() {
   const navigate = useNavigate()
   const track = usePlayerStore(s => s.track)
   const playbackState = usePlayerStore(s => s.playbackState)
-  const currentTime = usePlayerStore(s => s.currentTime)
-  const duration = usePlayerStore(s => s.duration)
   const volume = usePlayerStore(s => s.volume)
   const play = usePlayerStore(s => s.play)
   const pause = usePlayerStore(s => s.pause)
@@ -21,14 +20,31 @@ export function MiniPlayer() {
 
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
+  const progressRef = useRef<HTMLDivElement>(null)
+  const mobileTimeRef = useRef<HTMLSpanElement>(null)
+  const desktopTimeRef = useRef<HTMLSpanElement>(null)
+  const desktopDurRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    return usePlayerStore.subscribe((state) => {
+      const { currentTime, duration } = state
+      const pct = duration > 0 ? (currentTime / duration) * 100 : 0
+      if (progressRef.current) progressRef.current.style.width = `${pct}%`
+      const timeStr = formatTime(currentTime)
+      if (mobileTimeRef.current) mobileTimeRef.current.textContent = timeStr
+      if (desktopTimeRef.current) desktopTimeRef.current.textContent = timeStr
+      if (desktopDurRef.current) desktopDurRef.current.textContent = formatTime(duration)
+    })
+  }, [])
+
   if (!track) return null
 
   const isPlaying = playbackState === 'playing'
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const pct = (e.clientX - rect.left) / rect.width
+    const duration = usePlayerStore.getState().duration
     seek(pct * duration)
   }
 
@@ -40,8 +56,9 @@ export function MiniPlayer() {
         onClick={handleProgressClick}
       >
         <div
+          ref={progressRef}
           className="absolute inset-y-0 left-0 bg-white group-hover:bg-[hsl(var(--primary))] transition-colors"
-          style={{ width: `${progress}%` }}
+          style={{ width: '0%' }}
         />
       </div>
 
@@ -94,14 +111,14 @@ export function MiniPlayer() {
 
         {/* Time — mobile only */}
         <div className="flex md:hidden text-[10px] text-[#b3b3b3] tabular-nums shrink-0">
-          <span>{formatTime(currentTime)}</span>
+          <span ref={mobileTimeRef}>0:00</span>
         </div>
 
         {/* Desktop — Time */}
         <div className="hidden md:flex items-center justify-center gap-2 absolute left-1/2 -translate-x-1/2 bottom-2 text-[11px] text-[#b3b3b3] tabular-nums">
-          <span>{formatTime(currentTime)}</span>
+          <span ref={desktopTimeRef}>0:00</span>
           <span className="text-white/20">/</span>
-          <span>{formatTime(duration)}</span>
+          <span ref={desktopDurRef}>0:00</span>
         </div>
 
         {/* Right — Volume + expand (desktop) */}

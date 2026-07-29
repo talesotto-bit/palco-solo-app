@@ -41,7 +41,7 @@ export function LyricsPanel() {
     if (!track) return
     if (trackId === track.id) return
     fetchLyrics(track.artist, track.title, track.id)
-  }, [track?.id])
+  }, [track?.id, trackId, fetchLyrics])
 
   const activeLine = syncedLines ? findActiveLine(syncedLines, currentTime) : -1
 
