@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { useAuthStore } from '@/store/authStore'
+import { useTrialStore } from '@/store/trialStore'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Loader2 } from 'lucide-react'
@@ -17,6 +18,7 @@ import Admin from '@/pages/Admin'
 import SeparatePage from '@/pages/SeparatePage'
 import NotFound from '@/pages/NotFound'
 import Demo from '@/pages/Demo'
+import TrialEntry from '@/pages/TrialEntry'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const queryClient = new QueryClient({
@@ -28,6 +30,7 @@ const queryClient = new QueryClient({
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore(s => s.user)
   const isInitialized = useAuthStore(s => s.isInitialized)
+  const isTrialMode = useTrialStore(s => s.isTrialMode)
 
   if (!isInitialized) {
     return (
@@ -37,7 +40,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (!user) return <Navigate to="/login" replace />
+  if (!user && !isTrialMode) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
@@ -56,6 +59,7 @@ export default function App() {
             {/* Public routes */}
             <Route path="/login" element={<Auth />} />
             <Route path="/demo" element={<ErrorBoundary><Demo /></ErrorBoundary>} />
+            <Route path="/trial" element={<ErrorBoundary><TrialEntry /></ErrorBoundary>} />
             <Route path="/" element={<Navigate to="/app/library" replace />} />
 
             {/* Performance — fullscreen, outside AppLayout */}
