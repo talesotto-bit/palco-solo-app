@@ -34,6 +34,8 @@ export function LyricsPanel() {
   const lineRefs = useRef<Map<number, HTMLParagraphElement>>(new Map())
   const userScrolledRef = useRef(false)
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const isAutoScrollingRef = useRef(false)
+  const autoScrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
     if (!track) return
@@ -50,10 +52,17 @@ export function LyricsPanel() {
     const container = scrollRef.current
     const elTop = el.offsetTop - container.offsetTop
     const target = elTop - container.clientHeight / 3
+
+    isAutoScrollingRef.current = true
+    clearTimeout(autoScrollTimeoutRef.current)
     container.scrollTo({ top: target, behavior: 'smooth' })
+    autoScrollTimeoutRef.current = setTimeout(() => {
+      isAutoScrollingRef.current = false
+    }, 800)
   }, [activeLine, syncedLines])
 
-  const handleScroll = useCallback(() => {
+  const markUserScrolled = useCallback(() => {
+    if (isAutoScrollingRef.current) return
     if (playbackState !== 'playing') return
     userScrolledRef.current = true
     clearTimeout(scrollTimerRef.current)
@@ -63,11 +72,26 @@ export function LyricsPanel() {
   }, [playbackState])
 
   useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.addEventListener('scroll', markUserScrolled, { passive: true })
+    el.addEventListener('touchstart', markUserScrolled, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', markUserScrolled)
+      el.removeEventListener('touchstart', markUserScrolled)
+    }
+  }, [markUserScrolled])
+
+  useEffect(() => {
     userScrolledRef.current = false
+    isAutoScrollingRef.current = false
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [trackId])
 
-  useEffect(() => () => clearTimeout(scrollTimerRef.current), [])
+  useEffect(() => () => {
+    clearTimeout(scrollTimerRef.current)
+    clearTimeout(autoScrollTimeoutRef.current)
+  }, [])
 
   const setLineRef = useCallback((idx: number, el: HTMLParagraphElement | null) => {
     if (el) lineRefs.current.set(idx, el)
@@ -112,9 +136,7 @@ export function LyricsPanel() {
       {/* Content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 pb-4 scroll-smooth"
-        onWheel={handleScroll}
-        onTouchMove={handleScroll}
+        className="flex-1 overflow-y-auto px-4 pb-4"
       >
         {isLoading && (
           <div className="flex flex-col items-center gap-3 py-10">

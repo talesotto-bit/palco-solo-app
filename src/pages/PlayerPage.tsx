@@ -247,6 +247,16 @@ export default function PlayerPage() {
                 </div>
               )}
 
+              <div className="flex items-center justify-between rounded-lg bg-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/10 px-4 py-2.5">
+                <p className="text-[11px] text-[#b3b3b3]">
+                  Remova o <span className="font-bold text-white">Click</span> para uma melhor experiencia
+                </p>
+                <div className="flex items-center gap-2 text-[10px] text-[#808080] shrink-0 ml-3">
+                  <span><span className="inline-flex items-center justify-center h-4 w-4 rounded bg-white/10 text-[9px] font-bold text-white mr-0.5">M</span> Mute</span>
+                  <span><span className="inline-flex items-center justify-center h-4 w-4 rounded bg-white/10 text-[9px] font-bold text-white mr-0.5">S</span> Solo</span>
+                </div>
+              </div>
+
               {/* Stem Mixer */}
               <div id="player-mixer" className="scroll-mt-4">
                 <StemMixer />
