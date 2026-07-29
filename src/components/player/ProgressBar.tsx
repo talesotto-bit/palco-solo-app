@@ -4,17 +4,31 @@ import { formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 export function ProgressBar() {
-  const currentTime = usePlayerStore(s => s.currentTime)
-  const duration = usePlayerStore(s => s.duration)
   const seek = usePlayerStore(s => s.seek)
   const playbackState = usePlayerStore(s => s.playbackState)
   const barRef = useRef<HTMLDivElement>(null)
+  const fillRef = useRef<HTMLDivElement>(null)
+  const thumbRef = useRef<HTMLDivElement>(null)
+  const elapsedRef = useRef<HTMLSpanElement>(null)
+  const remainRef = useRef<HTMLSpanElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [dragProgress, setDragProgress] = useState(0)
   const [hoverX, setHoverX] = useState<number | null>(null)
+  const durationRef = useRef(0)
 
-  const rawProgress = duration > 0 ? (currentTime / duration) * 100 : 0
-  const displayProgress = isDragging ? dragProgress : (Number.isFinite(rawProgress) ? Math.min(100, Math.max(0, rawProgress)) : 0)
+  useEffect(() => {
+    if (isDragging) return
+    return usePlayerStore.subscribe((state) => {
+      const { currentTime, duration } = state
+      durationRef.current = duration
+      const pct = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0
+      if (fillRef.current) fillRef.current.style.width = `${pct}%`
+      if (thumbRef.current) thumbRef.current.style.left = `${pct}%`
+      if (elapsedRef.current) elapsedRef.current.textContent = formatTime(currentTime)
+      if (remainRef.current) remainRef.current.textContent = `-${formatTime(Math.max(0, duration - currentTime))}`
+    })
+  }, [isDragging])
+
   const isLoading = playbackState === 'loading'
 
   const getRatioFromClientX = useCallback((clientX: number) => {
@@ -24,13 +38,14 @@ export function ProgressBar() {
   }, [])
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!duration || duration <= 0) return
+    const dur = durationRef.current || usePlayerStore.getState().duration
+    if (!dur || dur <= 0) return
     e.preventDefault()
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     const ratio = getRatioFromClientX(e.clientX)
     setIsDragging(true)
     setDragProgress(ratio * 100)
-  }, [duration, getRatioFromClientX])
+  }, [getRatioFromClientX])
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const ratio = getRatioFromClientX(e.clientX)
@@ -44,12 +59,15 @@ export function ProgressBar() {
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging) return
     const ratio = getRatioFromClientX(e.clientX)
-    seek(ratio * duration)
+    const dur = durationRef.current || usePlayerStore.getState().duration
+    seek(ratio * dur)
     setIsDragging(false)
-  }, [isDragging, duration, seek, getRatioFromClientX])
+  }, [isDragging, seek, getRatioFromClientX])
 
-  const displayTime = isDragging ? (dragProgress / 100) * duration : currentTime
-  const hoverTime = hoverX !== null && duration > 0 && !isDragging ? hoverX * duration : null
+  const displayProgress = isDragging ? dragProgress : 0
+  const dur = durationRef.current || usePlayerStore.getState().duration
+  const displayTime = isDragging ? (dragProgress / 100) * dur : 0
+  const hoverTime = hoverX !== null && dur > 0 && !isDragging ? hoverX * dur : null
 
   return (
     <div className="w-full space-y-1.5">
@@ -65,22 +83,24 @@ export function ProgressBar() {
       >
         {/* Progress fill */}
         <div
+          ref={fillRef}
           className={cn(
             'absolute inset-y-0 left-0 rounded-full transition-colors duration-75',
             isDragging ? 'bg-[hsl(var(--primary))]' : 'bg-white group-hover:bg-[hsl(var(--primary))]'
           )}
-          style={{ width: `${displayProgress}%` }}
+          style={{ width: isDragging ? `${displayProgress}%` : '0%' }}
         />
 
         {/* Thumb */}
         <div
+          ref={thumbRef}
           className={cn(
             'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-md transition-all',
             isDragging
               ? 'h-3.5 w-3.5 opacity-100'
               : 'h-3 w-3 opacity-0 group-hover:opacity-100'
           )}
-          style={{ left: `${displayProgress}%` }}
+          style={{ left: isDragging ? `${displayProgress}%` : undefined }}
         />
 
         {/* Hover time tooltip */}
@@ -103,8 +123,8 @@ export function ProgressBar() {
 
       {/* Time labels */}
       <div className="flex items-center justify-between text-xs md:text-[11px] tabular-nums text-[#b3b3b3]">
-        <span>{formatTime(displayTime)}</span>
-        <span>-{formatTime(Math.max(0, duration - displayTime))}</span>
+        <span ref={elapsedRef}>{isDragging ? formatTime(displayTime) : '0:00'}</span>
+        <span ref={remainRef}>{isDragging ? `-${formatTime(Math.max(0, dur - displayTime))}` : '-0:00'}</span>
       </div>
     </div>
   )

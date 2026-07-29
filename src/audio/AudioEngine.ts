@@ -77,6 +77,10 @@ class AudioEngine {
   private _cancelRaf: (() => void) | null = null
   private isLoaded = false
   private _loadId = 0
+  private _pitchTimer: ReturnType<typeof setTimeout> | null = null
+  private _speedTimer: ReturnType<typeof setTimeout> | null = null
+  private _lastPitchApply = 0
+  private _lastSpeedApply = 0
 
   constructor() {
     ensureAudioUnlock()
@@ -104,11 +108,25 @@ class AudioEngine {
 
   // ─── Real-time pitch update ────────────────────────────────────────────────
 
-  private updatePitchShift(): void {
+  private _applyPitchNow(): void {
     if (!this.pitchShift) return
     const speedComp = -Math.log2(this._speed) * 12
-    const total = this._pitch + speedComp
-    this.pitchShift.pitch = total
+    this.pitchShift.pitch = this._pitch + speedComp
+    this._lastPitchApply = performance.now()
+  }
+
+  private updatePitchShift(): void {
+    if (!this.pitchShift) return
+    const now = performance.now()
+    if (now - this._lastPitchApply > 60) {
+      this._applyPitchNow()
+    } else {
+      if (this._pitchTimer) clearTimeout(this._pitchTimer)
+      this._pitchTimer = setTimeout(() => {
+        this._pitchTimer = null
+        this._applyPitchNow()
+      }, 60)
+    }
   }
 
   // ─── Load ──────────────────────────────────────────────────────────────────
@@ -126,7 +144,7 @@ class AudioEngine {
 
     // Audio chain: stems → mixBus → pitchShift → masterGain → destination
     this.mixBus = new Tone.Gain(1)
-    this.pitchShift = new Tone.PitchShift({ pitch: 0, windowSize: 0.08 })
+    this.pitchShift = new Tone.PitchShift({ pitch: 0, windowSize: 0.2 })
     this.masterGain = new Tone.Gain(this._volume)
 
     this.mixBus.connect(this.pitchShift)
@@ -263,7 +281,16 @@ class AudioEngine {
 
   seek(seconds: number): void {
     const clamped = Math.max(0, Math.min(seconds, this.duration - 0.1))
-    Tone.getTransport().seconds = clamped
+    if (this.masterGain && this.isPlaying) {
+      const g = this.masterGain.gain
+      const now = Tone.now()
+      g.cancelScheduledValues(now)
+      g.setValueAtTime(0, now)
+      Tone.getTransport().seconds = clamped
+      g.linearRampToValueAtTime(this._volume, now + 0.04)
+    } else {
+      Tone.getTransport().seconds = clamped
+    }
   }
 
   get currentTime(): number {
@@ -291,12 +318,26 @@ class AudioEngine {
 
   // ─── Speed (0.5..2.0) ─────────────────────────────────────────────────────
 
-  setSpeed(speed: number): void {
-    this._speed = speed
+  private _applySpeedNow(): void {
     this.stems.forEach(({ player }) => {
-      player.playbackRate = speed
+      player.playbackRate = this._speed
     })
     this.updatePitchShift()
+    this._lastSpeedApply = performance.now()
+  }
+
+  setSpeed(speed: number): void {
+    this._speed = speed
+    const now = performance.now()
+    if (now - this._lastSpeedApply > 60) {
+      this._applySpeedNow()
+    } else {
+      if (this._speedTimer) clearTimeout(this._speedTimer)
+      this._speedTimer = setTimeout(() => {
+        this._speedTimer = null
+        this._applySpeedNow()
+      }, 60)
+    }
   }
 
   get speed(): number {
@@ -483,6 +524,8 @@ class AudioEngine {
   // ─── Cleanup ───────────────────────────────────────────────────────────────
 
   async dispose(): Promise<void> {
+    if (this._pitchTimer) { clearTimeout(this._pitchTimer); this._pitchTimer = null }
+    if (this._speedTimer) { clearTimeout(this._speedTimer); this._speedTimer = null }
     this.stopTimeUpdater()
     const transport = Tone.getTransport()
     transport.stop()
