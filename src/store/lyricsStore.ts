@@ -18,10 +18,11 @@ interface LyricsState {
   clear: () => void
 }
 
-const CACHE_KEY = 'palco-lyrics-cache-v3'
+const CACHE_KEY = 'palco-lyrics-cache-v4'
 const MAX_CACHE = 200
 
 try { localStorage.removeItem('palco-lyrics-cache-v2') } catch {}
+try { localStorage.removeItem('palco-lyrics-cache-v3') } catch {}
 
 interface CacheEntry {
   plainLyrics: string

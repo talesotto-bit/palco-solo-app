@@ -8,36 +8,48 @@ interface LyricsResult {
   source: string
 }
 
-// Strip catalog-specific suffixes that prevent lyrics matching
 function cleanTitle(raw: string): string {
   let t = raw.trim()
-  // Remove "Versao Forro", "Versao Arrocha", "Versao Piseiro", etc.
   t = t.replace(/\s*[-–]?\s*vers[aã]o\s+\w+(\s+\w+)?$/i, '')
-  // Remove "Dvd ...", "Ao Vivo ...", "Eletrico", "Original", "Pagodao"
   t = t.replace(/\s*[-–]?\s*(dvd\s+\w+(\s+\w+)*|ao\s+vivo(\s+\w+)*|eletr[io]co|original|pagod[aã]o|cabar[eé]\s*\d*)$/i, '')
-  // Remove "A Lenda Ws Safadao" or similar artist cross-references baked into title
   t = t.replace(/\s+a\s+lenda\s+ws\s+safad[aã]o$/i, '')
-  // Remove trailing numbers/codes like "02", "01"
   t = t.replace(/\s+\d{1,2}$/, '')
-  // Remove "Embaixador Gl Grecia" and similar promotional suffixes
   t = t.replace(/\s+embaixador\s+\w+(\s+\w+)*$/i, '')
-  return t.trim() || raw.trim()
+  t = t.replace(/\s*\(.*?\)\s*/g, ' ')
+  t = t.replace(/\s*\[.*?\]\s*/g, ' ')
+  return t.replace(/\s+/g, ' ').trim() || raw.trim()
 }
 
-// Try multiple query variants to maximize match chance
+function removeAccents(str: string): string {
+  const map: Record<string, string> = {
+    'á':'a','à':'a','ã':'a','â':'a','ä':'a',
+    'é':'e','è':'e','ê':'e','ë':'e',
+    'í':'i','ì':'i','î':'i','ï':'i',
+    'ó':'o','ò':'o','õ':'o','ô':'o','ö':'o',
+    'ú':'u','ù':'u','û':'u','ü':'u',
+    'ç':'c','ñ':'n',
+  }
+  return str.replace(/[áàãâäéèêëíìîïóòõôöúùûüçñ]/gi, (c) => map[c.toLowerCase()] || c)
+}
+
+function toSlug(text: string): string {
+  return removeAccents(text.toLowerCase())
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
 function buildQueries(artist: string, title: string): { artist: string; title: string }[] {
   const queries: { artist: string; title: string }[] = []
   const cleanedTitle = cleanTitle(title)
-
-  // 1. Original as-is
   if (artist) queries.push({ artist, title })
-  // 2. With cleaned title + artist
   if (artist && cleanedTitle !== title) queries.push({ artist, title: cleanedTitle })
-  // 3. Cleaned title without artist (covers cross-artist versions)
   queries.push({ artist: '', title: cleanedTitle })
-
   return queries
 }
+
+// ─── LRCLIB (synced lyrics) ──────────────────────────────────────────────────
 
 async function searchLrclib(artist: string, title: string): Promise<LyricsResult | null> {
   try {
@@ -45,9 +57,8 @@ async function searchLrclib(artist: string, title: string): Promise<LyricsResult
     if (artist) params.artist_name = artist
     const qs = new URLSearchParams(params)
 
-    // Try exact match first
     const res = await fetch(`https://lrclib.net/api/get?${qs}`, {
-      headers: { 'User-Agent': 'PalcoSolo/1.0' },
+      headers: { 'User-Agent': 'PowerTom/1.0 (https://powertom.com.br)' },
       signal: AbortSignal.timeout(6000),
     })
     if (res.ok) {
@@ -61,10 +72,9 @@ async function searchLrclib(artist: string, title: string): Promise<LyricsResult
       }
     }
 
-    // Fallback to fuzzy search
     const q = artist ? `${artist} ${title}` : title
     const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`, {
-      headers: { 'User-Agent': 'PalcoSolo/1.0' },
+      headers: { 'User-Agent': 'PowerTom/1.0 (https://powertom.com.br)' },
       signal: AbortSignal.timeout(6000),
     })
     if (!searchRes.ok) return null
@@ -91,9 +101,115 @@ async function fetchFromLrclib(artist: string, title: string): Promise<LyricsRes
   return null
 }
 
-async function searchVagalume(artist: string, title: string): Promise<LyricsResult | null> {
-  if (!VAGALUME_KEY) return null
+// ─── Vagalume (web — no API key needed) ──────────────────────────────────────
+
+function decodeHtmlEntities(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+}
+
+async function vagalumeDirect(artist: string, title: string): Promise<LyricsResult | null> {
   if (!artist) return null
+  try {
+    const artistSlug = toSlug(artist)
+    const titleSlug = toSlug(title)
+    if (!artistSlug || !titleSlug) return null
+
+    const url = `https://www.vagalume.com.br/${artistSlug}/${titleSlug}.html`
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'pt-BR,pt;q=0.9',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(8000),
+    })
+
+    if (!res.ok) return null
+    const html = await res.text()
+
+    const lyricsMatch = html.match(/<div[^>]*id=["']lyrics["'][^>]*>([\s\S]*?)<\/div>/i)
+    if (!lyricsMatch) return null
+
+    const lyrics = decodeHtmlEntities(lyricsMatch[1]).trim()
+    if (!lyrics || lyrics.length < 20) return null
+
+    return { plainLyrics: lyrics, syncedLyrics: null, source: 'Vagalume' }
+  } catch {
+    return null
+  }
+}
+
+async function vagalumeSearch(artist: string, title: string): Promise<LyricsResult | null> {
+  try {
+    const q = artist ? `${artist} ${title}` : title
+    const searchUrl = `https://www.vagalume.com.br/busca.php?q=${encodeURIComponent(q)}`
+    const res = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html',
+        'Accept-Language': 'pt-BR,pt;q=0.9',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(8000),
+    })
+
+    if (!res.ok) return null
+    const html = await res.text()
+
+    const songLinkMatch = html.match(/href="(\/[a-z0-9-]+\/[a-z0-9-]+\.html)"/i)
+    if (!songLinkMatch) return null
+
+    const songUrl = `https://www.vagalume.com.br${songLinkMatch[1]}`
+    const songRes = await fetch(songUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html',
+        'Accept-Language': 'pt-BR,pt;q=0.9',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(8000),
+    })
+
+    if (!songRes.ok) return null
+    const songHtml = await songRes.text()
+
+    const lyricsMatch = songHtml.match(/<div[^>]*id=["']lyrics["'][^>]*>([\s\S]*?)<\/div>/i)
+    if (!lyricsMatch) return null
+
+    const lyrics = decodeHtmlEntities(lyricsMatch[1]).trim()
+    if (!lyrics || lyrics.length < 20) return null
+
+    return { plainLyrics: lyrics, syncedLyrics: null, source: 'Vagalume' }
+  } catch {
+    return null
+  }
+}
+
+async function fetchFromVagalumeWeb(artist: string, title: string): Promise<LyricsResult | null> {
+  const cleanedTitle = cleanTitle(title)
+  const result = await vagalumeDirect(artist, cleanedTitle)
+  if (result) return result
+  if (cleanedTitle !== title) {
+    const r2 = await vagalumeDirect(artist, title)
+    if (r2) return r2
+  }
+  return vagalumeSearch(artist, cleanedTitle)
+}
+
+// ─── Vagalume API (if key is set) ────────────────────────────────────────────
+
+async function searchVagalumeApi(artist: string, title: string): Promise<LyricsResult | null> {
+  if (!VAGALUME_KEY || !artist) return null
   try {
     const url = new URL('https://api.vagalume.com.br/search.php')
     url.searchParams.set('art', artist)
@@ -114,15 +230,64 @@ async function searchVagalume(artist: string, title: string): Promise<LyricsResu
   }
 }
 
-async function fetchFromVagalume(artist: string, title: string): Promise<LyricsResult | null> {
+async function fetchFromVagalumeApi(artist: string, title: string): Promise<LyricsResult | null> {
+  if (!VAGALUME_KEY) return null
   const queries = buildQueries(artist, title)
   for (const q of queries) {
     if (!q.artist) continue
-    const result = await searchVagalume(q.artist, q.title)
+    const result = await searchVagalumeApi(q.artist, q.title)
     if (result) return result
   }
   return null
 }
+
+// ─── Letras.mus.br (web — no API key needed) ────────────────────────────────
+
+async function letrasDirect(artist: string, title: string): Promise<LyricsResult | null> {
+  if (!artist) return null
+  try {
+    const artistSlug = toSlug(artist)
+    const titleSlug = toSlug(title)
+    if (!artistSlug || !titleSlug) return null
+
+    const url = `https://www.letras.mus.br/${artistSlug}/${titleSlug}/`
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html',
+        'Accept-Language': 'pt-BR,pt;q=0.9',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(8000),
+    })
+
+    if (!res.ok) return null
+    const html = await res.text()
+
+    const lyricsMatch = html.match(/<div[^>]*class="[^"]*lyric-original[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
+      || html.match(/<div[^>]*class="[^"]*cnt-letra[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
+    if (!lyricsMatch) return null
+
+    const lyrics = decodeHtmlEntities(lyricsMatch[1]).trim()
+    if (!lyrics || lyrics.length < 20) return null
+
+    return { plainLyrics: lyrics, syncedLyrics: null, source: 'Letras' }
+  } catch {
+    return null
+  }
+}
+
+async function fetchFromLetras(artist: string, title: string): Promise<LyricsResult | null> {
+  const cleanedTitle = cleanTitle(title)
+  const result = await letrasDirect(artist, cleanedTitle)
+  if (result) return result
+  if (cleanedTitle !== title) {
+    return letrasDirect(artist, title)
+  }
+  return null
+}
+
+// ─── Handler ─────────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -138,18 +303,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const a = (typeof artist === 'string' ? artist : '').trim()
   const t = title.trim()
 
-  const result = await fetchFromLrclib(a, t) || await fetchFromVagalume(a, t)
+  // Run LRCLIB (synced lyrics) in parallel with Brazilian sources
+  const [lrcResult, vagWebResult, letrasResult] = await Promise.allSettled([
+    fetchFromLrclib(a, t),
+    fetchFromVagalumeWeb(a, t),
+    fetchFromLetras(a, t),
+  ])
 
-  if (!result) {
+  const lrc = lrcResult.status === 'fulfilled' ? lrcResult.value : null
+  const vagWeb = vagWebResult.status === 'fulfilled' ? vagWebResult.value : null
+  const letras = letrasResult.status === 'fulfilled' ? letrasResult.value : null
+
+  // Prefer synced lyrics from LRCLIB
+  if (lrc?.syncedLyrics) {
+    res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+    return res.status(200).json({
+      plainLyrics: lrc.plainLyrics,
+      syncedLyrics: lrc.syncedLyrics,
+      artist: a, title: t, source: lrc.source,
+    })
+  }
+
+  // Prefer Brazilian sources for plain lyrics
+  const plainResult = vagWeb || letras || lrc
+
+  // Try Vagalume API as last resort if nothing found
+  if (!plainResult && VAGALUME_KEY) {
+    const vagApi = await fetchFromVagalumeApi(a, t)
+    if (vagApi) {
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+      return res.status(200).json({
+        plainLyrics: vagApi.plainLyrics,
+        syncedLyrics: null,
+        artist: a, title: t, source: vagApi.source,
+      })
+    }
+  }
+
+  if (!plainResult) {
     return res.status(404).json({ error: 'Lyrics not found' })
   }
 
   res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
   return res.status(200).json({
-    plainLyrics: result.plainLyrics,
-    syncedLyrics: result.syncedLyrics,
-    artist: a,
-    title: t,
-    source: result.source,
+    plainLyrics: plainResult.plainLyrics,
+    syncedLyrics: plainResult.syncedLyrics,
+    artist: a, title: t, source: plainResult.source,
   })
 }
