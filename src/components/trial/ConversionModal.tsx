@@ -51,7 +51,7 @@ const PLANS = [
     features: [
       'Acesso vitalício',
       'App exclusivo iOS/Android',
-      'IA que ajusta tom e velocidade',
+      'IA que ajusta tom e velocidade sem distorção',
       '80.000 VS Multipista profissionais',
       '60.000 Playbacks com letra',
       'Atualizações diárias grátis',

@@ -81,6 +81,7 @@ class AudioEngine {
   private _speedTimer: ReturnType<typeof setTimeout> | null = null
   private _lastPitchApply = 0
   private _lastSpeedApply = 0
+  private _transitionFading = false
 
   constructor() {
     ensureAudioUnlock()
@@ -111,21 +112,50 @@ class AudioEngine {
   private _applyPitchNow(): void {
     if (!this.pitchShift) return
     const speedComp = -Math.log2(this._speed) * 12
-    this.pitchShift.pitch = this._pitch + speedComp
+    const targetPitch = this._pitch + speedComp
+    const currentPitch = this.pitchShift.pitch
+    if (Math.abs(targetPitch - currentPitch) < 0.01) return
+    this.pitchShift.pitch = targetPitch
     this._lastPitchApply = performance.now()
+  }
+
+  private _fadeAndApply(applyFn: () => void): void {
+    if (!this.masterGain || !this.isPlaying) {
+      applyFn()
+      return
+    }
+    if (this._transitionFading) {
+      applyFn()
+      return
+    }
+    this._transitionFading = true
+    const g = this.masterGain.gain
+    const now = Tone.now()
+    const savedVol = this._volume
+    g.cancelScheduledValues(now)
+    g.setValueAtTime(savedVol, now)
+    g.linearRampToValueAtTime(0.01, now + 0.025)
+    setTimeout(() => {
+      applyFn()
+      const now2 = Tone.now()
+      g.cancelScheduledValues(now2)
+      g.setValueAtTime(0.01, now2)
+      g.linearRampToValueAtTime(savedVol, now2 + 0.025)
+      this._transitionFading = false
+    }, 30)
   }
 
   private updatePitchShift(): void {
     if (!this.pitchShift) return
     const now = performance.now()
-    if (now - this._lastPitchApply > 60) {
-      this._applyPitchNow()
+    if (now - this._lastPitchApply > 200) {
+      this._fadeAndApply(() => this._applyPitchNow())
     } else {
       if (this._pitchTimer) clearTimeout(this._pitchTimer)
       this._pitchTimer = setTimeout(() => {
         this._pitchTimer = null
-        this._applyPitchNow()
-      }, 60)
+        this._fadeAndApply(() => this._applyPitchNow())
+      }, 200)
     }
   }
 
@@ -144,7 +174,7 @@ class AudioEngine {
 
     // Audio chain: stems → mixBus → pitchShift → masterGain → destination
     this.mixBus = new Tone.Gain(1)
-    this.pitchShift = new Tone.PitchShift({ pitch: 0, windowSize: 0.2 })
+    this.pitchShift = new Tone.PitchShift({ pitch: 0, windowSize: 0.25, delayTime: 0 })
     this.masterGain = new Tone.Gain(this._volume)
 
     this.mixBus.connect(this.pitchShift)
@@ -336,21 +366,21 @@ class AudioEngine {
     this.stems.forEach(({ player }) => {
       player.playbackRate = this._speed
     })
-    this.updatePitchShift()
+    this._applyPitchNow()
     this._lastSpeedApply = performance.now()
   }
 
   setSpeed(speed: number): void {
     this._speed = speed
     const now = performance.now()
-    if (now - this._lastSpeedApply > 60) {
-      this._applySpeedNow()
+    if (now - this._lastSpeedApply > 200) {
+      this._fadeAndApply(() => this._applySpeedNow())
     } else {
       if (this._speedTimer) clearTimeout(this._speedTimer)
       this._speedTimer = setTimeout(() => {
         this._speedTimer = null
-        this._applySpeedNow()
-      }, 60)
+        this._fadeAndApply(() => this._applySpeedNow())
+      }, 200)
     }
   }
 
