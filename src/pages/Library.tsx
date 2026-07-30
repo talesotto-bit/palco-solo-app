@@ -85,7 +85,7 @@ export default function Library() {
               {catalogLoading ? '' : genre !== 'all'
                 ? catalogGenres.find(g => g.id === genre)?.label || genre
                 : isTrialMode
-                  ? `${allTracks.length} faixas — amostra do catálogo`
+                  ? 'Pequena amostra do catálogo'
                   : `${allTracks.length} faixas`}
             </p>
           </div>
