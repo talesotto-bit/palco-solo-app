@@ -26,9 +26,9 @@ const PLANS = [
     name: 'Plano Pro',
     price: '129,90',
     oldPrice: '247',
-    subtitle: 'Mais vendido',
+    subtitle: 'Intermediário',
     url: 'https://go.use-dice.com/cgAaPj19Lv5Mj_6K8kDwiGUs7n5k7nJL',
-    highlight: true,
+    highlight: false,
     icon: Crown,
     features: [
       'Acesso vitalício',
@@ -44,9 +44,9 @@ const PLANS = [
     name: 'Pro Max',
     price: '189,90',
     oldPrice: '367',
-    subtitle: 'O mais completo',
+    subtitle: 'Mais vendido',
     url: 'https://go.use-dice.com/4MLA8IDE2vBDIjPgVc8a-xTEnTUZu4x0',
-    highlight: false,
+    highlight: true,
     icon: Zap,
     features: [
       'Acesso vitalício',
