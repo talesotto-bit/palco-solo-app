@@ -1,8 +1,10 @@
+import { useState, useEffect, useRef } from 'react'
 import {
   Play, Pause, Square, SkipBack, SkipForward,
-  RotateCcw, Volume2, VolumeX, Loader2,
+  RotateCcw, Volume2, VolumeX, Loader2, X,
 } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
+import { useTrialStore } from '@/store/trialStore'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
 
@@ -11,6 +13,16 @@ interface PlayerControlsProps {
 }
 
 export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
+  const isTrialMode = useTrialStore(s => s.isTrialMode)
+  const [showSoundTip, setShowSoundTip] = useState(true)
+  const tipTimerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    if (!isTrialMode) return
+    tipTimerRef.current = setTimeout(() => setShowSoundTip(false), 60_000)
+    return () => clearTimeout(tipTimerRef.current)
+  }, [isTrialMode])
+
   // Individual selectors — prevents re-render on every currentTime update (60fps)
   const playbackState = usePlayerStore(s => s.playbackState)
   const volume = usePlayerStore(s => s.volume)
@@ -105,6 +117,19 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
           className="flex-1"
         />
       </div>
+
+      {isTrialMode && showSoundTip && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-[11px] font-medium w-full max-w-xs">
+          <Volume2 className="h-3.5 w-3.5 shrink-0" />
+          <span>Sem som? Retire o telefone do Modo Silencioso e aumente o volume!</span>
+          <button
+            onClick={() => setShowSoundTip(false)}
+            className="ml-auto p-0.5 rounded hover:bg-white/10 transition-colors shrink-0"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
