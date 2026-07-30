@@ -13,6 +13,7 @@ import { PitchControl } from '@/components/player/PitchControl'
 import { SpeedControl } from '@/components/player/SpeedControl'
 import { StemMixer } from '@/components/player/StemMixer'
 import { LyricsPanel } from '@/components/player/LyricsPanel'
+import { CifrasPanel } from '@/components/player/CifrasPanel'
 import { useCoverArt } from '@/hooks/useCoverArt'
 import { semitonesToLabel, speedToLabel } from '@/lib/utils'
 import { useState } from 'react'
@@ -35,6 +36,7 @@ export default function PlayerPage() {
   const downloadMix = usePlayerStore(s => s.downloadMix)
   const [showTuning, setShowTuning] = useState(true)
   const [justSaved, setJustSaved] = useState(false)
+  const [rightTab, setRightTab] = useState<'letra' | 'cifra'>('letra')
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
   if (!track) {
@@ -263,9 +265,35 @@ export default function PlayerPage() {
               </div>
             </div>
 
-            {/* RIGHT COLUMN — lyrics (always visible) */}
-            <div className="lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:sticky lg:top-4 lg:h-[calc(100vh-6rem)]">
-              <LyricsPanel />
+            {/* RIGHT COLUMN — lyrics/cifras tabs */}
+            <div className="lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:sticky lg:top-4 lg:h-[calc(100vh-6rem)] flex flex-col">
+              <div className="flex rounded-t-lg overflow-hidden shrink-0">
+                <button
+                  onClick={() => setRightTab('letra')}
+                  className={cn(
+                    'flex-1 py-2.5 text-xs font-bold transition-colors',
+                    rightTab === 'letra'
+                      ? 'bg-white/10 text-white'
+                      : 'bg-white/[0.03] text-[#808080] hover:text-white hover:bg-white/5'
+                  )}
+                >
+                  Letra
+                </button>
+                <button
+                  onClick={() => setRightTab('cifra')}
+                  className={cn(
+                    'flex-1 py-2.5 text-xs font-bold transition-colors',
+                    rightTab === 'cifra'
+                      ? 'bg-white/10 text-white'
+                      : 'bg-white/[0.03] text-[#808080] hover:text-white hover:bg-white/5'
+                  )}
+                >
+                  Cifra
+                </button>
+              </div>
+              <div className="flex-1 min-h-0">
+                {rightTab === 'letra' ? <LyricsPanel /> : <CifrasPanel />}
+              </div>
             </div>
           </div>
         </div>
