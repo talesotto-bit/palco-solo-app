@@ -3,6 +3,7 @@ import type { Track } from '@/types/track'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/store/playerStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
+import { useTrialStore } from '@/store/trialStore'
 import { useCoverArt } from '@/hooks/useCoverArt'
 import { useNavigate } from 'react-router-dom'
 
@@ -35,6 +36,13 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
     } else if (isActive) {
       play()
     } else {
+      const isTrialMode = useTrialStore.getState().isTrialMode
+      if (isTrialMode && typeof window !== 'undefined' && (window as any).fbq) {
+        (window as any).fbq('track', 'ViewContent', {
+          content_name: `${track.artist} - ${track.title}`,
+          content_category: 'TrialPlay',
+        })
+      }
       await loadTrack(track)
       play()
     }
