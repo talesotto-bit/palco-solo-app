@@ -217,12 +217,10 @@ export function LyricsPanel() {
               <p
                 key={i}
                 ref={el => setLineRef(i, el)}
-                className="py-1.5 px-2 rounded-md leading-relaxed cursor-pointer hover:bg-white/5 transition-all duration-300"
+                className="py-1.5 px-2 rounded-md leading-relaxed cursor-pointer hover:bg-white/5 transition-colors"
                 style={{
                   fontSize: `${fontSize}px`,
-                  color: i === activeLine ? '#fff' : 'rgba(224,224,224,0.45)',
-                  fontWeight: i === activeLine ? 700 : 400,
-                  transform: i === activeLine ? 'scale(1.02)' : 'scale(1)',
+                  color: '#e0e0e0',
                 }}
                 onClick={() => {
                   const seek = usePlayerStore.getState().seek
