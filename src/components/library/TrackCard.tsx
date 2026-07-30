@@ -36,6 +36,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
       play()
     } else {
       await loadTrack(track)
+      play()
     }
   }
 

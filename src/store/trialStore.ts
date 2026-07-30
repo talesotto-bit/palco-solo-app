@@ -1,66 +1,134 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-const TRIAL_DURATION = 300
-const EXTENSION_DURATION = 120
+const TRIAL_MS = 180_000
+const EXTENSION_MS = 120_000
 
 interface TrialState {
   isTrialMode: boolean
-  usedSeconds: number
+  usedMs: number
   extended: boolean
   expired: boolean
+  _playStartedAt: number | null
   startTrial: () => void
-  tick: () => void
+  onPlay: () => void
+  onPause: () => void
+  flush: () => void
   extend: () => void
   reset: () => void
+}
+
+function maxMs(extended: boolean) {
+  return extended ? TRIAL_MS + EXTENSION_MS : TRIAL_MS
+}
+
+type ExpireCallback = () => void
+const _expireListeners: ExpireCallback[] = []
+export function onTrialExpire(cb: ExpireCallback) {
+  _expireListeners.push(cb)
+  return () => {
+    const idx = _expireListeners.indexOf(cb)
+    if (idx >= 0) _expireListeners.splice(idx, 1)
+  }
+}
+function _notifyExpire() {
+  _expireListeners.forEach(cb => cb())
+}
+
+let _expiryTimeout: ReturnType<typeof setTimeout> | null = null
+
+function _scheduleExpiry(remainingMs: number, get: () => TrialState, set: (s: Partial<TrialState>) => void) {
+  if (_expiryTimeout) clearTimeout(_expiryTimeout)
+  if (remainingMs <= 0) return
+  _expiryTimeout = setTimeout(() => {
+    const s = get()
+    if (!s.isTrialMode || s.expired) return
+    const elapsed = s._playStartedAt ? Date.now() - s._playStartedAt : 0
+    const newUsed = s.usedMs + elapsed
+    const max = maxMs(s.extended)
+    if (newUsed >= max) {
+      set({ usedMs: max, expired: true, _playStartedAt: null })
+      _notifyExpire()
+    }
+  }, remainingMs + 100)
 }
 
 export const useTrialStore = create<TrialState>()(
   persist(
     (set, get) => ({
       isTrialMode: false,
-      usedSeconds: 0,
+      usedMs: 0,
       extended: false,
       expired: false,
+      _playStartedAt: null,
 
       startTrial: () => {
-        const { expired, extended, usedSeconds } = get()
-        const max = extended ? TRIAL_DURATION + EXTENSION_DURATION : TRIAL_DURATION
-        if (expired && usedSeconds >= max) return
+        const s = get()
+        if (s.expired && s.usedMs >= maxMs(s.extended)) return
         set({ isTrialMode: true, expired: false })
       },
 
-      tick: () => {
-        const { isTrialMode, expired } = get()
-        if (!isTrialMode || expired) return
-        set(s => {
-          const next = s.usedSeconds + 1
-          const max = s.extended ? TRIAL_DURATION + EXTENSION_DURATION : TRIAL_DURATION
-          if (next >= max) {
-            return { usedSeconds: max, expired: true }
-          }
-          return { usedSeconds: next }
-        })
+      onPlay: () => {
+        const s = get()
+        if (!s.isTrialMode || s.expired || s._playStartedAt) return
+        const now = Date.now()
+        set({ _playStartedAt: now })
+        const remaining = maxMs(s.extended) - s.usedMs
+        _scheduleExpiry(remaining, get, set)
+      },
+
+      onPause: () => {
+        const s = get()
+        if (!s._playStartedAt) return
+        if (_expiryTimeout) { clearTimeout(_expiryTimeout); _expiryTimeout = null }
+        const elapsed = Date.now() - s._playStartedAt
+        const newUsed = s.usedMs + elapsed
+        const max = maxMs(s.extended)
+        if (newUsed >= max) {
+          set({ usedMs: max, expired: true, _playStartedAt: null })
+          _notifyExpire()
+        } else {
+          set({ usedMs: newUsed, _playStartedAt: null })
+        }
+      },
+
+      flush: () => {
+        const s = get()
+        if (!s.isTrialMode || s.expired || !s._playStartedAt) return
+        const elapsed = Date.now() - s._playStartedAt
+        const newUsed = s.usedMs + elapsed
+        const max = maxMs(s.extended)
+        if (newUsed >= max) {
+          if (_expiryTimeout) { clearTimeout(_expiryTimeout); _expiryTimeout = null }
+          set({ usedMs: max, expired: true, _playStartedAt: null })
+          _notifyExpire()
+        } else {
+          set({ usedMs: newUsed, _playStartedAt: Date.now() })
+        }
       },
 
       extend: () => {
-        const { extended } = get()
-        if (extended) return
+        const s = get()
+        if (s.extended) return
         set({ extended: true, expired: false })
       },
 
-      reset: () => set({
-        isTrialMode: false,
-        usedSeconds: 0,
-        extended: false,
-        expired: false,
-      }),
+      reset: () => {
+        if (_expiryTimeout) { clearTimeout(_expiryTimeout); _expiryTimeout = null }
+        set({
+          isTrialMode: false,
+          usedMs: 0,
+          extended: false,
+          expired: false,
+          _playStartedAt: null,
+        })
+      },
     }),
     {
-      name: 'powertom-trial',
+      name: 'powertom-trial-v2',
       partialize: (s) => ({
         isTrialMode: s.isTrialMode,
-        usedSeconds: s.usedSeconds,
+        usedMs: s.usedMs,
         extended: s.extended,
         expired: s.expired,
       }),
@@ -68,9 +136,13 @@ export const useTrialStore = create<TrialState>()(
   )
 )
 
-export function getTrialRemaining(state: { usedSeconds: number; extended: boolean }): number {
-  const max = state.extended ? TRIAL_DURATION + EXTENSION_DURATION : TRIAL_DURATION
-  return Math.max(0, max - state.usedSeconds)
+export function getTrialRemaining(state: { usedMs: number; extended: boolean; _playStartedAt: number | null }): number {
+  const max = maxMs(state.extended)
+  let used = state.usedMs
+  if (state._playStartedAt) {
+    used += Date.now() - state._playStartedAt
+  }
+  return Math.max(0, Math.ceil((max - used) / 1000))
 }
 
 export function formatTrialTime(seconds: number): string {

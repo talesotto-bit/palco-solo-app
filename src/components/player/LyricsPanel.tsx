@@ -34,8 +34,8 @@ export function LyricsPanel() {
   const lineRefs = useRef<Map<number, HTMLParagraphElement>>(new Map())
   const userScrolledRef = useRef(false)
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
-  const isAutoScrollingRef = useRef(false)
-  const autoScrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const autoScrollingUntil = useRef(0)
+  const lastActiveLine = useRef(-1)
 
   useEffect(() => {
     if (!track) return
@@ -45,52 +45,70 @@ export function LyricsPanel() {
 
   const activeLine = syncedLines ? findActiveLine(syncedLines, currentTime) : -1
 
+  // Auto-scroll to active line
   useEffect(() => {
-    if (!syncedLines || activeLine < 0 || userScrolledRef.current) return
-    const el = lineRefs.current.get(activeLine)
-    if (!el || !scrollRef.current) return
-    const container = scrollRef.current
-    const elTop = el.offsetTop - container.offsetTop
-    const target = elTop - container.clientHeight / 3
+    if (!syncedLines || activeLine < 0) return
+    if (activeLine === lastActiveLine.current) return
+    lastActiveLine.current = activeLine
+    if (userScrolledRef.current) return
 
-    isAutoScrollingRef.current = true
-    clearTimeout(autoScrollTimeoutRef.current)
-    container.scrollTo({ top: target, behavior: 'smooth' })
-    autoScrollTimeoutRef.current = setTimeout(() => {
-      isAutoScrollingRef.current = false
-    }, 800)
+    const el = lineRefs.current.get(activeLine)
+    if (!el) return
+
+    autoScrollingUntil.current = Date.now() + 1200
+
+    try {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    } catch {
+      // Fallback for browsers that don't support smooth scrollIntoView options
+      const container = scrollRef.current
+      if (container) {
+        const elTop = el.offsetTop - container.offsetTop
+        const target = elTop - container.clientHeight / 3
+        container.scrollTop = target
+      }
+    }
   }, [activeLine, syncedLines])
 
-  const markUserScrolled = useCallback(() => {
-    if (isAutoScrollingRef.current) return
+  // Detect user scroll vs auto-scroll
+  const handleUserScroll = useCallback(() => {
+    if (Date.now() < autoScrollingUntil.current) return
     if (playbackState !== 'playing') return
     userScrolledRef.current = true
     clearTimeout(scrollTimerRef.current)
     scrollTimerRef.current = setTimeout(() => {
       userScrolledRef.current = false
-    }, 5000)
+    }, 6000)
   }, [playbackState])
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    el.addEventListener('scroll', markUserScrolled, { passive: true })
-    el.addEventListener('touchstart', markUserScrolled, { passive: true })
-    return () => {
-      el.removeEventListener('scroll', markUserScrolled)
-      el.removeEventListener('touchstart', markUserScrolled)
+    let touchY = 0
+    const onTouchStart = (e: TouchEvent) => { touchY = e.touches[0].clientY }
+    const onTouchMove = (e: TouchEvent) => {
+      if (Math.abs(e.touches[0].clientY - touchY) > 10) handleUserScroll()
     }
-  }, [markUserScrolled])
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('wheel', handleUserScroll, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('wheel', handleUserScroll)
+    }
+  }, [handleUserScroll])
 
+  // Reset scroll state on track change
   useEffect(() => {
     userScrolledRef.current = false
-    isAutoScrollingRef.current = false
+    autoScrollingUntil.current = 0
+    lastActiveLine.current = -1
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [trackId])
 
   useEffect(() => () => {
     clearTimeout(scrollTimerRef.current)
-    clearTimeout(autoScrollTimeoutRef.current)
   }, [])
 
   const setLineRef = useCallback((idx: number, el: HTMLParagraphElement | null) => {
@@ -136,7 +154,8 @@ export function LyricsPanel() {
       {/* Content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 pb-4"
+        className="flex-1 overflow-y-auto px-4 pb-4 scroll-smooth"
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {isLoading && (
           <div className="flex flex-col items-center gap-3 py-10">
@@ -191,15 +210,20 @@ export function LyricsPanel() {
           </div>
         )}
 
-        {/* Synced lyrics — line by line, uniform style */}
+        {/* Synced lyrics — line by line */}
         {syncedLines && syncedLines.length > 0 && (
           <div className="space-y-1 py-4">
             {syncedLines.map((line, i) => (
               <p
                 key={i}
                 ref={el => setLineRef(i, el)}
-                className="py-1.5 px-2 rounded-md leading-relaxed text-[#e0e0e0] cursor-pointer hover:bg-white/5 transition-colors"
-                style={{ fontSize: `${fontSize}px` }}
+                className="py-1.5 px-2 rounded-md leading-relaxed cursor-pointer hover:bg-white/5 transition-all duration-300"
+                style={{
+                  fontSize: `${fontSize}px`,
+                  color: i === activeLine ? '#fff' : 'rgba(224,224,224,0.45)',
+                  fontWeight: i === activeLine ? 700 : 400,
+                  transform: i === activeLine ? 'scale(1.02)' : 'scale(1)',
+                }}
                 onClick={() => {
                   const seek = usePlayerStore.getState().seek
                   seek(line.time)
@@ -236,9 +260,9 @@ export function LyricsPanel() {
                 setManualQuery('')
                 resetToSearch()
               }}
-              className="flex items-center gap-1.5 text-[11px] text-[#808080] hover:text-white transition-colors"
+              className="flex items-center gap-2 text-sm font-medium text-[#b3b3b3] hover:text-white bg-white/5 hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors"
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className="h-4 w-4" />
               Letra incorreta? Buscar outra
             </button>
           </div>

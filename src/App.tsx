@@ -32,6 +32,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isInitialized = useAuthStore(s => s.isInitialized)
   const isTrialMode = useTrialStore(s => s.isTrialMode)
 
+  // Trial users bypass Supabase auth entirely — no waiting for getSession()
+  if (isTrialMode) return <>{children}</>
+
   if (!isInitialized) {
     return (
       <div className="min-h-dvh bg-black flex items-center justify-center">
@@ -40,7 +43,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (!user && !isTrialMode) return <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 

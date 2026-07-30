@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import * as Tone from 'tone'
 import { useTrialStore } from '@/store/trialStore'
 import { useCatalogStore } from '@/store/catalogStore'
 import { Play, Music, Sliders, Mic2, Zap } from 'lucide-react'
@@ -22,7 +23,14 @@ export default function TrialEntry() {
     }
   }, [isTrialMode, expired, navigate])
 
-  const handleStart = () => {
+  const handleStart = async () => {
+    // Unlock AudioContext on this user gesture — critical for mobile playback
+    try {
+      await Tone.start()
+      const ctx = Tone.getContext().rawContext as AudioContext
+      if (ctx.state === 'suspended') await ctx.resume()
+    } catch {}
+
     startTrial()
     if (typeof window !== 'undefined' && (window as any).fbq) {
       (window as any).fbq('track', 'StartTrial')
@@ -39,7 +47,7 @@ export default function TrialEntry() {
             <Music className="h-10 w-10 text-[hsl(var(--primary))]" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Power Tom</h1>
-          <p className="text-sm text-[#b3b3b3]">Teste grátis — 5 minutos, todas as funcionalidades</p>
+          <p className="text-sm text-[#b3b3b3]">Teste grátis — 3 minutos, todas as funcionalidades</p>
         </div>
 
         {/* What they get */}

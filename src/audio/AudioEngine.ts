@@ -258,7 +258,21 @@ class AudioEngine {
         await new Promise(r => setTimeout(r, 100))
       }
       if (getState() !== 'running') {
-        this.emit({ type: 'error', message: 'Toque na tela para ativar o áudio e tente novamente.' })
+        // Pre-unlock on next gesture so the subsequent play attempt works
+        const preUnlock = async () => {
+          try {
+            await Tone.start()
+            if (ctx.state === 'suspended') await ctx.resume()
+            if (ctx.state === 'running') _audioUnlocked = true
+          } catch {}
+          ;['touchstart', 'click'].forEach(e =>
+            document.removeEventListener(e, preUnlock, true)
+          )
+        }
+        ;['touchstart', 'click'].forEach(e =>
+          document.addEventListener(e, preUnlock, { capture: true, once: true })
+        )
+        this.emit({ type: 'error', message: 'Toque na tela para ativar o áudio.' })
         return
       }
     }

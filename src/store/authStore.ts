@@ -56,7 +56,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     if (get().isInitialized) return
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const sessionPromise = supabase.auth.getSession()
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Auth timeout')), 5000)
+      )
+      const { data: { session } } = await Promise.race([sessionPromise, timeout])
       if (session?.user) {
         set({ user: mapSupabaseUser(session.user), isInitialized: true })
       } else {
