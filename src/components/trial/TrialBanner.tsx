@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Clock, Zap } from 'lucide-react'
 import { useTrialStore, getTrialRemaining, formatTrialTime } from '@/store/trialStore'
 import { cn } from '@/lib/utils'
@@ -9,18 +9,14 @@ export function TrialBanner() {
   const extended = useTrialStore(s => s.extended)
   const expired = useTrialStore(s => s.expired)
   const playStartedAt = useTrialStore(s => s._playStartedAt)
-  const flush = useTrialStore(s => s.flush)
   const [, setTick] = useState(0)
-  const intervalRef = useRef<ReturnType<typeof setInterval>>()
 
+  // Re-render every 500ms to keep countdown display in sync
   useEffect(() => {
     if (!isTrialMode || expired) return
-    intervalRef.current = setInterval(() => {
-      flush()
-      setTick(t => t + 1)
-    }, 1000)
-    return () => clearInterval(intervalRef.current)
-  }, [isTrialMode, expired, flush])
+    const id = setInterval(() => setTick(t => t + 1), 500)
+    return () => clearInterval(id)
+  }, [isTrialMode, expired])
 
   if (!isTrialMode || expired) return null
 

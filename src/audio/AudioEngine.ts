@@ -77,11 +77,9 @@ class AudioEngine {
   private _cancelRaf: (() => void) | null = null
   private isLoaded = false
   private _loadId = 0
-  private _pitchTimer: ReturnType<typeof setTimeout> | null = null
-  private _speedTimer: ReturnType<typeof setTimeout> | null = null
-  private _lastPitchApply = 0
-  private _lastSpeedApply = 0
+  private _changeTimer: ReturnType<typeof setTimeout> | null = null
   private _transitionFading = false
+  private _pendingApply: (() => void) | null = null
 
   constructor() {
     ensureAudioUnlock()
@@ -107,6 +105,64 @@ class AudioEngine {
     this.listeners.forEach(cb => cb(event))
   }
 
+  // ─── Smooth transition system ─────────────────────────────────────────────
+  // Mutes audio completely before applying pitch/speed changes, then fades back in.
+  // This eliminates all audible artifacts from granular pitch shifting.
+
+  private _fadeAndApply(applyFn: () => void): void {
+    if (!this.masterGain || !this.isPlaying) {
+      applyFn()
+      return
+    }
+
+    // If already fading, queue this change — it will run when current fade completes
+    if (this._transitionFading) {
+      this._pendingApply = applyFn
+      return
+    }
+
+    this._transitionFading = true
+    const g = this.masterGain.gain
+    const now = Tone.now()
+    const savedVol = this._volume
+
+    // Phase 1: fade out to silence over 80ms
+    g.cancelScheduledValues(now)
+    g.setValueAtTime(savedVol, now)
+    g.linearRampToValueAtTime(0.001, now + 0.08)
+
+    // Phase 2: apply change at silence, then fade back in
+    setTimeout(() => {
+      applyFn()
+
+      // Run any queued change that arrived during fade
+      if (this._pendingApply) {
+        this._pendingApply()
+        this._pendingApply = null
+      }
+
+      const now2 = Tone.now()
+      if (this.masterGain) {
+        const g2 = this.masterGain.gain
+        g2.cancelScheduledValues(now2)
+        g2.setValueAtTime(0.001, now2)
+        g2.linearRampToValueAtTime(savedVol, now2 + 0.08)
+      }
+
+      // Mark transition complete after fade-in finishes
+      setTimeout(() => {
+        this._transitionFading = false
+
+        // If another change was queued during fade-in, apply it now
+        if (this._pendingApply) {
+          const fn = this._pendingApply
+          this._pendingApply = null
+          this._fadeAndApply(fn)
+        }
+      }, 90)
+    }, 90)
+  }
+
   // ─── Real-time pitch update ────────────────────────────────────────────────
 
   private _applyPitchNow(): void {
@@ -116,47 +172,19 @@ class AudioEngine {
     const currentPitch = this.pitchShift.pitch
     if (Math.abs(targetPitch - currentPitch) < 0.01) return
     this.pitchShift.pitch = targetPitch
-    this._lastPitchApply = performance.now()
   }
 
-  private _fadeAndApply(applyFn: () => void): void {
-    if (!this.masterGain || !this.isPlaying) {
-      applyFn()
-      return
-    }
-    if (this._transitionFading) {
-      applyFn()
-      return
-    }
-    this._transitionFading = true
-    const g = this.masterGain.gain
-    const now = Tone.now()
-    const savedVol = this._volume
-    g.cancelScheduledValues(now)
-    g.setValueAtTime(savedVol, now)
-    g.linearRampToValueAtTime(0.01, now + 0.025)
-    setTimeout(() => {
-      applyFn()
-      const now2 = Tone.now()
-      g.cancelScheduledValues(now2)
-      g.setValueAtTime(0.01, now2)
-      g.linearRampToValueAtTime(savedVol, now2 + 0.025)
-      this._transitionFading = false
-    }, 30)
+  private _scheduleChange(applyFn: () => void): void {
+    if (this._changeTimer) clearTimeout(this._changeTimer)
+    this._changeTimer = setTimeout(() => {
+      this._changeTimer = null
+      this._fadeAndApply(applyFn)
+    }, 300)
   }
 
   private updatePitchShift(): void {
     if (!this.pitchShift) return
-    const now = performance.now()
-    if (now - this._lastPitchApply > 200) {
-      this._fadeAndApply(() => this._applyPitchNow())
-    } else {
-      if (this._pitchTimer) clearTimeout(this._pitchTimer)
-      this._pitchTimer = setTimeout(() => {
-        this._pitchTimer = null
-        this._fadeAndApply(() => this._applyPitchNow())
-      }, 200)
-    }
+    this._scheduleChange(() => this._applyPitchNow())
   }
 
   // ─── Load ──────────────────────────────────────────────────────────────────
@@ -174,7 +202,11 @@ class AudioEngine {
 
     // Audio chain: stems → mixBus → pitchShift → masterGain → destination
     this.mixBus = new Tone.Gain(1)
-    this.pitchShift = new Tone.PitchShift({ pitch: 0, windowSize: 0.25, delayTime: 0 })
+    this.pitchShift = new Tone.PitchShift({
+      pitch: 0,
+      windowSize: 0.4,
+      delayTime: 0.1,
+    })
     this.masterGain = new Tone.Gain(this._volume)
 
     this.mixBus.connect(this.pitchShift)
@@ -252,8 +284,8 @@ class AudioEngine {
     this.isLoaded = true
     this.emit({ type: 'loaded' })
 
-    // Apply pitch + speed compensation instantly
-    this.updatePitchShift()
+    // Apply pitch + speed compensation instantly (no fade needed, not playing yet)
+    this._applyPitchNow()
 
     // Load remaining stems progressively
     for (let i = 0; i < rest.length; i++) {
@@ -288,7 +320,6 @@ class AudioEngine {
         await new Promise(r => setTimeout(r, 100))
       }
       if (getState() !== 'running') {
-        // Pre-unlock on next gesture so the subsequent play attempt works
         const preUnlock = async () => {
           try {
             await Tone.start()
@@ -367,21 +398,11 @@ class AudioEngine {
       player.playbackRate = this._speed
     })
     this._applyPitchNow()
-    this._lastSpeedApply = performance.now()
   }
 
   setSpeed(speed: number): void {
     this._speed = speed
-    const now = performance.now()
-    if (now - this._lastSpeedApply > 200) {
-      this._fadeAndApply(() => this._applySpeedNow())
-    } else {
-      if (this._speedTimer) clearTimeout(this._speedTimer)
-      this._speedTimer = setTimeout(() => {
-        this._speedTimer = null
-        this._fadeAndApply(() => this._applySpeedNow())
-      }, 200)
-    }
+    this._scheduleChange(() => this._applySpeedNow())
   }
 
   get speed(): number {
@@ -568,8 +589,9 @@ class AudioEngine {
   // ─── Cleanup ───────────────────────────────────────────────────────────────
 
   async dispose(): Promise<void> {
-    if (this._pitchTimer) { clearTimeout(this._pitchTimer); this._pitchTimer = null }
-    if (this._speedTimer) { clearTimeout(this._speedTimer); this._speedTimer = null }
+    if (this._changeTimer) { clearTimeout(this._changeTimer); this._changeTimer = null }
+    this._transitionFading = false
+    this._pendingApply = null
     this.stopTimeUpdater()
     const transport = Tone.getTransport()
     transport.stop()

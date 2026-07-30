@@ -70,7 +70,8 @@ export const useTrialStore = create<TrialState>()(
 
       onPlay: () => {
         const s = get()
-        if (!s.isTrialMode || s.expired || s._playStartedAt) return
+        if (!s.isTrialMode || s.expired) return
+        if (s._playStartedAt) return
         const now = Date.now()
         set({ _playStartedAt: now })
         const remaining = maxMs(s.extended) - s.usedMs
@@ -135,6 +136,15 @@ export const useTrialStore = create<TrialState>()(
     }
   )
 )
+
+// ─── Module-level flush loop ────────────────────────────────────────────────
+// Runs independently of any component mount/unmount.
+// This guarantees the timer always counts while _playStartedAt is set.
+setInterval(() => {
+  const s = useTrialStore.getState()
+  if (!s.isTrialMode || s.expired || !s._playStartedAt) return
+  s.flush()
+}, 500)
 
 export function getTrialRemaining(state: { usedMs: number; extended: boolean; _playStartedAt: number | null }): number {
   const max = maxMs(state.extended)
