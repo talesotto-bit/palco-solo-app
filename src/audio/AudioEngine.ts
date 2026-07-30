@@ -1,20 +1,22 @@
 /**
  * AudioEngine — professional playback core for Palco Solo
  *
- * Audio chain (real-time, zero UI blocking):
- *  Tone.Player → Tone.Gain (stem) → Tone.Panner → MixBus → PitchShift → MasterGain → Destination
+ * Audio chain:
+ *  Tone.Player → Tone.Gain (stem) → Tone.Panner → MixBus → SoundTouch(WSOLA) → MasterGain → Destination
  *
- * Pitch strategy (real-time):
- *  A single Tone.PitchShift on the mix bus handles both user pitch and
- *  speed-compensation in real-time. No offline processing, no UI freezes.
- *  Speed changes playbackRate on each Player; PitchShift compensates the
- *  induced pitch shift instantly.
+ * Pitch/speed strategy:
+ *  Speed is handled by Player.playbackRate (hardware-accelerated, zero artifacts).
+ *  Pitch shifting (user pitch + speed-compensation) is handled by SoundTouch's
+ *  WSOLA algorithm — the same technology used in professional DAWs (Audacity,
+ *  Ableton). This replaces Tone.PitchShift's granular synthesis, eliminating
+ *  the distortion artifacts that granular approaches produce.
  */
 
 import * as Tone from 'tone'
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
 import { encodeMp3 } from '@/lib/mp3Encoder'
+import { SoundTouchProcessor } from './SoundTouchProcessor'
 
 // ─── Audio Context unlock ───────────────────────────────────────────────────
 
@@ -66,7 +68,7 @@ class AudioEngine {
   private stems: Map<string, LoadedStem> = new Map()
   private mixBus: Tone.Gain | null = null
   private masterGain: Tone.Gain | null = null
-  private pitchShift: Tone.PitchShift | null = null
+  private stProcessor: SoundTouchProcessor | null = null
 
   private _pitch = 0       // semitones (-12..+12)
   private _speed = 1       // ratio (0.5..2.0)
@@ -77,9 +79,6 @@ class AudioEngine {
   private _cancelRaf: (() => void) | null = null
   private isLoaded = false
   private _loadId = 0
-  private _changeTimer: ReturnType<typeof setTimeout> | null = null
-  private _transitionFading = false
-  private _pendingApply: (() => void) | null = null
 
   constructor() {
     ensureAudioUnlock()
@@ -105,86 +104,14 @@ class AudioEngine {
     this.listeners.forEach(cb => cb(event))
   }
 
-  // ─── Smooth transition system ─────────────────────────────────────────────
-  // Mutes audio completely before applying pitch/speed changes, then fades back in.
-  // This eliminates all audible artifacts from granular pitch shifting.
+  // ─── SoundTouch pitch update ──────────────────────────────────────────────
+  // Combines user pitch + speed-compensation into a single SoundTouch call.
+  // SoundTouch handles transitions smoothly via WSOLA — no fade needed.
 
-  private _fadeAndApply(applyFn: () => void): void {
-    if (!this.masterGain || !this.isPlaying) {
-      applyFn()
-      return
-    }
-
-    // If already fading, queue this change — it will run when current fade completes
-    if (this._transitionFading) {
-      this._pendingApply = applyFn
-      return
-    }
-
-    this._transitionFading = true
-    const g = this.masterGain.gain
-    const now = Tone.now()
-    const savedVol = this._volume
-
-    // Phase 1: fade out to silence over 80ms
-    g.cancelScheduledValues(now)
-    g.setValueAtTime(savedVol, now)
-    g.linearRampToValueAtTime(0.001, now + 0.08)
-
-    // Phase 2: apply change at silence, then fade back in
-    setTimeout(() => {
-      applyFn()
-
-      // Run any queued change that arrived during fade
-      if (this._pendingApply) {
-        this._pendingApply()
-        this._pendingApply = null
-      }
-
-      const now2 = Tone.now()
-      if (this.masterGain) {
-        const g2 = this.masterGain.gain
-        g2.cancelScheduledValues(now2)
-        g2.setValueAtTime(0.001, now2)
-        g2.linearRampToValueAtTime(savedVol, now2 + 0.08)
-      }
-
-      // Mark transition complete after fade-in finishes
-      setTimeout(() => {
-        this._transitionFading = false
-
-        // If another change was queued during fade-in, apply it now
-        if (this._pendingApply) {
-          const fn = this._pendingApply
-          this._pendingApply = null
-          this._fadeAndApply(fn)
-        }
-      }, 90)
-    }, 90)
-  }
-
-  // ─── Real-time pitch update ────────────────────────────────────────────────
-
-  private _applyPitchNow(): void {
-    if (!this.pitchShift) return
+  private _updatePitch(): void {
+    if (!this.stProcessor) return
     const speedComp = -Math.log2(this._speed) * 12
-    const targetPitch = this._pitch + speedComp
-    const currentPitch = this.pitchShift.pitch
-    if (Math.abs(targetPitch - currentPitch) < 0.01) return
-    this.pitchShift.pitch = targetPitch
-  }
-
-  private _scheduleChange(applyFn: () => void): void {
-    if (this._changeTimer) clearTimeout(this._changeTimer)
-    this._changeTimer = setTimeout(() => {
-      this._changeTimer = null
-      this._fadeAndApply(applyFn)
-    }, 300)
-  }
-
-  private updatePitchShift(): void {
-    if (!this.pitchShift) return
-    this._scheduleChange(() => this._applyPitchNow())
+    this.stProcessor.pitchSemitones = this._pitch + speedComp
   }
 
   // ─── Load ──────────────────────────────────────────────────────────────────
@@ -200,17 +127,13 @@ class AudioEngine {
       try { await ctx.resume() } catch {}
     }
 
-    // Audio chain: stems → mixBus → pitchShift → masterGain → destination
+    // Audio chain: stems → mixBus → SoundTouch(WSOLA) → masterGain → destination
     this.mixBus = new Tone.Gain(1)
-    this.pitchShift = new Tone.PitchShift({
-      pitch: 0,
-      windowSize: 0.4,
-      delayTime: 0.1,
-    })
     this.masterGain = new Tone.Gain(this._volume)
+    this.stProcessor = new SoundTouchProcessor(ctx)
 
-    this.mixBus.connect(this.pitchShift)
-    this.pitchShift.connect(this.masterGain)
+    this.mixBus.connect(this.stProcessor.node as any)
+    this.stProcessor.node.connect((this.masterGain as any).input)
     this.masterGain.toDestination()
 
     const transport = Tone.getTransport()
@@ -267,7 +190,6 @@ class AudioEngine {
       }
     }
 
-    // Load primary stem first
     const primaryStem = stems[0]
     const rest = stems.slice(1)
 
@@ -284,10 +206,8 @@ class AudioEngine {
     this.isLoaded = true
     this.emit({ type: 'loaded' })
 
-    // Apply pitch + speed compensation instantly (no fade needed, not playing yet)
-    this._applyPitchNow()
+    this._updatePitch()
 
-    // Load remaining stems progressively
     for (let i = 0; i < rest.length; i++) {
       if (loadId !== this._loadId) break
       await new Promise(r => setTimeout(r, 50))
@@ -356,6 +276,7 @@ class AudioEngine {
 
   seek(seconds: number): void {
     const clamped = Math.max(0, Math.min(seconds, this.duration - 0.1))
+    if (this.stProcessor) this.stProcessor.clear()
     if (this.masterGain && this.isPlaying) {
       const g = this.masterGain.gain
       const now = Tone.now()
@@ -384,7 +305,7 @@ class AudioEngine {
 
   setPitch(semitones: number): void {
     this._pitch = semitones
-    this.updatePitchShift()
+    this._updatePitch()
   }
 
   get pitch(): number {
@@ -393,16 +314,39 @@ class AudioEngine {
 
   // ─── Speed (0.5..2.0) ─────────────────────────────────────────────────────
 
-  private _applySpeedNow(): void {
-    this.stems.forEach(({ player }) => {
-      player.playbackRate = this._speed
-    })
-    this._applyPitchNow()
-  }
-
   setSpeed(speed: number): void {
+    const prev = this._speed
     this._speed = speed
-    this._scheduleChange(() => this._applySpeedNow())
+
+    if (this.masterGain && this.isPlaying && Math.abs(speed - prev) > 0.01) {
+      const g = this.masterGain.gain
+      const now = Tone.now()
+      const vol = this._volume
+
+      g.cancelScheduledValues(now)
+      g.setValueAtTime(vol, now)
+      g.linearRampToValueAtTime(0.001, now + 0.025)
+
+      setTimeout(() => {
+        this.stems.forEach(({ player }) => {
+          player.playbackRate = this._speed
+        })
+        this._updatePitch()
+
+        if (this.masterGain) {
+          const n2 = Tone.now()
+          const g2 = this.masterGain.gain
+          g2.cancelScheduledValues(n2)
+          g2.setValueAtTime(0.001, n2)
+          g2.linearRampToValueAtTime(vol, n2 + 0.025)
+        }
+      }, 30)
+    } else {
+      this.stems.forEach(({ player }) => {
+        player.playbackRate = this._speed
+      })
+      this._updatePitch()
+    }
   }
 
   get speed(): number {
@@ -555,7 +499,6 @@ class AudioEngine {
         }
       }
 
-      // Resample for speed if needed
       let finalL = outL
       let finalR = outR
       let finalLength = maxLength
@@ -589,9 +532,6 @@ class AudioEngine {
   // ─── Cleanup ───────────────────────────────────────────────────────────────
 
   async dispose(): Promise<void> {
-    if (this._changeTimer) { clearTimeout(this._changeTimer); this._changeTimer = null }
-    this._transitionFading = false
-    this._pendingApply = null
     this.stopTimeUpdater()
     const transport = Tone.getTransport()
     transport.stop()
@@ -606,9 +546,9 @@ class AudioEngine {
     })
     this.stems.clear()
 
-    if (this.pitchShift) {
-      try { this.pitchShift.dispose() } catch {}
-      this.pitchShift = null
+    if (this.stProcessor) {
+      try { this.stProcessor.dispose() } catch {}
+      this.stProcessor = null
     }
     if (this.mixBus) {
       try { this.mixBus.dispose() } catch {}
