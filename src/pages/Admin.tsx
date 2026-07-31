@@ -20,6 +20,7 @@ const PLAN_OPTIONS: { value: PlanType; label: string }[] = [
   { value: 'basic', label: 'Pro' },
   { value: 'professional', label: 'Profissional' },
   { value: 'advanced', label: 'Avancado' },
+  { value: 'pro_max', label: 'Pro Max' },
 ]
 
 export default function Admin() {
@@ -89,7 +90,7 @@ export default function Admin() {
   }
 
   const planBadgeVariant = (plan: string) => {
-    if (plan === 'advanced') return 'brand' as const
+    if (plan === 'advanced' || plan === 'pro_max') return 'brand' as const
     if (plan === 'professional') return 'default' as const
     return 'outline' as const
   }

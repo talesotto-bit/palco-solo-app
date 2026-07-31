@@ -93,6 +93,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         break
       case 'timeupdate': {
         get()._setTime(event.currentTime, event.duration)
+        if (audioEngine.isPlaying && get().playbackState !== 'playing') {
+          set({ playbackState: 'playing', error: null })
+          useTrialStore.getState().onPlay()
+        }
         const now = Date.now()
         if (now - _lastFlushAt >= 1000) {
           _lastFlushAt = now

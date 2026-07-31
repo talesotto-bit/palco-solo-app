@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useRef } from 'react'
+import * as Tone from 'tone'
 import { Play, Pause, SkipBack, SkipForward, ChevronUp, Volume2, VolumeX } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useCoverArt } from '@/hooks/useCoverArt'
@@ -92,7 +93,7 @@ export function MiniPlayer() {
           </button>
 
           <button
-            onClick={() => isPlaying ? pause() : play()}
+            onClick={() => { Tone.start().catch(() => {}); isPlaying ? pause() : play() }}
             className="flex items-center justify-center h-9 w-9 md:h-8 md:w-8 rounded-full bg-white hover:scale-105 active:scale-95 transition-transform shrink-0"
           >
             {isPlaying

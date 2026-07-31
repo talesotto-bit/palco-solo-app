@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import * as Tone from 'tone'
 import {
   Play, Pause, Square, SkipBack, SkipForward,
   RotateCcw, Volume2, VolumeX, Loader2, X,
@@ -65,7 +66,7 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
         {/* Play / Pause */}
         <button
           disabled={!hasTrack || isLoading}
-          onClick={() => isPlaying ? pause() : play()}
+          onClick={() => { Tone.start().catch(() => {}); isPlaying ? pause() : play() }}
           className={cn(
             'flex items-center justify-center rounded-full bg-white text-black',
             'hover:scale-105 active:scale-95 transition-transform disabled:opacity-50',

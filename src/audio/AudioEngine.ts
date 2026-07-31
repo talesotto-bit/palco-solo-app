@@ -117,22 +117,27 @@ class AudioEngine {
   // ─── Load ──────────────────────────────────────────────────────────────────
 
   async load(stems: Stem[]): Promise<void> {
+    // Unlock audio FIRST — must happen before any await to preserve
+    // user gesture context (iOS Safari loses it after async boundaries)
+    try { await Tone.start() } catch {}
+    const ctx = Tone.getContext().rawContext as AudioContext
+    if ((ctx.state as string) !== 'running') {
+      try { await ctx.resume() } catch {}
+    }
+
     const loadId = ++this._loadId
     this.emit({ type: 'loading' })
     await this.dispose()
-
-    try { await Tone.start() } catch {}
-    const ctx = Tone.getContext().rawContext as AudioContext
-    if (ctx.state === 'suspended') {
-      try { await ctx.resume() } catch {}
-    }
 
     this.mixBus = new Tone.Gain(1)
     this.masterGain = new Tone.Gain(this._volume)
     this.stProcessor = new SoundTouchProcessor(ctx)
 
-    this.mixBus.connect(this.stProcessor.node as any)
-    this.stProcessor.node.connect((this.masterGain as any).input)
+    // Use direct Web Audio API connections to avoid Tone.js wrapping issues
+    const mixOut = (this.mixBus as any).output as AudioNode
+    const masterIn = (this.masterGain as any).input as AudioNode
+    mixOut.connect(this.stProcessor.node)
+    this.stProcessor.node.connect(masterIn)
     this.masterGain.toDestination()
 
     const transport = Tone.getTransport()
@@ -227,31 +232,31 @@ class AudioEngine {
   async play(): Promise<void> {
     if (!this.isLoaded) return
 
+    // Try to unlock on every play call — user just tapped, so we have gesture context
+    try { await Tone.start() } catch {}
     const ctx = Tone.getContext().rawContext as AudioContext
+    if ((ctx.state as string) !== 'running') {
+      try { await ctx.resume() } catch {}
+    }
 
-    if (ctx.state !== 'running') {
-      if (!await tryUnlockAudio()) {
-        await new Promise(r => setTimeout(r, 150))
-        if (!await tryUnlockAudio()) {
-          const unlockOnGesture = () => {
-            tryUnlockAudio().then(ok => {
-              if (ok) {
-                Tone.getTransport().start()
-                this.startTimeUpdater()
-                this.emit({ type: 'timeupdate', currentTime: this.currentTime, duration: this.duration })
-              }
-            })
-            ;['touchstart', 'touchend', 'click'].forEach(e =>
-              document.removeEventListener(e, unlockOnGesture, true)
-            )
+    if ((ctx.state as string) !== 'running') {
+      const unlockOnGesture = () => {
+        tryUnlockAudio().then(ok => {
+          if (ok) {
+            Tone.getTransport().start()
+            this.startTimeUpdater()
+            this.emit({ type: 'timeupdate', currentTime: this.currentTime, duration: this.duration })
           }
-          ;['touchstart', 'touchend', 'click'].forEach(e =>
-            document.addEventListener(e, unlockOnGesture, { capture: true, once: true })
-          )
-          this.emit({ type: 'error', message: 'Toque na tela para ativar o áudio.' })
-          return
-        }
+        })
+        ;['touchstart', 'touchend', 'click'].forEach(e =>
+          document.removeEventListener(e, unlockOnGesture, true)
+        )
       }
+      ;['touchstart', 'touchend', 'click'].forEach(e =>
+        document.addEventListener(e, unlockOnGesture, { capture: true, once: true })
+      )
+      this.emit({ type: 'error', message: 'Toque na tela para ativar o áudio.' })
+      return
     }
 
     Tone.getTransport().start()
