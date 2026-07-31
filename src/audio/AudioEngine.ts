@@ -120,28 +120,27 @@ class AudioEngine {
     // Unlock audio FIRST — must happen before any await to preserve
     // user gesture context (iOS Safari loses it after async boundaries)
     try { await Tone.start() } catch {}
-    const ctx = Tone.getContext().rawContext as AudioContext
-    if ((ctx.state as string) !== 'running') {
-      try { await ctx.resume() } catch {}
-    }
 
     const loadId = ++this._loadId
     this.emit({ type: 'loading' })
     await this.dispose()
 
-    try {
-      this.mixBus = new Tone.Gain(1)
-      this.masterGain = new Tone.Gain(this._volume)
-      this.stProcessor = new SoundTouchProcessor(ctx)
-
-      this.mixBus.connect(this.stProcessor.node as any)
-      this.stProcessor.node.connect((this.masterGain as any).input)
-      this.masterGain.toDestination()
-    } catch (err) {
-      console.error('[AudioEngine] Failed to create audio chain:', err)
-      this.emit({ type: 'error', message: 'Não foi possível inicializar o áudio.' })
-      return
+    // Get context AFTER dispose to ensure same context as new Tone nodes
+    const ctx = Tone.getContext().rawContext as AudioContext
+    if ((ctx.state as string) !== 'running') {
+      try { await ctx.resume() } catch {}
     }
+
+    this.mixBus = new Tone.Gain(1)
+    this.masterGain = new Tone.Gain(this._volume)
+    this.stProcessor = new SoundTouchProcessor(ctx)
+
+    // Connect via raw Web Audio API to avoid Tone.js assert issues with ScriptProcessorNode
+    const mixOut = (this.mixBus as any).output as AudioNode
+    const masterIn = (this.masterGain as any).input as AudioNode
+    mixOut.connect(this.stProcessor.node)
+    this.stProcessor.node.connect(masterIn)
+    this.masterGain.toDestination()
 
     const transport = Tone.getTransport()
     transport.stop()
