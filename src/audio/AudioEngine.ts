@@ -8,9 +8,9 @@ let _audioUnlocked = false
 async function tryUnlockAudio(): Promise<boolean> {
   try { await Tone.start() } catch {}
   const ctx = Tone.getContext()
-  if (ctx.state === 'running') { _audioUnlocked = true; return true }
+  if ((ctx.state as string) === 'running') { _audioUnlocked = true; return true }
   try { await (ctx.rawContext as AudioContext).resume() } catch {}
-  if (ctx.state === 'running') { _audioUnlocked = true; return true }
+  if ((ctx.state as string) === 'running') { _audioUnlocked = true; return true }
   return false
 }
 
@@ -51,6 +51,7 @@ class AudioEngine {
   private mixBus: Tone.Gain | null = null
   private masterGain: Tone.Gain | null = null
   private pitchShift: Tone.PitchShift | null = null
+  private _pitchConnected = false
 
   private _pitch = 0
   private _speed = 1
@@ -80,13 +81,27 @@ class AudioEngine {
     this.listeners.forEach(cb => cb(event))
   }
 
-  private _updatePitch(): void {
+  private _ensurePitchShift(): boolean {
+    if (this._pitchConnected && this.pitchShift) return true
+    if (!this.mixBus || !this.masterGain) return false
+    try {
+      this.pitchShift = new Tone.PitchShift({ pitch: 0, windowSize: 0.08, delayTime: 0, feedback: 0, wet: 1 })
+      this.mixBus.disconnect(this.masterGain)
+      this.mixBus.connect(this.pitchShift)
+      this.pitchShift.connect(this.masterGain)
+      this._pitchConnected = true
+      return true
+    } catch (err) {
+      console.warn('[AudioEngine] PitchShift creation failed:', err)
+      this.pitchShift = null
+      return false
+    }
+  }
+
+  private _applyPitch(): void {
     if (!this.pitchShift) return
     const speedComp = this._speed === 1 ? 0 : -Math.log2(this._speed) * 12
-    const total = this._pitch + speedComp
-    const needsShift = Math.abs(total) > 0.05
-    this.pitchShift.pitch = needsShift ? total : 0
-    this.pitchShift.wet.value = needsShift ? 1 : 0
+    this.pitchShift.pitch = this._pitch + speedComp
   }
 
   private async fetchAudio(url: string): Promise<AudioBuffer> {
@@ -97,8 +112,7 @@ class AudioEngine {
       clearTimeout(timeoutId)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const arrayBuf = await resp.arrayBuffer()
-      const ctx = Tone.getContext()
-      return await ctx.decodeAudioData(arrayBuf)
+      return await Tone.getContext().decodeAudioData(arrayBuf)
     } catch (err) {
       clearTimeout(timeoutId)
       throw err
@@ -112,22 +126,14 @@ class AudioEngine {
     this.emit({ type: 'loading' })
     await this.dispose()
 
-    if (Tone.getContext().state !== 'running') {
-      try { await (Tone.getContext().rawContext as AudioContext).resume() } catch {}
+    const ctx = Tone.getContext()
+    if ((ctx.state as string) !== 'running') {
+      try { await (ctx.rawContext as AudioContext).resume() } catch {}
     }
 
     this.mixBus = new Tone.Gain(1)
     this.masterGain = new Tone.Gain(this._volume)
-    this.pitchShift = new Tone.PitchShift({
-      pitch: 0,
-      windowSize: 0.08,
-      delayTime: 0,
-      feedback: 0,
-    })
-    this.pitchShift.wet.value = 0
-
-    this.mixBus.connect(this.pitchShift)
-    this.pitchShift.connect(this.masterGain)
+    this.mixBus.connect(this.masterGain)
     this.masterGain.toDestination()
 
     const transport = Tone.getTransport()
@@ -155,7 +161,7 @@ class AudioEngine {
         this.stems.set(stem.id, { id: stem.id, player, gain, panner, originalBuffer: audioBuf })
         return true
       } catch (err) {
-        console.warn(`[AudioEngine] Stem ${stem.id} failed:`, err)
+        console.error(`[AudioEngine] Stem ${stem.id} failed:`, err)
         return false
       }
     }
@@ -175,7 +181,10 @@ class AudioEngine {
 
     this.isLoaded = true
     this.emit({ type: 'loaded' })
-    this._updatePitch()
+
+    if (Math.abs(this._pitch) > 0.05 || Math.abs(this._speed - 1) > 0.01) {
+      if (this._ensurePitchShift()) this._applyPitch()
+    }
 
     for (let i = 0; i < rest.length; i++) {
       if (loadId !== this._loadId) break
@@ -194,11 +203,12 @@ class AudioEngine {
     if (!this.isLoaded) return
 
     try { await Tone.start() } catch {}
-    if (Tone.getContext().state !== 'running') {
-      try { await (Tone.getContext().rawContext as AudioContext).resume() } catch {}
+    const ctx = Tone.getContext()
+    if ((ctx.state as string) !== 'running') {
+      try { await (ctx.rawContext as AudioContext).resume() } catch {}
     }
 
-    if (Tone.getContext().state !== 'running') {
+    if ((ctx.state as string) !== 'running') {
       const unlockOnGesture = () => {
         tryUnlockAudio().then(ok => {
           if (ok) {
@@ -248,57 +258,49 @@ class AudioEngine {
     }
   }
 
-  get currentTime(): number {
-    return Tone.getTransport().seconds
-  }
+  get currentTime(): number { return Tone.getTransport().seconds }
 
   get duration(): number {
     return this._speed > 0 ? this._duration / this._speed : this._duration
   }
 
-  get isPlaying(): boolean {
-    return Tone.getTransport().state === 'started'
-  }
-
-  get loaded(): boolean {
-    return this.isLoaded
-  }
+  get isPlaying(): boolean { return Tone.getTransport().state === 'started' }
+  get loaded(): boolean { return this.isLoaded }
+  get pitch(): number { return this._pitch }
+  get speed(): number { return this._speed }
 
   setPitch(semitones: number): void {
     this._pitch = semitones
-    if (!this.pitchShift) return
+    const needsShift = Math.abs(semitones) > 0.05 || Math.abs(this._speed - 1) > 0.01
 
-    const speedComp = this._speed === 1 ? 0 : -Math.log2(this._speed) * 12
-    const total = semitones + speedComp
-    const wasOff = this.pitchShift.wet.value < 0.5
-    const willBeOff = Math.abs(total) < 0.05
-
-    if (wasOff !== willBeOff && this.isPlaying && this.masterGain) {
-      const g = this.masterGain.gain
-      const vol = this._volume
-      const now = Tone.now()
-      g.cancelScheduledValues(now)
-      g.setValueAtTime(vol, now)
-      g.linearRampToValueAtTime(0.001, now + 0.03)
-      setTimeout(() => {
-        this._updatePitch()
-        setTimeout(() => {
-          if (this.masterGain) {
-            const n2 = Tone.now()
-            const g2 = this.masterGain.gain
-            g2.cancelScheduledValues(n2)
-            g2.setValueAtTime(0.001, n2)
-            g2.linearRampToValueAtTime(vol, n2 + 0.05)
-          }
-        }, 40)
-      }, 35)
-    } else {
-      this._updatePitch()
+    if (needsShift) {
+      if (this._ensurePitchShift()) {
+        if (this.isPlaying && this.masterGain) {
+          const g = this.masterGain.gain
+          const vol = this._volume
+          const now = Tone.now()
+          g.cancelScheduledValues(now)
+          g.setValueAtTime(vol, now)
+          g.linearRampToValueAtTime(0.001, now + 0.03)
+          setTimeout(() => {
+            this._applyPitch()
+            setTimeout(() => {
+              if (this.masterGain) {
+                const n2 = Tone.now()
+                const g2 = this.masterGain.gain
+                g2.cancelScheduledValues(n2)
+                g2.setValueAtTime(0.001, n2)
+                g2.linearRampToValueAtTime(vol, n2 + 0.05)
+              }
+            }, 40)
+          }, 35)
+        } else {
+          this._applyPitch()
+        }
+      }
+    } else if (this.pitchShift) {
+      this.pitchShift.pitch = 0
     }
-  }
-
-  get pitch(): number {
-    return this._pitch
   }
 
   setSpeed(speed: number): void {
@@ -314,7 +316,11 @@ class AudioEngine {
       g.linearRampToValueAtTime(0.001, now + 0.025)
       setTimeout(() => {
         this.stems.forEach(({ player }) => { player.playbackRate = this._speed })
-        this._updatePitch()
+        if (Math.abs(this._pitch) > 0.05 || Math.abs(this._speed - 1) > 0.01) {
+          if (this._ensurePitchShift()) this._applyPitch()
+        } else if (this.pitchShift) {
+          this.pitchShift.pitch = 0
+        }
         setTimeout(() => {
           if (this.masterGain) {
             const n2 = Tone.now()
@@ -327,19 +333,17 @@ class AudioEngine {
       }, 30)
     } else {
       this.stems.forEach(({ player }) => { player.playbackRate = this._speed })
-      this._updatePitch()
+      if (Math.abs(this._pitch) > 0.05 || Math.abs(this._speed - 1) > 0.01) {
+        if (this._ensurePitchShift()) this._applyPitch()
+      } else if (this.pitchShift) {
+        this.pitchShift.pitch = 0
+      }
     }
-  }
-
-  get speed(): number {
-    return this._speed
   }
 
   setVolume(volume: number): void {
     this._volume = volume
-    if (this.masterGain) {
-      this.masterGain.gain.rampTo(volume, 0.05)
-    }
+    if (this.masterGain) this.masterGain.gain.rampTo(volume, 0.05)
   }
 
   setStemStates(stemStates: Record<string, StemState>): void {
@@ -350,11 +354,8 @@ class AudioEngine {
       const loaded = this.stems.get(id)
       if (!loaded || !stemState) return
       let targetVolume: number
-      if (hasSolo) {
-        targetVolume = stemState.solo ? stemState.volume : 0
-      } else {
-        targetVolume = stemState.muted ? 0 : stemState.volume
-      }
+      if (hasSolo) { targetVolume = stemState.solo ? stemState.volume : 0 }
+      else { targetVolume = stemState.muted ? 0 : stemState.volume }
       loaded.gain.gain.rampTo(targetVolume, 0.05)
     })
   }
@@ -475,6 +476,7 @@ class AudioEngine {
       try { this.pitchShift.dispose() } catch {}
       this.pitchShift = null
     }
+    this._pitchConnected = false
     if (this.mixBus) {
       try { this.mixBus.dispose() } catch {}
       this.mixBus = null
