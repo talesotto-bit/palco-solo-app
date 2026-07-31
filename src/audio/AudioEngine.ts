@@ -145,17 +145,12 @@ class AudioEngine {
 
     this.mixBus = new Tone.Gain(1)
     this.masterGain = new Tone.Gain(this._volume)
+    this.stProcessor = new SoundTouchProcessor(ctx)
 
-    try {
-      this.stProcessor = new SoundTouchProcessor(ctx)
-      const mixOut = (this.mixBus as any).output as GainNode
-      const masterIn = (this.masterGain as any).input as GainNode
-      mixOut.connect(this.stProcessor.node)
-      this.stProcessor.node.connect(masterIn)
-    } catch {
-      this.stProcessor = null
-      this.mixBus.connect(this.masterGain)
-    }
+    const mixOut = (this.mixBus as any).output as GainNode
+    const masterIn = (this.masterGain as any).input as GainNode
+    mixOut.connect(this.stProcessor.node)
+    this.stProcessor.node.connect(masterIn)
     this.masterGain.toDestination()
 
     const transport = Tone.getTransport()

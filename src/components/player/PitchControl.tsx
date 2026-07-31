@@ -18,7 +18,7 @@ export function PitchControl({ compact = false }: PitchControlProps) {
   const cents = Math.round((pitch - semitones) * 100)
 
   const stepCoarse = (dir: 1 | -1) => {
-    const next = Math.round((pitch + dir) * 10) / 10
+    const next = Math.round((pitch + dir * 0.5) * 10) / 10
     if (next >= -12 && next <= 12) setPitch(next)
   }
 
@@ -143,18 +143,18 @@ export function PitchControl({ compact = false }: PitchControlProps) {
 
       {/* Presets */}
       <div className="flex items-center justify-center gap-1.5 md:gap-1 flex-wrap">
-        {[-5, -3, -2, -1, 0, 1, 2, 3, 5].map(v => (
+        {[-3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3].map(v => (
           <button
             key={v}
             onClick={() => setPitch(v)}
             className={cn(
-              'h-9 min-w-[36px] md:h-7 md:min-w-[30px] rounded-md text-xs md:text-[10px] font-bold transition-colors',
+              'h-9 min-w-[34px] md:h-7 md:min-w-[28px] rounded-md text-[11px] md:text-[10px] font-bold transition-colors',
               Math.abs(pitch - v) < 0.05
                 ? 'bg-[hsl(var(--primary))] text-black'
                 : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10 hover:text-white'
             )}
           >
-            {v > 0 ? '+' : ''}{v}
+            {v > 0 ? '+' : ''}{v % 1 === 0 ? v : v.toFixed(1)}
           </button>
         ))}
       </div>

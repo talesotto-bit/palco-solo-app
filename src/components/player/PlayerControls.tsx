@@ -17,12 +17,13 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
   const isTrialMode = useTrialStore(s => s.isTrialMode)
   const [showSoundTip, setShowSoundTip] = useState(true)
   const tipTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
   useEffect(() => {
-    if (!isTrialMode) return
+    if (!isMobile) { setShowSoundTip(false); return }
     tipTimerRef.current = setTimeout(() => setShowSoundTip(false), 60_000)
     return () => clearTimeout(tipTimerRef.current)
-  }, [isTrialMode])
+  }, [])
 
   // Individual selectors — prevents re-render on every currentTime update (60fps)
   const playbackState = usePlayerStore(s => s.playbackState)
@@ -119,7 +120,7 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
         />
       </div>
 
-      {isTrialMode && showSoundTip && (
+      {showSoundTip && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-[11px] font-medium w-full max-w-xs">
           <Volume2 className="h-3.5 w-3.5 shrink-0" />
           <span>Sem som? Retire o telefone do Modo Silencioso e aumente o volume!</span>
