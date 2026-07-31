@@ -129,16 +129,19 @@ class AudioEngine {
     this.emit({ type: 'loading' })
     await this.dispose()
 
-    this.mixBus = new Tone.Gain(1)
-    this.masterGain = new Tone.Gain(this._volume)
-    this.stProcessor = new SoundTouchProcessor(ctx)
+    try {
+      this.mixBus = new Tone.Gain(1)
+      this.masterGain = new Tone.Gain(this._volume)
+      this.stProcessor = new SoundTouchProcessor(ctx)
 
-    // Use direct Web Audio API connections to avoid Tone.js wrapping issues
-    const mixOut = (this.mixBus as any).output as AudioNode
-    const masterIn = (this.masterGain as any).input as AudioNode
-    mixOut.connect(this.stProcessor.node)
-    this.stProcessor.node.connect(masterIn)
-    this.masterGain.toDestination()
+      this.mixBus.connect(this.stProcessor.node as any)
+      this.stProcessor.node.connect((this.masterGain as any).input)
+      this.masterGain.toDestination()
+    } catch (err) {
+      console.error('[AudioEngine] Failed to create audio chain:', err)
+      this.emit({ type: 'error', message: 'Não foi possível inicializar o áudio.' })
+      return
+    }
 
     const transport = Tone.getTransport()
     transport.stop()
@@ -149,15 +152,8 @@ class AudioEngine {
         const player = new Tone.Player({ url: stem.audioUrl, loop: false })
 
         await Promise.race([
-          new Promise<void>((resolve, reject) => {
-            if (player.buffer.loaded) {
-              resolve()
-              return
-            }
-            player.buffer.onload = () => resolve()
-            ;(player as any).onerror = (err: any) => reject(err || new Error('Load error'))
-          }),
-          new Promise<void>((_, reject) =>
+          player.loaded,
+          new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('Timeout')), 30000)
           ),
         ])
@@ -300,6 +296,10 @@ class AudioEngine {
 
   get isPlaying(): boolean {
     return Tone.getTransport().state === 'started'
+  }
+
+  get loaded(): boolean {
+    return this.isLoaded
   }
 
   // ─── Pitch (semitones, -12..+12) ──────────────────────────────────────────

@@ -163,6 +163,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         await audioEngine.load(resolvedTrack.stems)
         if (loadId !== _trackLoadId) return
 
+        if (!audioEngine.loaded) return
+
         audioEngine.setPitch(pitch)
         audioEngine.setSpeed(speed)
         if (saved) audioEngine.setStemStates(stemStates)
