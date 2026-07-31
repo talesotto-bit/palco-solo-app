@@ -116,16 +116,28 @@ class AudioEngine {
 
   // ─── Load ──────────────────────────────────────────────────────────────────
 
+  private async fetchAudio(url: string, ctx: AudioContext): Promise<AudioBuffer> {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+    try {
+      const resp = await fetch(url, { signal: controller.signal })
+      clearTimeout(timeoutId)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const arrayBuf = await resp.arrayBuffer()
+      return await ctx.decodeAudioData(arrayBuf)
+    } catch (err) {
+      clearTimeout(timeoutId)
+      throw err
+    }
+  }
+
   async load(stems: Stem[]): Promise<void> {
-    // Unlock audio FIRST — must happen before any await to preserve
-    // user gesture context (iOS Safari loses it after async boundaries)
     try { await Tone.start() } catch {}
 
     const loadId = ++this._loadId
     this.emit({ type: 'loading' })
     await this.dispose()
 
-    // Get context AFTER dispose to ensure same context as new Tone nodes
     const ctx = Tone.getContext().rawContext as AudioContext
     if ((ctx.state as string) !== 'running') {
       try { await ctx.resume() } catch {}
@@ -133,13 +145,17 @@ class AudioEngine {
 
     this.mixBus = new Tone.Gain(1)
     this.masterGain = new Tone.Gain(this._volume)
-    this.stProcessor = new SoundTouchProcessor(ctx)
 
-    // Connect via raw Web Audio API to avoid Tone.js assert issues with ScriptProcessorNode
-    const mixOut = (this.mixBus as any).output as AudioNode
-    const masterIn = (this.masterGain as any).input as AudioNode
-    mixOut.connect(this.stProcessor.node)
-    this.stProcessor.node.connect(masterIn)
+    try {
+      this.stProcessor = new SoundTouchProcessor(ctx)
+      const mixOut = (this.mixBus as any).output as GainNode
+      const masterIn = (this.masterGain as any).input as GainNode
+      mixOut.connect(this.stProcessor.node)
+      this.stProcessor.node.connect(masterIn)
+    } catch {
+      this.stProcessor = null
+      this.mixBus.connect(this.masterGain)
+    }
     this.masterGain.toDestination()
 
     const transport = Tone.getTransport()
@@ -148,30 +164,11 @@ class AudioEngine {
 
     const loadStem = async (stem: Stem): Promise<boolean> => {
       try {
-        const player = await Promise.race([
-          new Promise<Tone.Player>((resolve, reject) => {
-            const p = new Tone.Player({
-              url: stem.audioUrl,
-              loop: false,
-              onload: () => resolve(p),
-              onerror: (err: any) => reject(err || new Error('Load error')),
-            } as any)
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout')), 30000)
-          ),
-        ])
+        const audioBuf = await this.fetchAudio(stem.audioUrl, ctx)
+        if (audioBuf.duration < 0.5 || !this.mixBus) return false
 
-        const bufDur = player.buffer?.duration ?? 0
-        if (!player.buffer || !Number.isFinite(bufDur) || bufDur < 0.5) {
-          player.dispose()
-          return false
-        }
-
-        if (!this.mixBus) {
-          player.dispose()
-          return false
-        }
+        const player = new Tone.Player()
+        player.buffer.set(audioBuf)
 
         const gain = new Tone.Gain(1)
         const panner = new Tone.Panner(0)
@@ -183,13 +180,10 @@ class AudioEngine {
         player.sync().start(0)
         player.playbackRate = this._speed
 
-        const rawBuf = player.buffer.get()
-        const originalBuffer = rawBuf ?? new AudioBuffer({ numberOfChannels: 2, length: 1, sampleRate: 44100 })
-
-        this.stems.set(stem.id, { id: stem.id, player, gain, panner, originalBuffer })
+        this.stems.set(stem.id, { id: stem.id, player, gain, panner, originalBuffer: audioBuf })
         return true
       } catch (err) {
-        console.warn(`[AudioEngine] Skipping stem ${stem.id}:`, err)
+        console.warn(`[AudioEngine] Stem ${stem.id} failed:`, err)
         return false
       }
     }
@@ -205,7 +199,7 @@ class AudioEngine {
     }
 
     const primaryLoaded = this.stems.get(primaryStem.id)
-    this._duration = primaryLoaded?.player.buffer?.duration ?? 0
+    this._duration = primaryLoaded?.originalBuffer.duration ?? 0
 
     this.isLoaded = true
     this.emit({ type: 'loaded' })
@@ -219,9 +213,8 @@ class AudioEngine {
       await loadStem(rest[i])
 
       let maxDuration = this._duration
-      this.stems.forEach(({ player }) => {
-        const dur = player.buffer?.duration ?? 0
-        if (dur > maxDuration) maxDuration = dur
+      this.stems.forEach(({ originalBuffer }) => {
+        if (originalBuffer.duration > maxDuration) maxDuration = originalBuffer.duration
       })
       this._duration = maxDuration
     }

@@ -175,11 +175,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
           _pendingPlay = false
           get().play()
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('[PlayerStore] loadTrack failed:', err)
         _pendingPlay = false
         if (loadId !== _trackLoadId) return
-        set({ playbackState: 'error', error: 'Falha ao carregar a faixa. Verifique sua conexão e tente novamente.' })
+        const detail = err?.message || String(err)
+        set({ playbackState: 'error', error: `Erro ao carregar: ${detail}` })
       }
     },
 
