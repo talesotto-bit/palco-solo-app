@@ -149,10 +149,15 @@ class AudioEngine {
 
     const loadStem = async (stem: Stem): Promise<boolean> => {
       try {
-        const player = new Tone.Player({ url: stem.audioUrl, loop: false })
-
-        await Promise.race([
-          player.loaded,
+        const player = await Promise.race([
+          new Promise<Tone.Player>((resolve, reject) => {
+            const p = new Tone.Player({
+              url: stem.audioUrl,
+              loop: false,
+              onload: () => resolve(p),
+              onerror: (err: any) => reject(err || new Error('Load error')),
+            } as any)
+          }),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('Timeout')), 30000)
           ),
