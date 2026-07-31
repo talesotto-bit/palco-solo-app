@@ -6,6 +6,7 @@ import { useFavoritesStore } from '@/store/favoritesStore'
 import { useTrialStore } from '@/store/trialStore'
 import { TrackCard } from '@/components/library/TrackCard'
 import { cn } from '@/lib/utils'
+import { getArtistScore } from '@/lib/featuredArtists'
 
 const BATCH_SIZE = 60
 
@@ -39,7 +40,7 @@ export default function Library() {
   useEffect(() => () => clearTimeout(debounceRef.current), [])
 
   const allTracks = useMemo(
-    () => [...localTracks, ...catalogTracks].sort((a, b) => a.title.localeCompare(b.title)),
+    () => [...localTracks, ...catalogTracks],
     [localTracks, catalogTracks]
   )
 
@@ -63,6 +64,18 @@ export default function Library() {
 
     if (genre !== 'all') {
       list = list.filter(t => t.genre === genre || (t.tags || []).includes(genre))
+    }
+
+    const isDefaultView = genre === 'all' && !showFavs && !debouncedSearch.trim()
+    if (isDefaultView) {
+      list = [...list].sort((a, b) => {
+        const sa = getArtistScore(a.artist)
+        const sb = getArtistScore(b.artist)
+        if (sa !== sb) return sb - sa
+        return a.title.localeCompare(b.title)
+      })
+    } else {
+      list = [...list].sort((a, b) => a.title.localeCompare(b.title))
     }
 
     return list
