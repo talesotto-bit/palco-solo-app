@@ -1,38 +1,21 @@
-/**
- * AudioEngine — professional playback core for Palco Solo
- *
- * Audio chain:
- *  Tone.Player → Tone.Gain (stem) → Tone.Panner → MixBus → SoundTouch(WSOLA) → MasterGain → Destination
- *
- * Pitch/speed strategy:
- *  Speed is handled by Player.playbackRate (hardware-accelerated, zero artifacts).
- *  Pitch shifting uses SoundTouch WSOLA — same technology as professional DAWs.
- *  When no pitch shift is needed, SoundTouch runs in bypass mode (pure passthrough)
- *  for zero-latency, zero-artifact playback.
- */
-
 import * as Tone from 'tone'
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
 import { encodeMp3 } from '@/lib/mp3Encoder'
-import { SoundTouchProcessor } from './SoundTouchProcessor'
-
-// ─── Audio Context unlock ───────────────────────────────────────────────────
 
 let _audioUnlocked = false
 
 async function tryUnlockAudio(): Promise<boolean> {
   try { await Tone.start() } catch {}
-  const ctx = Tone.getContext().rawContext as AudioContext
-  if ((ctx.state as string) === 'running') { _audioUnlocked = true; return true }
-  try { await ctx.resume() } catch {}
-  if ((ctx.state as string) === 'running') { _audioUnlocked = true; return true }
+  const ctx = Tone.getContext()
+  if (ctx.state === 'running') { _audioUnlocked = true; return true }
+  try { await (ctx.rawContext as AudioContext).resume() } catch {}
+  if (ctx.state === 'running') { _audioUnlocked = true; return true }
   return false
 }
 
 function ensureAudioUnlock() {
   if (_audioUnlocked) return
-
   const unlock = async () => {
     if (await tryUnlockAudio()) {
       ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
@@ -40,7 +23,6 @@ function ensureAudioUnlock() {
       )
     }
   }
-
   ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
     document.addEventListener(evt, unlock, { capture: true, passive: true })
   )
@@ -64,16 +46,14 @@ export type AudioEngineEvent =
 
 type EventCallback = (event: AudioEngineEvent) => void
 
-// ─── AudioEngine ────────────────────────────────────────────────────────────
-
 class AudioEngine {
   private stems: Map<string, LoadedStem> = new Map()
   private mixBus: Tone.Gain | null = null
   private masterGain: Tone.Gain | null = null
-  private stProcessor: SoundTouchProcessor | null = null
+  private pitchShift: Tone.PitchShift | null = null
 
-  private _pitch = 0       // semitones (-12..+12)
-  private _speed = 1       // ratio (0.5..2.0)
+  private _pitch = 0
+  private _speed = 1
   private _volume = 0.85
   private _duration = 0
   private listeners: Set<EventCallback> = new Set()
@@ -84,18 +64,12 @@ class AudioEngine {
 
   constructor() {
     ensureAudioUnlock()
-
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        const ctx = Tone.getContext().rawContext
-        if (ctx.state === 'suspended') {
-          (ctx as AudioContext).resume().catch(() => {})
-        }
+      if (document.visibilityState === 'visible' && Tone.getContext().state === 'suspended') {
+        (Tone.getContext().rawContext as AudioContext).resume().catch(() => {})
       }
     })
   }
-
-  // ─── Event system ──────────────────────────────────────────────────────────
 
   on(cb: EventCallback) {
     this.listeners.add(cb)
@@ -106,17 +80,16 @@ class AudioEngine {
     this.listeners.forEach(cb => cb(event))
   }
 
-  // ─── SoundTouch pitch update ──────────────────────────────────────────────
-
   private _updatePitch(): void {
-    if (!this.stProcessor) return
+    if (!this.pitchShift) return
     const speedComp = this._speed === 1 ? 0 : -Math.log2(this._speed) * 12
-    this.stProcessor.pitchSemitones = this._pitch + speedComp
+    const total = this._pitch + speedComp
+    const needsShift = Math.abs(total) > 0.05
+    this.pitchShift.pitch = needsShift ? total : 0
+    this.pitchShift.wet.value = needsShift ? 1 : 0
   }
 
-  // ─── Load ──────────────────────────────────────────────────────────────────
-
-  private async fetchAudio(url: string, ctx: AudioContext): Promise<AudioBuffer> {
+  private async fetchAudio(url: string): Promise<AudioBuffer> {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 30000)
     try {
@@ -124,6 +97,7 @@ class AudioEngine {
       clearTimeout(timeoutId)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const arrayBuf = await resp.arrayBuffer()
+      const ctx = Tone.getContext()
       return await ctx.decodeAudioData(arrayBuf)
     } catch (err) {
       clearTimeout(timeoutId)
@@ -138,21 +112,22 @@ class AudioEngine {
     this.emit({ type: 'loading' })
     await this.dispose()
 
-    const ctx = Tone.getContext().rawContext as AudioContext
-    if ((ctx.state as string) !== 'running') {
-      try { await ctx.resume() } catch {}
+    if (Tone.getContext().state !== 'running') {
+      try { await (Tone.getContext().rawContext as AudioContext).resume() } catch {}
     }
 
     this.mixBus = new Tone.Gain(1)
     this.masterGain = new Tone.Gain(this._volume)
-    this.stProcessor = new SoundTouchProcessor(ctx)
+    this.pitchShift = new Tone.PitchShift({
+      pitch: 0,
+      windowSize: 0.08,
+      delayTime: 0,
+      feedback: 0,
+    })
+    this.pitchShift.wet.value = 0
 
-    const mixOut = (this.mixBus as any).output
-    const masterIn = (this.masterGain as any).input
-    const nativeMixOut = mixOut._nativeAudioNode ?? mixOut
-    const nativeMasterIn = masterIn._nativeAudioNode ?? masterIn
-    nativeMixOut.connect(this.stProcessor.node)
-    this.stProcessor.node.connect(nativeMasterIn)
+    this.mixBus.connect(this.pitchShift)
+    this.pitchShift.connect(this.masterGain)
     this.masterGain.toDestination()
 
     const transport = Tone.getTransport()
@@ -161,7 +136,7 @@ class AudioEngine {
 
     const loadStem = async (stem: Stem): Promise<boolean> => {
       try {
-        const audioBuf = await this.fetchAudio(stem.audioUrl, ctx)
+        const audioBuf = await this.fetchAudio(stem.audioUrl)
         if (audioBuf.duration < 0.5 || !this.mixBus) return false
 
         const player = new Tone.Player()
@@ -200,7 +175,6 @@ class AudioEngine {
 
     this.isLoaded = true
     this.emit({ type: 'loaded' })
-
     this._updatePitch()
 
     for (let i = 0; i < rest.length; i++) {
@@ -208,7 +182,6 @@ class AudioEngine {
       await new Promise(r => setTimeout(r, 50))
       if (loadId !== this._loadId) break
       await loadStem(rest[i])
-
       let maxDuration = this._duration
       this.stems.forEach(({ originalBuffer }) => {
         if (originalBuffer.duration > maxDuration) maxDuration = originalBuffer.duration
@@ -217,19 +190,15 @@ class AudioEngine {
     }
   }
 
-  // ─── Transport controls ────────────────────────────────────────────────────
-
   async play(): Promise<void> {
     if (!this.isLoaded) return
 
-    // Try to unlock on every play call — user just tapped, so we have gesture context
     try { await Tone.start() } catch {}
-    const ctx = Tone.getContext().rawContext as AudioContext
-    if ((ctx.state as string) !== 'running') {
-      try { await ctx.resume() } catch {}
+    if (Tone.getContext().state !== 'running') {
+      try { await (Tone.getContext().rawContext as AudioContext).resume() } catch {}
     }
 
-    if ((ctx.state as string) !== 'running') {
+    if (Tone.getContext().state !== 'running') {
       const unlockOnGesture = () => {
         tryUnlockAudio().then(ok => {
           if (ok) {
@@ -267,7 +236,6 @@ class AudioEngine {
 
   seek(seconds: number): void {
     const clamped = Math.max(0, Math.min(seconds, this.duration - 0.1))
-    if (this.stProcessor) this.stProcessor.clear()
     if (this.masterGain && this.isPlaying) {
       const g = this.masterGain.gain
       const now = Tone.now()
@@ -296,33 +264,24 @@ class AudioEngine {
     return this.isLoaded
   }
 
-  // ─── Pitch (semitones, -12..+12) ──────────────────────────────────────────
-
   setPitch(semitones: number): void {
     this._pitch = semitones
-
-    if (!this.stProcessor) {
-      return
-    }
+    if (!this.pitchShift) return
 
     const speedComp = this._speed === 1 ? 0 : -Math.log2(this._speed) * 12
-    const totalShift = semitones + speedComp
-    const wasBypassed = this.stProcessor.isBypassed
-    const willBypass = Math.abs(totalShift) < 0.05
+    const total = semitones + speedComp
+    const wasOff = this.pitchShift.wet.value < 0.5
+    const willBeOff = Math.abs(total) < 0.05
 
-    if (wasBypassed !== willBypass && this.isPlaying && this.masterGain) {
+    if (wasOff !== willBeOff && this.isPlaying && this.masterGain) {
       const g = this.masterGain.gain
       const vol = this._volume
       const now = Tone.now()
-
       g.cancelScheduledValues(now)
       g.setValueAtTime(vol, now)
       g.linearRampToValueAtTime(0.001, now + 0.03)
-
       setTimeout(() => {
         this._updatePitch()
-
-        const warmupMs = willBypass ? 10 : 120
         setTimeout(() => {
           if (this.masterGain) {
             const n2 = Tone.now()
@@ -331,7 +290,7 @@ class AudioEngine {
             g2.setValueAtTime(0.001, n2)
             g2.linearRampToValueAtTime(vol, n2 + 0.05)
           }
-        }, warmupMs)
+        }, 40)
       }, 35)
     } else {
       this._updatePitch()
@@ -342,8 +301,6 @@ class AudioEngine {
     return this._pitch
   }
 
-  // ─── Speed (0.5..2.0) ─────────────────────────────────────────────────────
-
   setSpeed(speed: number): void {
     const prev = this._speed
     this._speed = speed
@@ -352,18 +309,12 @@ class AudioEngine {
       const g = this.masterGain.gain
       const now = Tone.now()
       const vol = this._volume
-
       g.cancelScheduledValues(now)
       g.setValueAtTime(vol, now)
       g.linearRampToValueAtTime(0.001, now + 0.025)
-
       setTimeout(() => {
-        this.stems.forEach(({ player }) => {
-          player.playbackRate = this._speed
-        })
+        this.stems.forEach(({ player }) => { player.playbackRate = this._speed })
         this._updatePitch()
-
-        const warmupMs = this.stProcessor && !this.stProcessor.isBypassed ? 120 : 10
         setTimeout(() => {
           if (this.masterGain) {
             const n2 = Tone.now()
@@ -372,12 +323,10 @@ class AudioEngine {
             g2.setValueAtTime(0.001, n2)
             g2.linearRampToValueAtTime(vol, n2 + 0.04)
           }
-        }, warmupMs)
+        }, 40)
       }, 30)
     } else {
-      this.stems.forEach(({ player }) => {
-        player.playbackRate = this._speed
-      })
+      this.stems.forEach(({ player }) => { player.playbackRate = this._speed })
       this._updatePitch()
     }
   }
@@ -386,8 +335,6 @@ class AudioEngine {
     return this._speed
   }
 
-  // ─── Master volume (0..1) ─────────────────────────────────────────────────
-
   setVolume(volume: number): void {
     this._volume = volume
     if (this.masterGain) {
@@ -395,74 +342,43 @@ class AudioEngine {
     }
   }
 
-  // ─── Stem controls ─────────────────────────────────────────────────────────
-
   setStemStates(stemStates: Record<string, StemState>): void {
     const stemIds = Object.keys(stemStates)
     const hasSolo = stemIds.some(id => stemStates[id]?.solo)
-
     stemIds.forEach(id => {
       const stemState = stemStates[id]
       const loaded = this.stems.get(id)
       if (!loaded || !stemState) return
-
       let targetVolume: number
       if (hasSolo) {
         targetVolume = stemState.solo ? stemState.volume : 0
       } else {
         targetVolume = stemState.muted ? 0 : stemState.volume
       }
-
       loaded.gain.gain.rampTo(targetVolume, 0.05)
     })
   }
 
   setStemVolume(stemId: string, volume: number): void {
     const loaded = this.stems.get(stemId)
-    if (loaded) {
-      loaded.gain.gain.rampTo(volume, 0.05)
-    }
+    if (loaded) loaded.gain.gain.rampTo(volume, 0.05)
   }
 
-  // ─── Reset helpers ─────────────────────────────────────────────────────────
-
-  resetPitch(): void {
-    this.setPitch(0)
-  }
-
-  resetSpeed(): void {
-    this.setSpeed(1)
-  }
-
-  resetMix(): void {
-    this.stems.forEach(({ gain }) => {
-      gain.gain.rampTo(1, 0.1)
-    })
-  }
-
-  // ─── Time updater (RAF-based) ─────────────────────────────────────────────
+  resetPitch(): void { this.setPitch(0) }
+  resetSpeed(): void { this.setSpeed(1) }
+  resetMix(): void { this.stems.forEach(({ gain }) => { gain.gain.rampTo(1, 0.1) }) }
 
   private startTimeUpdater(): void {
     this.stopTimeUpdater()
     let cancelled = false
     const update = () => {
       if (cancelled || !this.isLoaded) return
-
       const transport = Tone.getTransport()
-      if (transport.state !== 'started') {
-        this.rafId = requestAnimationFrame(update)
-        return
-      }
-
+      if (transport.state !== 'started') { this.rafId = requestAnimationFrame(update); return }
       const ct = transport.seconds
-      if (!Number.isFinite(ct) || ct < 0) {
-        this.rafId = requestAnimationFrame(update)
-        return
-      }
-
+      if (!Number.isFinite(ct) || ct < 0) { this.rafId = requestAnimationFrame(update); return }
       const effectiveDur = this.duration
       this.emit({ type: 'timeupdate', currentTime: ct, duration: effectiveDur })
-
       if (effectiveDur > 0 && ct >= effectiveDur - 0.15) {
         this.stop()
         this.emit({ type: 'ended' })
@@ -475,53 +391,33 @@ class AudioEngine {
   }
 
   private stopTimeUpdater(): void {
-    if (this._cancelRaf) {
-      this._cancelRaf()
-      this._cancelRaf = null
-    }
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId)
-      this.rafId = null
-    }
+    if (this._cancelRaf) { this._cancelRaf(); this._cancelRaf = null }
+    if (this.rafId !== null) { cancelAnimationFrame(this.rafId); this.rafId = null }
   }
-
-  // ─── Export mixdown ─────────────────────────────────────────────────────────
 
   exportMixdown(stemStates: Record<string, StemState>): Blob | null {
     if (!this.isLoaded || this.stems.size === 0) return null
-
     try {
       const hasSolo = Object.values(stemStates).some(s => s.solo)
-
       const audible: { buffer: AudioBuffer; volume: number }[] = []
       let maxLength = 0
-
       for (const [id, loaded] of this.stems) {
         const state = stemStates[id]
         if (!state) continue
-
         let vol: number
-        if (hasSolo) {
-          vol = state.solo ? state.volume : 0
-        } else {
-          vol = state.muted ? 0 : state.volume
-        }
+        if (hasSolo) { vol = state.solo ? state.volume : 0 }
+        else { vol = state.muted ? 0 : state.volume }
         if (vol === 0) continue
-
         const buf = loaded.originalBuffer
         if (!buf || buf.length < 1) continue
-
         audible.push({ buffer: buf, volume: vol * this._volume })
         if (buf.length > maxLength) maxLength = buf.length
       }
-
       if (audible.length === 0 || maxLength === 0) return null
 
       const sampleRate = audible[0].buffer.sampleRate
-
       const outL = new Float32Array(maxLength)
       const outR = new Float32Array(maxLength)
-
       for (const { buffer, volume } of audible) {
         const srcL = buffer.getChannelData(0)
         const srcR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : srcL
@@ -535,7 +431,6 @@ class AudioEngine {
       let finalL = outL
       let finalR = outR
       let finalLength = maxLength
-
       if (Math.abs(this._speed - 1) > 0.001) {
         finalLength = Math.round(maxLength / this._speed)
         finalL = new Float32Array(finalLength)
@@ -554,15 +449,12 @@ class AudioEngine {
       const mixed = offCtx.createBuffer(2, finalLength, sampleRate)
       mixed.getChannelData(0).set(finalL)
       mixed.getChannelData(1).set(finalR)
-
       return encodeMp3(mixed)
     } catch (err) {
       console.error('[AudioEngine] exportMixdown failed:', err)
       return null
     }
   }
-
-  // ─── Cleanup ───────────────────────────────────────────────────────────────
 
   async dispose(): Promise<void> {
     this.stopTimeUpdater()
@@ -579,9 +471,9 @@ class AudioEngine {
     })
     this.stems.clear()
 
-    if (this.stProcessor) {
-      try { this.stProcessor.dispose() } catch {}
-      this.stProcessor = null
+    if (this.pitchShift) {
+      try { this.pitchShift.dispose() } catch {}
+      this.pitchShift = null
     }
     if (this.mixBus) {
       try { this.mixBus.dispose() } catch {}
@@ -597,5 +489,4 @@ class AudioEngine {
   }
 }
 
-// Singleton
 export const audioEngine = new AudioEngine()

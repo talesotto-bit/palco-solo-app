@@ -284,7 +284,7 @@ export default function Settings() {
                 <div>
                   <Label className="text-sm font-medium">Qualidade de pitch</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Algoritmo WSOLA (SoundTouch)
+                    Pitch Shift (Tone.js)
                   </p>
                 </div>
               </div>
@@ -297,7 +297,7 @@ export default function Settings() {
                 <div>
                   <Label className="text-sm font-medium">Time-stretch</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Compensação via SoundTouch
+                    Compensação automática de pitch
                   </p>
                 </div>
               </div>
