@@ -2,6 +2,13 @@ import { SoundTouch } from 'soundtouchjs'
 
 const BUFFER_SIZE = 4096
 
+function getNativeAudioContext(ctx: AudioContext): AudioContext {
+  const native = (ctx as any)._nativeContext ?? (ctx as any)._context
+  if (native && typeof native.createScriptProcessor === 'function') return native
+  if (typeof ctx.createScriptProcessor === 'function') return ctx
+  throw new Error('createScriptProcessor not available')
+}
+
 export class SoundTouchProcessor {
   private st: SoundTouch
   private processor: ScriptProcessorNode
@@ -13,7 +20,8 @@ export class SoundTouchProcessor {
     this.st = new SoundTouch()
     this.ilIn = new Float32Array(BUFFER_SIZE * 2)
     this.ilOut = new Float32Array(BUFFER_SIZE * 2)
-    this.processor = ctx.createScriptProcessor(BUFFER_SIZE, 2, 2)
+    const nativeCtx = getNativeAudioContext(ctx)
+    this.processor = nativeCtx.createScriptProcessor(BUFFER_SIZE, 2, 2)
     this.processor.onaudioprocess = this._process.bind(this)
   }
 
