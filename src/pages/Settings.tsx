@@ -21,6 +21,7 @@ const PLAN_LABELS: Record<string, string> = {
   basic: 'Pro',
   professional: 'Profissional',
   advanced: 'Avancado',
+  pro_max: 'Pro Max',
 }
 
 const PLAN_DESCRIPTIONS: Record<string, string> = {
@@ -28,6 +29,7 @@ const PLAN_DESCRIPTIONS: Record<string, string> = {
   basic: 'Acesso ao acervo completo',
   professional: 'Acesso ao acervo completo + separador de pistas',
   advanced: 'Acesso vitalicio completo a todos os recursos',
+  pro_max: 'Acesso vitalicio completo + recursos exclusivos Pro Max',
 }
 
 export default function Settings() {
@@ -240,12 +242,12 @@ export default function Settings() {
                   </p>
                 </div>
               </div>
-              <Badge variant={plan === 'advanced' || admin ? 'brand' : 'outline'}>
+              <Badge variant={plan === 'advanced' || plan === 'pro_max' || admin ? 'brand' : 'outline'}>
                 {admin ? 'Admin' : PLAN_LABELS[plan]}
               </Badge>
             </div>
 
-            {!admin && plan !== 'advanced' && (
+            {!admin && plan !== 'advanced' && plan !== 'pro_max' && (
               <Button
                 variant="brand"
                 size="sm"
@@ -282,7 +284,7 @@ export default function Settings() {
                 <div>
                   <Label className="text-sm font-medium">Qualidade de pitch</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Algoritmo Phase Vocoder (Tone.js)
+                    Algoritmo WSOLA (SoundTouch)
                   </p>
                 </div>
               </div>
@@ -295,7 +297,7 @@ export default function Settings() {
                 <div>
                   <Label className="text-sm font-medium">Time-stretch</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Compensacao via PitchShift
+                    Compensação via SoundTouch
                   </p>
                 </div>
               </div>

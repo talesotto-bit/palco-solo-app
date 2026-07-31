@@ -6,10 +6,9 @@
  *
  * Pitch/speed strategy:
  *  Speed is handled by Player.playbackRate (hardware-accelerated, zero artifacts).
- *  Pitch shifting (user pitch + speed-compensation) is handled by SoundTouch's
- *  WSOLA algorithm — the same technology used in professional DAWs (Audacity,
- *  Ableton). This replaces Tone.PitchShift's granular synthesis, eliminating
- *  the distortion artifacts that granular approaches produce.
+ *  Pitch shifting uses SoundTouch WSOLA — same technology as professional DAWs.
+ *  When no pitch shift is needed, SoundTouch runs in bypass mode (pure passthrough)
+ *  for zero-latency, zero-artifact playback.
  */
 
 import * as Tone from 'tone'
@@ -22,21 +21,24 @@ import { SoundTouchProcessor } from './SoundTouchProcessor'
 
 let _audioUnlocked = false
 
+async function tryUnlockAudio(): Promise<boolean> {
+  try { await Tone.start() } catch {}
+  const ctx = Tone.getContext().rawContext as AudioContext
+  if ((ctx.state as string) === 'running') { _audioUnlocked = true; return true }
+  try { await ctx.resume() } catch {}
+  if ((ctx.state as string) === 'running') { _audioUnlocked = true; return true }
+  return false
+}
+
 function ensureAudioUnlock() {
   if (_audioUnlocked) return
 
   const unlock = async () => {
-    try {
-      await Tone.start()
-      const ctx = Tone.getContext().rawContext
-      if (ctx.state === 'suspended') {
-        await (ctx as AudioContext).resume()
-      }
-      _audioUnlocked = true
+    if (await tryUnlockAudio()) {
       ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
         document.removeEventListener(evt, unlock, true)
       )
-    } catch {}
+    }
   }
 
   ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
@@ -105,12 +107,10 @@ class AudioEngine {
   }
 
   // ─── SoundTouch pitch update ──────────────────────────────────────────────
-  // Combines user pitch + speed-compensation into a single SoundTouch call.
-  // SoundTouch handles transitions smoothly via WSOLA — no fade needed.
 
   private _updatePitch(): void {
     if (!this.stProcessor) return
-    const speedComp = -Math.log2(this._speed) * 12
+    const speedComp = this._speed === 1 ? 0 : -Math.log2(this._speed) * 12
     this.stProcessor.pitchSemitones = this._pitch + speedComp
   }
 
@@ -127,7 +127,6 @@ class AudioEngine {
       try { await ctx.resume() } catch {}
     }
 
-    // Audio chain: stems → mixBus → SoundTouch(WSOLA) → masterGain → destination
     this.mixBus = new Tone.Gain(1)
     this.masterGain = new Tone.Gain(this._volume)
     this.stProcessor = new SoundTouchProcessor(ctx)
@@ -230,31 +229,28 @@ class AudioEngine {
 
     const ctx = Tone.getContext().rawContext as AudioContext
 
-    const getState = () => ctx.state as string
-    if (getState() !== 'running') {
-      try { await Tone.start() } catch {}
-      if (getState() === 'suspended') {
-        try { await ctx.resume() } catch {}
-      }
-      if (getState() !== 'running') {
-        await new Promise(r => setTimeout(r, 100))
-      }
-      if (getState() !== 'running') {
-        const preUnlock = async () => {
-          try {
-            await Tone.start()
-            if (ctx.state === 'suspended') await ctx.resume()
-            if (ctx.state === 'running') _audioUnlocked = true
-          } catch {}
-          ;['touchstart', 'click'].forEach(e =>
-            document.removeEventListener(e, preUnlock, true)
+    if (ctx.state !== 'running') {
+      if (!await tryUnlockAudio()) {
+        await new Promise(r => setTimeout(r, 150))
+        if (!await tryUnlockAudio()) {
+          const unlockOnGesture = () => {
+            tryUnlockAudio().then(ok => {
+              if (ok) {
+                Tone.getTransport().start()
+                this.startTimeUpdater()
+                this.emit({ type: 'timeupdate', currentTime: this.currentTime, duration: this.duration })
+              }
+            })
+            ;['touchstart', 'touchend', 'click'].forEach(e =>
+              document.removeEventListener(e, unlockOnGesture, true)
+            )
+          }
+          ;['touchstart', 'touchend', 'click'].forEach(e =>
+            document.addEventListener(e, unlockOnGesture, { capture: true, once: true })
           )
+          this.emit({ type: 'error', message: 'Toque na tela para ativar o áudio.' })
+          return
         }
-        ;['touchstart', 'click'].forEach(e =>
-          document.addEventListener(e, preUnlock, { capture: true, once: true })
-        )
-        this.emit({ type: 'error', message: 'Toque na tela para ativar o áudio.' })
-        return
       }
     }
 
@@ -305,7 +301,42 @@ class AudioEngine {
 
   setPitch(semitones: number): void {
     this._pitch = semitones
-    this._updatePitch()
+
+    if (!this.stProcessor) {
+      return
+    }
+
+    const speedComp = this._speed === 1 ? 0 : -Math.log2(this._speed) * 12
+    const totalShift = semitones + speedComp
+    const wasBypassed = this.stProcessor.isBypassed
+    const willBypass = Math.abs(totalShift) < 0.05
+
+    if (wasBypassed !== willBypass && this.isPlaying && this.masterGain) {
+      const g = this.masterGain.gain
+      const vol = this._volume
+      const now = Tone.now()
+
+      g.cancelScheduledValues(now)
+      g.setValueAtTime(vol, now)
+      g.linearRampToValueAtTime(0.001, now + 0.03)
+
+      setTimeout(() => {
+        this._updatePitch()
+
+        const warmupMs = willBypass ? 10 : 120
+        setTimeout(() => {
+          if (this.masterGain) {
+            const n2 = Tone.now()
+            const g2 = this.masterGain.gain
+            g2.cancelScheduledValues(n2)
+            g2.setValueAtTime(0.001, n2)
+            g2.linearRampToValueAtTime(vol, n2 + 0.05)
+          }
+        }, warmupMs)
+      }, 35)
+    } else {
+      this._updatePitch()
+    }
   }
 
   get pitch(): number {
@@ -333,13 +364,16 @@ class AudioEngine {
         })
         this._updatePitch()
 
-        if (this.masterGain) {
-          const n2 = Tone.now()
-          const g2 = this.masterGain.gain
-          g2.cancelScheduledValues(n2)
-          g2.setValueAtTime(0.001, n2)
-          g2.linearRampToValueAtTime(vol, n2 + 0.025)
-        }
+        const warmupMs = this.stProcessor && !this.stProcessor.isBypassed ? 120 : 10
+        setTimeout(() => {
+          if (this.masterGain) {
+            const n2 = Tone.now()
+            const g2 = this.masterGain.gain
+            g2.cancelScheduledValues(n2)
+            g2.setValueAtTime(0.001, n2)
+            g2.linearRampToValueAtTime(vol, n2 + 0.04)
+          }
+        }, warmupMs)
       }, 30)
     } else {
       this.stems.forEach(({ player }) => {

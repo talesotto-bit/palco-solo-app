@@ -7,6 +7,7 @@ export class SoundTouchProcessor {
   private processor: ScriptProcessorNode
   private ilIn: Float32Array
   private ilOut: Float32Array
+  private _bypass = true
 
   constructor(ctx: AudioContext) {
     this.st = new SoundTouch()
@@ -19,6 +20,15 @@ export class SoundTouchProcessor {
   private _process(e: AudioProcessingEvent): void {
     const inL = e.inputBuffer.getChannelData(0)
     const inR = e.inputBuffer.getChannelData(1)
+    const outL = e.outputBuffer.getChannelData(0)
+    const outR = e.outputBuffer.getChannelData(1)
+
+    if (this._bypass) {
+      outL.set(inL)
+      outR.set(inR)
+      return
+    }
+
     const n = inL.length
 
     for (let i = 0; i < n; i++) {
@@ -29,8 +39,6 @@ export class SoundTouchProcessor {
     this.st.inputBuffer.putSamples(this.ilIn, 0, n)
     this.st.process()
 
-    const outL = e.outputBuffer.getChannelData(0)
-    const outR = e.outputBuffer.getChannelData(1)
     const avail = this.st.outputBuffer.frameCount
     const take = Math.min(n, avail)
 
@@ -42,9 +50,11 @@ export class SoundTouchProcessor {
       }
     }
 
-    for (let i = take; i < n; i++) {
-      outL[i] = 0
-      outR[i] = 0
+    if (take < n) {
+      for (let i = take; i < n; i++) {
+        outL[i] = inL[i]
+        outR[i] = inR[i]
+      }
     }
   }
 
@@ -52,8 +62,22 @@ export class SoundTouchProcessor {
     return this.processor
   }
 
+  get isBypassed(): boolean {
+    return this._bypass
+  }
+
   set pitchSemitones(v: number) {
-    this.st.pitchSemitones = v
+    const nearZero = Math.abs(v) < 0.05
+    if (nearZero && !this._bypass) {
+      this._bypass = true
+      this.st.clear()
+    } else if (!nearZero) {
+      if (this._bypass) {
+        this._bypass = false
+        this.st.clear()
+      }
+      this.st.pitchSemitones = v
+    }
   }
 
   clear(): void {

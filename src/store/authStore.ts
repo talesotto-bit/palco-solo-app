@@ -6,7 +6,7 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import type { User as SupaUser, Session } from '@supabase/supabase-js'
 
-export type PlanType = 'none' | 'basic' | 'professional' | 'advanced'
+export type PlanType = 'none' | 'basic' | 'professional' | 'advanced' | 'pro_max'
 
 export interface User {
   id: string
