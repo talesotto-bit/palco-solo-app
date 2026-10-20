@@ -1,14 +1,11 @@
 import { usePlayerStore } from '@/store/playerStore'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  ExternalLink, Mail, Headphones, Music, Gauge,
+  Headphones, Music, Gauge,
 } from 'lucide-react'
-import logoImg from '@/assets/logo.png'
 
 export default function Settings() {
   const precountEnabled = usePlayerStore(s => s.precountEnabled)
@@ -72,50 +69,12 @@ export default function Settings() {
         <section className="space-y-4">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sobre</h2>
           <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-3">
-              <img src={logoImg} alt="PowerTom" className="h-10 w-10 rounded-full object-cover" />
-              <div>
-                <p className="text-sm font-semibold text-foreground">Palco Solo</p>
-                <p className="text-xs text-muted-foreground">by PowerTom</p>
-              </div>
-            </div>
-
-            <Separator />
-
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Versao</span>
               <span className="text-foreground font-medium">1.0.0</span>
             </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start gap-2 text-muted-foreground"
-                onClick={() => window.open('https://www.instagram.com/powertom', '_blank')}
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                @powertom no Instagram
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start gap-2 text-muted-foreground"
-                onClick={() => window.open('mailto:suporte@powertom.com.br', '_blank')}
-              >
-                <Mail className="h-3.5 w-3.5" />
-                suporte@powertom.com.br
-              </Button>
-            </div>
           </div>
         </section>
-
-
-        <p className="text-center text-[10px] text-muted-foreground pb-4">
-          © 2025 PowerTom · Palco Solo
-        </p>
       </div>
     </ScrollArea>
   )

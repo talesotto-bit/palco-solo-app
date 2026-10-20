@@ -1,6 +1,6 @@
 const WhatsAppButton = () => {
   const phoneNumber = "628979183630";
-  const message = encodeURIComponent("Olá! Vim pelo app Palco Solo e gostaria de saber mais.");
+  const message = encodeURIComponent("Olá! Vim pelo app e gostaria de saber mais.");
   const whatsappUrl = `https://wa.me/${phoneNumber}?text=${message}`;
 
   return (

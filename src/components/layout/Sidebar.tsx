@@ -6,7 +6,6 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuthStore, isAdmin } from '@/store/authStore'
 import { usePlayerStore } from '@/store/playerStore'
-import logoImg from '@/assets/logo.png'
 
 const NAV_MAIN = [
   { label: 'Início', to: '/app/library', icon: Home },
@@ -22,16 +21,8 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-[72px] lg:w-[240px] shrink-0 flex-col bg-black">
-      {/* Logo */}
-      <div className="flex h-14 items-center gap-2.5 px-4 lg:px-5">
-        <img src={logoImg} alt="PowerTom" className="h-8 w-8 shrink-0 rounded-full object-cover" />
-        <span className="hidden lg:block text-base font-bold text-white tracking-tight">
-          Palco Solo
-        </span>
-      </div>
-
       {/* Main nav */}
-      <nav className="px-2 lg:px-3 mt-2 space-y-0.5">
+      <nav className="px-2 lg:px-3 mt-4 space-y-0.5">
         {NAV_MAIN.map(({ label, to, icon: Icon }) => (
           <NavLink
             key={to}
