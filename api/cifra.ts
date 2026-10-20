@@ -206,7 +206,9 @@ async function ultimateGuitar(artist: string, title: string): Promise<CifraResul
       .map(r => {
         const song = norm(r.song_name)
         const art = norm(r.artist_name || '')
-        let score = song === nt ? 6 : song.includes(nt) || nt.includes(song) ? 3 : 0
+        const songScore = song === nt ? 6 : song.includes(nt) || nt.includes(song) ? 3 : 0
+        if (songScore === 0) return { r, score: 0 } // nunca aceita outra música do mesmo artista
+        let score = songScore
         if (na) score += art === na ? 4 : art.includes(na) || na.includes(art) ? 2 : 0
         else if (nt.includes(art)) score += 2 // catálogo às vezes junta título e artista
         score += Math.min(2, (r.votes || 0) / 20) + (r.rating || 0) / 5
