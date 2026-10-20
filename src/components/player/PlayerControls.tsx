@@ -5,7 +5,6 @@ import {
   RotateCcw, Volume2, VolumeX, Loader2, X,
 } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
-import { useTrialStore } from '@/store/trialStore'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
 
@@ -14,7 +13,6 @@ interface PlayerControlsProps {
 }
 
 export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
-  const isTrialMode = useTrialStore(s => s.isTrialMode)
   const [showSoundTip, setShowSoundTip] = useState(true)
   const tipTimerRef = useRef<ReturnType<typeof setTimeout>>()
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)

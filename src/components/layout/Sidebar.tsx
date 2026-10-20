@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  Home, Library, Mic2, Settings, LogOut,
+  Home, Library, Mic2, Settings,
   Music2, Wand2, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -15,23 +15,10 @@ const NAV_MAIN = [
   { label: 'Palco', to: '/app/performance', icon: Mic2 },
 ]
 
-const PLAN_LABELS: Record<string, string> = {
-  none: 'Free',
-  basic: 'Pro',
-  professional: 'Pro',
-  advanced: 'Premium',
-}
-
 export function Sidebar() {
   const user = useAuthStore(s => s.user)
-  const logout = useAuthStore(s => s.logout)
   const navigate = useNavigate()
   const track = usePlayerStore(s => s.track)
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
 
   return (
     <aside className="flex h-full w-[72px] lg:w-[240px] shrink-0 flex-col bg-black">
@@ -136,31 +123,6 @@ export function Sidebar() {
           </NavLink>
         </div>
       </div>
-
-      {/* User footer */}
-      {user && (
-        <div className="border-t border-white/10 p-2 lg:p-3">
-          <div className="flex items-center gap-2.5 px-1 lg:px-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#535353] text-white text-xs font-bold">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-            <div className="hidden lg:block min-w-0 flex-1">
-              <p className="text-sm font-medium text-white truncate">{user.name}</p>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[hsl(var(--primary))] font-semibold uppercase">
-                  {PLAN_LABELS[user.plan]}
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="hidden lg:flex h-7 w-7 items-center justify-center rounded-full text-[#b3b3b3] hover:text-white transition-colors"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
     </aside>
   )
 }

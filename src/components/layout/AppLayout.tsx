@@ -3,24 +3,17 @@ import { Sidebar } from './Sidebar'
 import { MobileNav } from './MobileNav'
 import { MiniPlayer } from './MiniPlayer'
 import { usePlayerStore } from '@/store/playerStore'
-import { useTrialStore } from '@/store/trialStore'
-import { TrialBanner } from '@/components/trial/TrialBanner'
-import { ConversionModal } from '@/components/trial/ConversionModal'
 import { cn } from '@/lib/utils'
 
 export function AppLayout() {
   const isPerformanceMode = usePlayerStore(s => s.isPerformanceMode)
   const hasTrack = usePlayerStore(s => !!s.track)
-  const isTrialMode = useTrialStore(s => s.isTrialMode)
   const location = useLocation()
   const isPlayerPage = location.pathname.startsWith('/app/player')
   const showMiniPlayer = hasTrack && !isPlayerPage && !isPerformanceMode
 
   return (
     <div className="flex flex-col h-dvh overflow-hidden bg-black">
-      {/* Trial countdown banner */}
-      {isTrialMode && <TrialBanner />}
-
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar — hidden on mobile */}
         {!isPerformanceMode && (
@@ -51,9 +44,6 @@ export function AppLayout() {
         {/* Mobile bottom nav */}
         {!isPerformanceMode && <MobileNav />}
       </div>
-
-      {/* Trial conversion modal */}
-      {isTrialMode && <ConversionModal />}
     </div>
   )
 }

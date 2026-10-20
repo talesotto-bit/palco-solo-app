@@ -3,13 +3,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { useAuthStore } from '@/store/authStore'
-import { useTrialStore } from '@/store/trialStore'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { Loader2 } from 'lucide-react'
 
 // Pages
-import Auth from '@/pages/Auth'
 import Library from '@/pages/Library'
 import PlayerPage from '@/pages/PlayerPage'
 import Performance from '@/pages/Performance'
@@ -18,7 +15,6 @@ import Admin from '@/pages/Admin'
 import SeparatePage from '@/pages/SeparatePage'
 import NotFound from '@/pages/NotFound'
 import Demo from '@/pages/Demo'
-import TrialEntry from '@/pages/TrialEntry'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const queryClient = new QueryClient({
@@ -26,26 +22,6 @@ const queryClient = new QueryClient({
     queries: { staleTime: 1000 * 60 * 5, retry: 1 },
   },
 })
-
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const user = useAuthStore(s => s.user)
-  const isInitialized = useAuthStore(s => s.isInitialized)
-  const isTrialMode = useTrialStore(s => s.isTrialMode)
-
-  // Trial users bypass Supabase auth entirely — no waiting for getSession()
-  if (isTrialMode) return <>{children}</>
-
-  if (!isInitialized) {
-    return (
-      <div className="min-h-dvh bg-black flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--primary))]" />
-      </div>
-    )
-  }
-
-  if (!user) return <Navigate to="/login" replace />
-  return <>{children}</>
-}
 
 export default function App() {
   const initialize = useAuthStore(s => s.initialize)
@@ -60,29 +36,21 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             {/* Public routes */}
-            <Route path="/login" element={<Auth />} />
+            <Route path="/login" element={<Navigate to="/app/library" replace />} />
             <Route path="/demo" element={<ErrorBoundary><Demo /></ErrorBoundary>} />
-            <Route path="/trial" element={<ErrorBoundary><TrialEntry /></ErrorBoundary>} />
+            <Route path="/trial" element={<Navigate to="/app/library" replace />} />
             <Route path="/" element={<Navigate to="/app/library" replace />} />
 
             {/* Performance — fullscreen, outside AppLayout */}
             <Route
               path="/app/performance"
-              element={
-                <ProtectedRoute>
-                  <ErrorBoundary><Performance /></ErrorBoundary>
-                </ProtectedRoute>
-              }
+              element={<ErrorBoundary><Performance /></ErrorBoundary>}
             />
 
-            {/* Protected app routes */}
+            {/* App routes */}
             <Route
               path="/app"
-              element={
-                <ProtectedRoute>
-                  <ErrorBoundary><AppLayout /></ErrorBoundary>
-                </ProtectedRoute>
-              }
+              element={<ErrorBoundary><AppLayout /></ErrorBoundary>}
             >
               <Route index element={<Navigate to="library" replace />} />
               <Route path="library" element={<Library />} />

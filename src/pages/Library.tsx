@@ -1,9 +1,8 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { Search, X, Loader2, LayoutGrid, List, Heart, ChevronDown, Lock } from 'lucide-react'
+import { Search, X, Loader2, LayoutGrid, List, Heart, ChevronDown } from 'lucide-react'
 import { useLocalTracksStore } from '@/store/localTracksStore'
 import { useCatalogStore } from '@/store/catalogStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
-import { useTrialStore } from '@/store/trialStore'
 import { TrackCard } from '@/components/library/TrackCard'
 import { cn } from '@/lib/utils'
 import { getArtistScore } from '@/lib/featuredArtists'
@@ -25,7 +24,6 @@ export default function Library() {
   const catalogGenres = useCatalogStore(s => s.genres)
   const catalogLoading = useCatalogStore(s => s.isLoading)
   const loadCatalog = useCatalogStore(s => s.loadCatalog)
-  const isTrialMode = useTrialStore(s => s.isTrialMode)
 
   useEffect(() => {
     if (catalogTracks.length === 0 && !catalogLoading) loadCatalog()
@@ -97,9 +95,7 @@ export default function Library() {
             <p className="text-[11px] md:text-xs text-[#808080] mt-0.5">
               {catalogLoading ? '' : genre !== 'all'
                 ? catalogGenres.find(g => g.id === genre)?.label || genre
-                : isTrialMode
-                  ? 'Pequena amostra do catálogo'
-                  : `${allTracks.length} faixas`}
+                : `${allTracks.length} faixas`}
             </p>
           </div>
 
@@ -274,22 +270,10 @@ export default function Library() {
               </div>
             )}
 
-            {!hasMore && totalCount > BATCH_SIZE && !isTrialMode && (
+            {!hasMore && totalCount > BATCH_SIZE && (
               <p className="text-center text-[11px] text-[#808080] py-6">
                 Todas as {totalCount} faixas carregadas
               </p>
-            )}
-
-            {isTrialMode && (
-              <div className="flex flex-col items-center gap-3 py-8 mt-4 rounded-xl bg-white/[0.03] border border-white/5">
-                <Lock className="h-6 w-6 text-[#808080]" />
-                <p className="text-sm font-semibold text-white">
-                  +100.000 faixas no catálogo completo
-                </p>
-                <p className="text-xs text-[#808080] text-center max-w-xs">
-                  Você está ouvindo apenas uma amostra. Adquira o acesso completo para desbloquear todo o catálogo com atualizações semanais.
-                </p>
-              </div>
             )}
           </div>
         )}

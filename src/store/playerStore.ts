@@ -11,7 +11,6 @@ import type { Track } from '@/types/track'
 import type { PlayerState, StemState } from '@/types/player'
 import { clamp } from '@/lib/utils'
 import { AudioCache, isCacheUrl, urlToKey } from '@/lib/audioCache'
-import { useTrialStore, onTrialExpire } from '@/store/trialStore'
 
 /** Revoke previous blob URLs before loading a new track */
 function cleanupPreviousBlobUrls() {
@@ -76,13 +75,7 @@ function buildStemStates(track: Track): Record<string, StemState> {
 
 export const usePlayerStore = create<PlayerStore>((set, get) => {
   // Subscribe to AudioEngine events once
-  // Auto-pause when trial expires
-  onTrialExpire(() => {
-    audioEngine.pause()
-    set({ playbackState: 'paused' })
-  })
 
-  let _lastFlushAt = 0
   audioEngine.on(event => {
     switch (event.type) {
       case 'loading':
@@ -95,21 +88,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         get()._setTime(event.currentTime, event.duration)
         if (audioEngine.isPlaying && get().playbackState !== 'playing') {
           set({ playbackState: 'playing', error: null })
-          useTrialStore.getState().onPlay()
-        }
-        const now = Date.now()
-        if (now - _lastFlushAt >= 1000) {
-          _lastFlushAt = now
-          const trial = useTrialStore.getState()
-          if (trial.isTrialMode && !trial.expired) {
-            trial.flush()
-          }
         }
         break
       }
       case 'ended':
         get()._setPlaybackState('stopped')
-        useTrialStore.getState().onPause()
         break
       case 'error':
         get()._setError(event.message)
@@ -186,8 +169,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
     // ─── Playback ───────────────────────────────────────────────────────────
     play: async () => {
-      const trial = useTrialStore.getState()
-      if (trial.isTrialMode && trial.expired) return
       const state = get().playbackState
       if (state === 'playing') return
       if (state === 'loading') {
@@ -199,7 +180,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         await audioEngine.play()
         if (audioEngine.isPlaying) {
           set({ playbackState: 'playing', error: null })
-          useTrialStore.getState().onPlay()
         }
       } catch (err) {
         console.error('[PlayerStore] play failed:', err)
@@ -209,13 +189,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     pause: () => {
       audioEngine.pause()
       set({ playbackState: 'paused' })
-      useTrialStore.getState().onPause()
     },
 
     stop: () => {
       audioEngine.stop()
       set({ playbackState: 'stopped', currentTime: 0 })
-      useTrialStore.getState().onPause()
     },
 
     seek: (seconds: number) => {
