@@ -12,7 +12,6 @@ import PlayerPage from '@/pages/PlayerPage'
 import Performance from '@/pages/Performance'
 import Settings from '@/pages/Settings'
 import Admin from '@/pages/Admin'
-import SeparatePage from '@/pages/SeparatePage'
 import NotFound from '@/pages/NotFound'
 import Demo from '@/pages/Demo'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -55,7 +54,7 @@ export default function App() {
               <Route index element={<Navigate to="library" replace />} />
               <Route path="library" element={<Library />} />
               <Route path="player" element={<PlayerPage />} />
-              <Route path="separar" element={<SeparatePage />} />
+              <Route path="separar" element={<Navigate to="/app/library" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="admin" element={<Admin />} />
             </Route>

@@ -204,7 +204,7 @@ export default function Library() {
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
             <p className="text-lg font-semibold text-white">Biblioteca vazia</p>
             <p className="text-sm text-[#808080] max-w-xs">
-              Use a pagina "Separar" para importar suas musicas.
+              Nenhuma música disponível no momento.
             </p>
           </div>
         )}
