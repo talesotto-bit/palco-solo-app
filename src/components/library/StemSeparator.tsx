@@ -1,39 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Upload, Wand2, Music2, CheckCircle2, AlertCircle, X, Loader2, Clock } from 'lucide-react'
-import { separateAndSave, checkDailyLimit, type SeparationStatus, type SeparationResult } from '@/lib/stemSeparation'
+import { useNavigate } from 'react-router-dom'
+import { separateToLibrary, getDailyUsage, DAILY_LIMIT, type SeparationStatus } from '@/lib/stemSeparation'
 import { usePlayerStore } from '@/store/playerStore'
+import { useLocalTracksStore } from '@/store/localTracksStore'
 import { cn } from '@/lib/utils'
-import type { Track, Stem } from '@/types/track'
+import type { Track } from '@/types/track'
 
-const ACCEPTED = '.mp3,.wav,.ogg,.m4a,.flac,.aac,.wma'
+const ACCEPTED = '.mp3,.wav,.ogg,.m4a,.flac,.aac'
 const MAX_SIZE_MB = 50
-
-function resultToTrack(result: SeparationResult): Track {
-  const stems: Stem[] = result.stems.map((s, i) => ({
-    id: s.slug,
-    label: s.name,
-    audioUrl: s.url,
-    isPrimary: i === 0,
-  }))
-
-  return {
-    id: `sep-${result.slug}-${Date.now()}`,
-    title: result.name,
-    artist: 'Separado por IA',
-    genre: 'pop' as any,
-    genreLabel: result.genre || 'Upload',
-    bpm: 0,
-    keyNote: '',
-    keyScale: 'major',
-    durationSeconds: 0,
-    coverUrl: '',
-    previewUrl: stems[0]?.audioUrl || '',
-    hasStems: true,
-    stems,
-    hasLyrics: false,
-    tags: ['ia', 'separado', result.genreSlug],
-  }
-}
 
 interface StemSeparatorProps {
   onClose?: () => void
@@ -45,18 +20,16 @@ export function StemSeparator({ onClose }: StemSeparatorProps) {
   const [message, setMessage] = useState('')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<SeparationResult | null>(null)
+  const [result, setResult] = useState<Track | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [limitAllowed, setLimitAllowed] = useState<boolean | null>(null)
-  const [nextAvailable, setNextAvailable] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const loadTrack = usePlayerStore(s => s.loadTrack)
+  const addTracks = useLocalTracksStore(s => s.addTracks)
+  const navigate = useNavigate()
 
   useEffect(() => {
-    checkDailyLimit().then(({ allowed, nextAvailable: na }) => {
-      setLimitAllowed(allowed)
-      if (na) setNextAvailable(na)
-    }).catch(() => setLimitAllowed(true))
+    setLimitAllowed(getDailyUsage().allowed)
   }, [result])
 
   const handleFile = useCallback((f: File) => {
@@ -83,12 +56,13 @@ export function StemSeparator({ onClose }: StemSeparatorProps) {
     setResult(null)
 
     try {
-      const res = await separateAndSave(file, undefined, (s, msg, pct) => {
+      const track = await separateToLibrary(file, (s, msg, pct) => {
         setStatus(s)
         setMessage(msg)
         if (pct !== undefined) setProgress(pct)
       })
-      setResult(res)
+      addTracks([track])
+      setResult(track)
     } catch (err: any) {
       setError(err.message || 'Erro desconhecido')
       setStatus('error')
@@ -97,8 +71,8 @@ export function StemSeparator({ onClose }: StemSeparatorProps) {
 
   const handlePlay = () => {
     if (!result) return
-    const track = resultToTrack(result)
-    loadTrack(track)
+    loadTrack(result)
+    navigate('/app/player')
   }
 
   const isProcessing = ['uploading', 'starting', 'processing', 'saving'].includes(status)
@@ -113,7 +87,7 @@ export function StemSeparator({ onClose }: StemSeparatorProps) {
           </div>
           <div>
             <h3 className="text-base font-bold text-white">Separar Pistas com IA</h3>
-            <p className="text-xs text-[#b3b3b3]">Envie uma música e a IA separa em Voz, Bateria, Baixo e Outros</p>
+            <p className="text-xs text-[#b3b3b3]">Envie qualquer música e a IA separa em Voz, Bateria, Baixo, Guitarra/Violão, Teclado e Outros</p>
           </div>
         </div>
         {onClose && (
@@ -129,10 +103,10 @@ export function StemSeparator({ onClose }: StemSeparatorProps) {
           <Clock className="h-5 w-5 text-amber-400 shrink-0" />
           <div>
             <p className="text-sm font-semibold text-amber-300">
-              Você já usou sua separação de hoje
+              Você já usou as {DAILY_LIMIT} separações de hoje
             </p>
             <p className="text-xs text-amber-400/70 mt-0.5">
-              Disponível novamente amanhã às 00:00
+              Libera de novo amanhã. As músicas que você já separou continuam na sua biblioteca.
             </p>
           </div>
         </div>
@@ -230,7 +204,7 @@ export function StemSeparator({ onClose }: StemSeparatorProps) {
           <div className="flex items-center gap-3">
             <CheckCircle2 className="h-5 w-5 text-[hsl(var(--primary))]" />
             <p className="text-sm font-semibold text-white">
-              {result.stemCount} pistas separadas com sucesso!
+              {result.stems.length} pistas separadas e salvas na sua biblioteca
             </p>
           </div>
 
@@ -238,18 +212,11 @@ export function StemSeparator({ onClose }: StemSeparatorProps) {
           <div className="grid grid-cols-2 gap-2">
             {result.stems.map((stem) => (
               <div
-                key={stem.slug}
+                key={stem.id}
                 className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2.5"
               >
-                <span className="text-base">
-                  {stem.slug === 'voz' ? '🎤' : stem.slug === 'bateria' ? '🥁' : stem.slug === 'baixo' ? '🎸' : '🎵'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-white truncate">{stem.name}</p>
-                  <p className="text-[10px] text-[#b3b3b3]">
-                    {(stem.size / 1024 / 1024).toFixed(1)} MB
-                  </p>
-                </div>
+                <Music2 className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+                <p className="text-xs font-semibold text-white truncate">{stem.label}</p>
               </div>
             ))}
           </div>
@@ -307,7 +274,7 @@ export function StemSeparator({ onClose }: StemSeparatorProps) {
       {status === 'idle' && !file && limitAllowed !== false && (
         <div className="flex items-center gap-2 text-[10px] text-[#535353]">
           <Wand2 className="h-3 w-3" />
-          <span>Demucs (Meta AI) — Voz, Bateria, Baixo e Outros · 1 separação grátis por dia</span>
+          <span>IA Demucs (Meta) · 6 pistas · até {DAILY_LIMIT} separações por dia · as pistas ficam salvas no seu aparelho</span>
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import { MobileNav } from './MobileNav'
 import { MiniPlayer } from './MiniPlayer'
 import { usePlayerStore } from '@/store/playerStore'
 import { cn } from '@/lib/utils'
+import { InstallBanner } from '@/components/InstallApp'
 
 export function AppLayout() {
   const isPerformanceMode = usePlayerStore(s => s.isPerformanceMode)
@@ -14,6 +15,8 @@ export function AppLayout() {
 
   return (
     <div className="flex flex-col h-dvh overflow-hidden bg-black">
+      {!isPerformanceMode && <InstallBanner />}
+
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar — hidden on mobile */}
         {!isPerformanceMode && (

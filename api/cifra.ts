@@ -39,6 +39,15 @@ function decodeHtml(html: string): string {
     .replace(/&#0?39;/g, "'")
     .replace(/&nbsp;/g, ' ')
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&([a-z]+);/gi, (m, name) => NAMED_ENTITIES[name] ?? m)
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  aacute: 'á', agrave: 'à', atilde: 'ã', acirc: 'â', eacute: 'é', ecirc: 'ê', iacute: 'í',
+  oacute: 'ó', otilde: 'õ', ocirc: 'ô', uacute: 'ú', uuml: 'ü', ccedil: 'ç', ntilde: 'ñ',
+  Aacute: 'Á', Agrave: 'À', Atilde: 'Ã', Acirc: 'Â', Eacute: 'É', Ecirc: 'Ê', Iacute: 'Í',
+  Oacute: 'Ó', Otilde: 'Õ', Ocirc: 'Ô', Uacute: 'Ú', Ccedil: 'Ç', Ntilde: 'Ñ',
 }
 
 interface CifraResult {
@@ -122,8 +131,8 @@ function parseCifraClubHtml(html: string, fallbackArtist: string, fallbackTitle:
   if (!preMatch) return null
 
   let content = preMatch[1]
-  // Keep <b> tags as chord markers, remove other HTML
-  content = content.replace(/<b>([^<]*)<\/b>/g, '⟨$1⟩')
+  // Keep <b> tags as chord markers (hoje vêm com atributos data-chord-*), remove other HTML
+  content = content.replace(/<b\b[^>]*>([^<]*)<\/b>/g, '⟨$1⟩')
   content = content.replace(/<[^>]+>/g, '')
   content = decodeHtml(content)
 
@@ -139,16 +148,99 @@ function parseCifraClubHtml(html: string, fallbackArtist: string, fallbackTitle:
   const parsedArtist = artistMatch ? decodeHtml(artistMatch[1].replace(/<[^>]+>/g, '')).trim() : fallbackArtist
 
   // Extract tuning/capo info
-  const tuningMatch = html.match(/Afinação[:\s]*([\w\s#]+)/i)
-  const capoMatch = html.match(/Capotraste[:\s]*(\d+)/i) || html.match(/Tom[:\s]*([A-G][#b]?m?)/i)
+  const tuningMatch = html.match(/>\s*Afinação\s*(?:<!--\s*-->)?\s*:\s*(?:<\/span>\s*)?<[^>]+>\s*([^<]{1,30})</i)
+  // Tom: botão "--chord-tone" (layout atual, ex.: "Ebm (com forma de Em)") ou "Tom: <x>X" (layout antigo); senão, capotraste
+  const capoMatch = html.match(/data-anchor="--chord-tone"[^>]*>\s*([A-G][#b]?[^<]{0,6}(?:<!--\s*-->[^<]{0,30})?)</)
+    || html.match(/>\s*Tom\s*(?:<!--\s*-->)?\s*:\s*(?:<[^>]+>\s*)+([A-G][#b]?m?)\s*</)
+    || html.match(/Capotraste\s+na\s+(\d+)/i)
 
   return {
     title: parsedTitle,
     artist: parsedArtist,
     content: content.trim(),
     tuning: tuningMatch ? tuningMatch[1].trim() : undefined,
-    capo: capoMatch ? capoMatch[1].trim() : undefined,
+    capo: capoMatch ? capoMatch[1].replace(/<!--\s*-->/g, '').replace(/\s+/g, ' ').replace('com forma de', 'forma de').trim() : undefined,
     source: 'CifraClub',
+  }
+}
+
+// ─── Ultimate Guitar (fallback quando o Cifra Club bloqueia) ────────────────
+
+const UG_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
+  'Accept': 'text/html',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+}
+
+function norm(text: string): string {
+  return removeAccents(text.toLowerCase()).replace(/&/g, ' e ').replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+/** Lê o JSON que o Ultimate Guitar embute na página (div.js-store) */
+function ugStore(html: string): any | null {
+  const m = html.match(/class="js-store"\s+data-content="([^"]+)"/)
+  if (!m) return null
+  // Decodifica o atributo numa passada só, para não desfazer escapes do JSON
+  const basic: Record<string, string> = { quot: '"', amp: '&', lt: '<', gt: '>', apos: "'" }
+  const json = m[1].replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (all, e: string) =>
+    e[0] === '#'
+      ? String.fromCharCode(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1)))
+      : basic[e] ?? all)
+  try { return JSON.parse(json) } catch { return null }
+}
+
+async function ultimateGuitar(artist: string, title: string): Promise<CifraResult | null> {
+  try {
+    const q = `${title} ${artist}`.trim().slice(0, 100)
+    const searchRes = await fetch(
+      `https://www.ultimate-guitar.com/search.php?search_type=title&value=${encodeURIComponent(q)}`,
+      { headers: UG_HEADERS, signal: AbortSignal.timeout(8000) },
+    )
+    if (!searchRes.ok) return null
+    const results: any[] = ugStore(await searchRes.text())?.store?.page?.data?.results ?? []
+
+    const nt = norm(title)
+    const na = norm(artist)
+    const scored = results
+      .filter(r => r?.type === 'Chords' && r.tab_url && r.song_name)
+      .map(r => {
+        const song = norm(r.song_name)
+        const art = norm(r.artist_name || '')
+        let score = song === nt ? 6 : song.includes(nt) || nt.includes(song) ? 3 : 0
+        if (na) score += art === na ? 4 : art.includes(na) || na.includes(art) ? 2 : 0
+        else if (nt.includes(art)) score += 2 // catálogo às vezes junta título e artista
+        score += Math.min(2, (r.votes || 0) / 20) + (r.rating || 0) / 5
+        return { r, score }
+      })
+      .filter(x => x.score >= 3)
+      .sort((a, b) => b.score - a.score)
+    if (!scored.length) return null
+
+    const best = scored[0].r
+    const tabRes = await fetch(best.tab_url, { headers: UG_HEADERS, signal: AbortSignal.timeout(8000) })
+    if (!tabRes.ok) return null
+    const data = ugStore(await tabRes.text())?.store?.page?.data
+    const raw: string | undefined = data?.tab_view?.wiki_tab?.content
+    if (!raw) return null
+
+    const content = raw
+      .replace(/\[ch\]([^[]*)\[\/ch\]/g, '⟨$1⟩')
+      .replace(/\[\/?tab\]/g, '')
+      .replace(/\r\n/g, '\n')
+      .trim()
+    if (content.length < 20) return null
+
+    const capo = data?.tab_view?.meta?.capo
+    const tonality = data?.tab?.tonality_name
+    return {
+      title: decodeHtml(best.song_name),
+      artist: best.artist_name ? decodeHtml(best.artist_name) : artist,
+      content,
+      capo: tonality ? String(tonality) : capo ? String(capo) : undefined,
+      source: 'Ultimate Guitar',
+    }
+  } catch {
+    return null
   }
 }
 
@@ -176,6 +268,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (!result) {
     result = await cifraClubSearch(a, cleanedT)
+  }
+  if (!result) {
+    result = await ultimateGuitar(a, cleanedT)
   }
 
   if (!result) {

@@ -2,6 +2,7 @@ import * as Tone from 'tone'
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
 import { encodeMp3 } from '@/lib/mp3Encoder'
+import { getOfflineAudio, putOfflineAudio } from '@/lib/offlineAudio'
 
 let _audioUnlocked = false
 
@@ -105,6 +106,12 @@ class AudioEngine {
   }
 
   private async fetchAudio(url: string): Promise<AudioBuffer> {
+    // Música já aberta antes: toca do aparelho, sem internet
+    const offline = await getOfflineAudio(url)
+    if (offline) {
+      try { return await Tone.getContext().decodeAudioData(offline) } catch { /* cópia corrompida: baixa de novo */ }
+    }
+
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 30000)
     try {
@@ -112,6 +119,8 @@ class AudioEngine {
       clearTimeout(timeoutId)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const arrayBuf = await resp.arrayBuffer()
+      // decodeAudioData consome o buffer, então guarda uma cópia antes
+      void putOfflineAudio(url, arrayBuf.slice(0))
       return await Tone.getContext().decodeAudioData(arrayBuf)
     } catch (err) {
       clearTimeout(timeoutId)

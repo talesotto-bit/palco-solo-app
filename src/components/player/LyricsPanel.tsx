@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Loader2, AlertCircle, Search, RotateCcw } from 'lucide-react'
+import { Loader2, AlertCircle, Search, RotateCcw, ArrowDownToLine } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
+import { useAutoScroll } from '@/hooks/useAutoScroll'
+import { cn } from '@/lib/utils'
 import { useLyricsStore } from '@/store/lyricsStore'
 import type { LrcLine } from '@/store/lyricsStore'
 
@@ -44,6 +46,10 @@ export function LyricsPanel() {
   }, [track?.id, trackId, fetchLyrics])
 
   const activeLine = syncedLines ? findActiveLine(syncedLines, currentTime) : -1
+
+  // Letra sem sincronização: rola acompanhando o progresso da música
+  const [autoScroll, setAutoScroll] = useState(true)
+  useAutoScroll(scrollRef, autoScroll && !syncedLines && !!plainLyrics)
 
   // Auto-scroll to active line
   useEffect(() => {
@@ -128,10 +134,25 @@ export function LyricsPanel() {
         <p className="text-sm font-bold text-white">Letra</p>
         {hasLyrics && (
           <div className="flex items-center gap-1">
-            {syncedLines && (
+            {syncedLines ? (
               <span className="text-[10px] font-medium text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 px-2 py-0.5 rounded-full mr-2">
-                SYNC
+                Sincronizada
               </span>
+            ) : (
+              <button
+                onClick={() => setAutoScroll(v => !v)}
+                aria-pressed={autoScroll}
+                title="Rolagem automática"
+                className={cn(
+                  'h-7 px-2 mr-1 rounded flex items-center gap-1 text-[10px] font-bold transition-colors',
+                  autoScroll
+                    ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]'
+                    : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
+                )}
+              >
+                <ArrowDownToLine className="h-3 w-3" />
+                Rolar
+              </button>
             )}
             <button
               onClick={() => setFontIdx(i => Math.max(0, i - 1))}
@@ -217,11 +238,15 @@ export function LyricsPanel() {
               <p
                 key={i}
                 ref={el => setLineRef(i, el)}
-                className="py-1.5 px-2 rounded-md leading-relaxed cursor-pointer hover:bg-white/5 transition-colors"
-                style={{
-                  fontSize: `${fontSize}px`,
-                  color: '#e0e0e0',
-                }}
+                className={cn(
+                  'py-1.5 px-2 rounded-md leading-relaxed cursor-pointer hover:bg-white/5 transition-all duration-300',
+                  i === activeLine
+                    ? 'text-white font-bold bg-[hsl(var(--primary))]/15'
+                    : i < activeLine
+                      ? 'text-[#6b6b6b]'
+                      : 'text-[#b3b3b3]'
+                )}
+                style={{ fontSize: `${i === activeLine ? fontSize + 2 : fontSize}px` }}
                 onClick={() => {
                   const seek = usePlayerStore.getState().seek
                   seek(line.time)

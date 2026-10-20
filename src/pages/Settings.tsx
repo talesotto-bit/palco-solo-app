@@ -3,6 +3,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { InstallCard } from '@/components/InstallApp'
 import {
   Headphones, Music, Gauge,
 } from 'lucide-react'
@@ -62,6 +63,14 @@ export default function Settings() {
               </div>
               <Badge variant="warning">Beta</Badge>
             </div>
+          </div>
+        </section>
+
+        {/* App */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">App no celular</h2>
+          <div className="rounded-xl border border-border bg-card">
+            <InstallCard />
           </div>
         </section>
 

@@ -1,7 +1,6 @@
 /**
  * AuthStore — acesso livre, sem login/cadastro.
- * Cada aparelho recebe uma sessão anônima do Supabase (necessária para o
- * separador de pistas, que limita o uso por usuário).
+ * Mantém só a leitura de uma sessão existente (usada pela página Admin).
  */
 
 import { create } from 'zustand'
@@ -58,9 +57,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       if (session?.user) {
         set({ user: mapSupabaseUser(session.user), isInitialized: true })
       } else {
-        const { data, error } = await supabase.auth.signInAnonymously()
-        if (error) console.warn('Sessão anônima indisponível:', error.message)
-        set({ user: data.user ? mapSupabaseUser(data.user) : null, isInitialized: true })
+        set({ user: null, isInitialized: true })
       }
     } catch {
       set({ user: null, isInitialized: true })

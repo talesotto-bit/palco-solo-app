@@ -1,6 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Loader2, Search, RotateCcw, Music } from 'lucide-react'
+import { Loader2, Search, RotateCcw, Music, ArrowDownToLine } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
+import { useAutoScroll } from '@/hooks/useAutoScroll'
+import { transposeChord, transposeKey, formatTons } from '@/lib/musicTheory'
+import { cn } from '@/lib/utils'
 
 interface CifraData {
   title: string
@@ -15,6 +18,11 @@ const FONT_SIZES = [12, 14, 16, 18, 20]
 
 export function CifrasPanel() {
   const track = usePlayerStore(s => s.track)
+  // Acordes acompanham o tom do player (só semitons inteiros)
+  const transpose = usePlayerStore(s => Math.round(s.pitch))
+  const [autoScroll, setAutoScroll] = useState(true)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useAutoScroll(scrollRef, autoScroll)
   const [cifra, setCifra] = useState<CifraData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<'not_found' | 'fetch_error' | null>(null)
@@ -81,9 +89,23 @@ export function CifrasPanel() {
         <p className="text-sm font-bold text-white">Cifra</p>
         {cifra && (
           <div className="flex items-center gap-1">
-            <span className="text-[10px] font-medium text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full mr-2">
-              {cifra.source}
-            </span>
+            {transpose !== 0 && (
+              <span className="text-[10px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full mr-1">
+                {formatTons(transpose)}
+              </span>
+            )}
+            <button
+              onClick={() => setAutoScroll(v => !v)}
+              aria-pressed={autoScroll}
+              title="Rolagem automática"
+              className={cn(
+                'h-7 px-2 rounded flex items-center gap-1 text-[10px] font-bold transition-colors',
+                autoScroll ? 'bg-amber-400/20 text-amber-400' : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
+              )}
+            >
+              <ArrowDownToLine className="h-3 w-3" />
+              Rolar
+            </button>
             <button
               onClick={() => setFontIdx(i => Math.max(0, i - 1))}
               disabled={fontIdx === 0}
@@ -103,7 +125,7 @@ export function CifrasPanel() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-4" style={{ WebkitOverflowScrolling: 'touch' }}>
         {isLoading && (
           <div className="flex flex-col items-center gap-3 py-10">
             <Loader2 className="h-6 w-6 animate-spin text-amber-400" />
@@ -180,7 +202,11 @@ export function CifrasPanel() {
                   )}
                   {cifra.capo && (
                     <span className="text-[10px] text-[#b3b3b3] bg-white/5 px-2 py-0.5 rounded">
-                      Tom: {cifra.capo}
+                      {/^\d+$/.test(cifra.capo)
+                        ? `Capotraste: ${cifra.capo}ª casa`
+                        : transpose !== 0
+                          ? `Tom: ${cifra.capo.replace(/[A-G][#b]?m?/g, k => transposeKey(k, transpose))} (original ${cifra.capo})`
+                          : `Tom: ${cifra.capo}`}
                     </span>
                   )}
                 </div>
@@ -194,7 +220,7 @@ export function CifrasPanel() {
             >
               {cifra.content.split(/⟨([^⟩]*)⟩/).map((part, i) =>
                 i % 2 === 1
-                  ? <span key={i} className="font-bold text-amber-400">{part}</span>
+                  ? <span key={i} className="font-bold text-amber-400">{transposeChord(part, transpose)}</span>
                   : <span key={i} className="text-[#e0e0e0]">{part}</span>
               )}
             </pre>

@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { formatTons } from './musicTheory'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -18,12 +19,13 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-/** Convert semitones to a human-readable label */
+/** Convert semitones to a human-readable label in tons (e.g. "+1½ tom") */
 export function semitonesToLabel(semitones: number): string {
   if (semitones === 0) return 'Original'
-  const sign = semitones > 0 ? '+' : ''
-  const val = Number.isInteger(semitones) ? semitones.toString() : semitones.toFixed(1)
-  return `${sign}${val} st`
+  const st = Math.round(semitones)
+  const cents = Math.round((semitones - st) * 100)
+  const centsLabel = cents !== 0 ? ` ${cents > 0 ? '+' : ''}${cents}¢` : ''
+  return st === 0 ? `Original${centsLabel}` : `${formatTons(st)}${centsLabel}`
 }
 
 /** Convert speed ratio to percentage label */
