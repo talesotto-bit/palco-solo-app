@@ -1,9 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { audioEngine } from '@/audio/AudioEngine'
-import {
-  Play, Pause, Square, SkipBack, SkipForward,
-  RotateCcw, Volume2, VolumeX, Loader2, X,
-} from 'lucide-react'
+import { FastForward, Loader2, Pause, Play, Rewind, RotateCcw, SkipBack, SkipForward, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
@@ -42,65 +39,64 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
   const hasTrack = usePlayerStore(s => !!s.track)
 
   const isLarge = size === 'large'
+  const queueLen = usePlayerStore(s => s.queue.length)
+  const queueIndex = usePlayerStore(s => s.queueIndex)
+  const nextSong = usePlayerStore(s => s.next)
+  const prevSong = usePlayerStore(s => s.prev)
 
   return (
     <div className="flex flex-col items-center gap-3 md:gap-4">
-      {/* Transport controls */}
-      <div className="flex items-center gap-4 md:gap-5">
-        {/* Rewind to start */}
+      {/* Transporte */}
+      {queueLen > 1 && queueIndex >= 0 && (
+        <p className="text-[11px] font-semibold text-[#9a9a9a] -mb-1">Música {queueIndex + 1} de {queueLen}</p>
+      )}
+      <div className="flex items-center gap-1 md:gap-2">
+        {queueLen > 1 ? (
+          <CtlButton label="Música anterior" disabled={!hasTrack} onClick={() => void prevSong()}>
+            <SkipBack className={cn('fill-current', isLarge ? 'h-5 w-5' : 'h-4 w-4')} />
+          </CtlButton>
+        ) : (
+          <CtlButton label="Voltar ao começo" disabled={!hasTrack} onClick={() => seek(0)}>
+            <RotateCcw className={cn(isLarge ? 'h-5 w-5' : 'h-4 w-4')} />
+          </CtlButton>
+        )}
+
+        <CtlButton label="Voltar 5 segundos" disabled={!hasTrack} onClick={() => skipBackward(5)}>
+          <span className="flex flex-col items-center leading-none"><Rewind className={cn(isLarge ? 'h-5 w-5' : 'h-4 w-4')} /><span className="text-[9px] font-bold mt-0.5">5s</span></span>
+        </CtlButton>
+
         <button
           disabled={!hasTrack}
-          onClick={() => seek(0)}
-          className="text-[#b3b3b3] hover:text-white disabled:opacity-30 transition-colors"
-        >
-          <RotateCcw className={cn(isLarge ? 'h-5 w-5' : 'h-4 w-4')} />
-        </button>
-
-        {/* Skip back */}
-        <button
-          disabled={!hasTrack}
-          onClick={() => skipBackward(5)}
-          className="text-[#b3b3b3] hover:text-white disabled:opacity-30 transition-colors"
-        >
-          <SkipBack className={cn(isLarge ? 'h-5 w-5' : 'h-4 w-4')} />
-        </button>
-
-        {/* Play / Pause */}
-        <button
-          disabled={!hasTrack || isLoading}
+          aria-label={isPlaying ? 'Pausar' : 'Tocar'}
           onClick={() => { void audioEngine.unlock(); isPlaying ? pause() : play() }}
           className={cn(
-            'flex items-center justify-center rounded-full bg-white text-black',
+            'mx-1 flex items-center justify-center rounded-full bg-white text-black',
             'hover:scale-105 active:scale-95 transition-transform disabled:opacity-50',
-            isLarge ? 'h-14 w-14' : 'h-10 w-10'
+            isLarge ? 'h-16 w-16' : 'h-11 w-11'
           )}
         >
           {isLoading ? (
-            <Loader2 className={cn('animate-spin', isLarge ? 'h-6 w-6' : 'h-5 w-5')} />
+            <Loader2 className={cn('animate-spin', isLarge ? 'h-7 w-7' : 'h-5 w-5')} />
           ) : isPlaying ? (
-            <Pause className={cn('fill-black', isLarge ? 'h-6 w-6' : 'h-5 w-5')} />
+            <Pause className={cn('fill-black', isLarge ? 'h-7 w-7' : 'h-5 w-5')} />
           ) : (
-            <Play className={cn('fill-black ml-0.5', isLarge ? 'h-6 w-6' : 'h-5 w-5')} />
+            <Play className={cn('fill-black ml-0.5', isLarge ? 'h-7 w-7' : 'h-5 w-5')} />
           )}
         </button>
 
-        {/* Skip forward */}
-        <button
-          disabled={!hasTrack}
-          onClick={() => skipForward(5)}
-          className="text-[#b3b3b3] hover:text-white disabled:opacity-30 transition-colors"
-        >
-          <SkipForward className={cn(isLarge ? 'h-5 w-5' : 'h-4 w-4')} />
-        </button>
+        <CtlButton label="Avançar 5 segundos" disabled={!hasTrack} onClick={() => skipForward(5)}>
+          <span className="flex flex-col items-center leading-none"><FastForward className={cn(isLarge ? 'h-5 w-5' : 'h-4 w-4')} /><span className="text-[9px] font-bold mt-0.5">5s</span></span>
+        </CtlButton>
 
-        {/* Stop */}
-        <button
-          disabled={!hasTrack}
-          onClick={stop}
-          className="text-[#b3b3b3] hover:text-white disabled:opacity-30 transition-colors"
-        >
-          <Square className={cn(isLarge ? 'h-4 w-4' : 'h-3.5 w-3.5')} />
-        </button>
+        {queueLen > 1 ? (
+          <CtlButton label="Próxima música" disabled={!hasTrack || queueIndex >= queueLen - 1} onClick={() => void nextSong()}>
+            <SkipForward className={cn('fill-current', isLarge ? 'h-5 w-5' : 'h-4 w-4')} />
+          </CtlButton>
+        ) : (
+          <CtlButton label="Parar" disabled={!hasTrack} onClick={stop}>
+            <Square className={cn(isLarge ? 'h-4 w-4' : 'h-3.5 w-3.5')} />
+          </CtlButton>
+        )}
       </div>
 
       {/* Volume */}
@@ -134,5 +130,14 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
         </div>
       )}
     </div>
+  )
+}
+
+function CtlButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button aria-label={label} title={label} disabled={disabled} onClick={onClick}
+      className="h-11 w-11 flex items-center justify-center rounded-full text-[#c8c8c8] hover:text-white active:bg-white/10 disabled:opacity-30 transition-colors">
+      {children}
+    </button>
   )
 }

@@ -1,4 +1,4 @@
-import { Play, Pause, Layers, Heart, ListPlus } from 'lucide-react'
+import { Play, Pause, Layers, Heart, ListPlus, Loader2 } from 'lucide-react'
 import { audioEngine } from '@/audio/AudioEngine'
 import { useAddToShow } from '@/store/addToShowStore'
 import type { Track } from '@/types/track'
@@ -30,6 +30,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
 
   const isActive = currentTrack?.id === track.id
   const isPlaying = isActive && playbackState === 'playing'
+  const isLoadingThis = isActive && playbackState === 'loading'
 
   const handlePlay = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -40,13 +41,14 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
     } else if (isActive) {
       play()
     } else {
-      await loadTrack(track)
-      play()
+      // começa a tocar assim que as pistas chegarem (o botão mostra o carregamento)
+      void loadTrack(track, { autoplay: true })
     }
   }
 
-  const handleNavigate = async () => {
-    if (!isActive) await loadTrack(track)
+  const handleNavigate = () => {
+    // abre o player na hora; o carregamento aparece lá dentro
+    if (!isActive) void loadTrack(track)
     navigate('/app/player')
     setTimeout(() => {
       document.getElementById('player-mixer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -127,9 +129,11 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
           aria-label={isPlaying ? 'Pausar' : 'Tocar'}
           onClick={handlePlay}
         >
-          {isPlaying
-            ? <Pause className="h-3.5 w-3.5 text-black fill-black" />
-            : <Play className="h-3.5 w-3.5 text-black fill-black ml-0.5" />
+          {isLoadingThis
+            ? <Loader2 className="h-3.5 w-3.5 text-black animate-spin" />
+            : isPlaying
+              ? <Pause className="h-3.5 w-3.5 text-black fill-black" />
+              : <Play className="h-3.5 w-3.5 text-black fill-black ml-0.5" />
           }
         </button>
       </div>
@@ -157,15 +161,17 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             'absolute bottom-2 right-2 flex items-center justify-center',
             'h-10 w-10 rounded-full bg-[hsl(var(--primary))] shadow-xl shadow-black/50',
             'transition-all duration-200',
-            isPlaying
+            isPlaying || isLoadingThis
               ? 'opacity-100 translate-y-0'
               : 'opacity-100 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0',
             'hover:scale-105 active:scale-95'
           )}
         >
-          {isPlaying
-            ? <Pause className="h-5 w-5 text-black fill-black" />
-            : <Play className="h-5 w-5 text-black fill-black ml-0.5" />
+          {isLoadingThis
+            ? <Loader2 className="h-5 w-5 text-black animate-spin" />
+            : isPlaying
+              ? <Pause className="h-5 w-5 text-black fill-black" />
+              : <Play className="h-5 w-5 text-black fill-black ml-0.5" />
           }
         </button>
 

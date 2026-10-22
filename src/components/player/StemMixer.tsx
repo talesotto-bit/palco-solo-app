@@ -1,6 +1,7 @@
 import { VolumeX, RotateCcw, Layers } from 'lucide-react'
 import { usePlayerStore, stemInstrument } from '@/store/playerStore'
 import { usePrefsStore, PLAYABLE } from '@/store/prefsStore'
+import { isSupportStem } from '@/audio/AudioEngine'
 import { Slider } from '@/components/ui/slider'
 import { INSTRUMENT_LABELS, INSTRUMENT_ICONS } from '@/types/track'
 import type { InstrumentId } from '@/types/track'
@@ -83,6 +84,43 @@ function VuMeter({ active, volume }: { active: boolean; volume: number }) {
 interface StemMixerProps {
   /** When set, only these stem IDs are shown in the mixer. Rest still play in background. */
   visibleStemIds?: Set<string>
+}
+
+/** Mixes de um toque: aplicam liga/desliga por tipo de instrumento */
+const QUICK: { label: string; keepOff: (inst: string, isGuide: boolean) => boolean }[] = [
+  { label: 'Tudo ligado', keepOff: () => false },
+  { label: 'Sem voz guia', keepOff: (_i, g) => g },
+  { label: 'Acústico', keepOff: (i) => ['drums', 'guitar', 'synth'].includes(i) },
+  { label: 'Só ritmo', keepOff: (i) => !['drums', 'percussion', 'bass'].includes(i) },
+]
+
+function QuickMixes() {
+  const track = usePlayerStore(s => s.track)
+  if (!track || track.stems.length < 3) return null
+  const apply = (q: typeof QUICK[number]) => {
+    const st = usePlayerStore.getState()
+    const plays = new Set<string>(usePrefsStore.getState().plays)
+    const next = { ...st.stemStates }
+    for (const stem of track.stems) {
+      const inst = stemInstrument(stem)
+      const support = isSupportStem(stem)
+      const guide = inst === 'voice'
+      const off = support || plays.has(inst) || q.keepOff(inst, guide)
+      if (next[stem.id]) next[stem.id] = { ...next[stem.id], muted: off, solo: false }
+    }
+    // aplica pista a pista para o motor baixar o que for preciso
+    for (const id of Object.keys(next)) if (next[id].muted !== st.stemStates[id]?.muted || st.stemStates[id]?.solo) st.setStemMuted(id, next[id].muted)
+    Object.values(st.stemStates).forEach(s => { if (s.solo) st.setStemSolo(s.id, false) })
+  }
+  return (
+    <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-4 md:px-5 pb-3">
+      {QUICK.map(q => (
+        <button key={q.label} onClick={() => apply(q)} className="h-8 px-3 rounded-full bg-white/[0.07] text-xs font-semibold text-[#d6d6d6] shrink-0 active:bg-white/20">
+          {q.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function MineBanner() {
@@ -168,6 +206,8 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
         </button>
       </div>
 
+      <QuickMixes />
+
       {/* Stem rows */}
       <div className="divide-y divide-white/5">
         {stems.map(stem => {
@@ -185,7 +225,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
             <div
               key={stem.id}
               className={cn(
-                'flex items-center gap-2 md:gap-3 px-3 md:px-5 py-3 transition-all',
+                'flex flex-wrap md:flex-nowrap items-center gap-x-2 gap-y-1 md:gap-3 px-3 md:px-5 py-2.5 md:py-3 transition-all',
                 isSolo && 'bg-[hsl(var(--primary))]/5',
                 isInactive && 'opacity-25',
               )}
@@ -196,7 +236,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
               </div>
 
               {/* Icon + label */}
-              <div className="flex items-center gap-2 w-24 md:w-32 shrink-0">
+              <div className="flex items-center gap-2 flex-1 min-w-0 md:flex-none md:w-32 md:shrink-0">
                 <span className="text-lg leading-none">{icon}</span>
                 <span className={cn(
                   'text-sm font-medium truncate',
@@ -208,7 +248,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
               </div>
 
               {/* Volume fader */}
-              <div className="flex-1 min-w-0 flex items-center gap-3">
+              <div className="order-last basis-full pl-8 md:order-none md:basis-auto md:pl-0 md:flex-1 min-w-0 flex items-center gap-3">
                 <Slider
                   min={0}
                   max={1}
@@ -225,6 +265,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
 
               {/* Mute button */}
               <button
+                aria-label={isMuted ? `Ligar ${label}` : `Silenciar ${label}`}
                 onClick={() => setStemMuted(stem.id, !isMuted)}
                 className={cn(
                   'flex items-center justify-center h-10 w-10 md:h-8 md:w-8 rounded-full shrink-0 transition-colors text-xs font-bold',
@@ -238,6 +279,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
 
               {/* Solo button */}
               <button
+                aria-label={`Solo: ouvir só ${label}`}
                 onClick={() => setStemSolo(stem.id, !isSolo)}
                 className={cn(
                   'flex items-center justify-center h-10 w-10 md:h-8 md:w-8 rounded-full shrink-0 transition-colors text-xs font-bold',
