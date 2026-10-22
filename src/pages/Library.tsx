@@ -4,7 +4,7 @@ import { useLocalTracksStore } from '@/store/localTracksStore'
 import { useCatalogStore } from '@/store/catalogStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
 import { TrackCard } from '@/components/library/TrackCard'
-import { cn } from '@/lib/utils'
+import { cn, matchesSearch } from '@/lib/utils'
 import { getArtistScore } from '@/lib/featuredArtists'
 
 const BATCH_SIZE = 60
@@ -52,12 +52,7 @@ export default function Library() {
     }
 
     if (debouncedSearch.trim()) {
-      const q = debouncedSearch.toLowerCase()
-      list = list.filter(t =>
-        t.title.toLowerCase().includes(q) ||
-        t.artist.toLowerCase().includes(q) ||
-        (t.tags || []).some(tag => tag.toLowerCase().includes(q))
-      )
+      list = list.filter(t => matchesSearch(debouncedSearch, [t.title, t.artist, ...(t.tags || [])]))
     }
 
     if (genre !== 'all') {

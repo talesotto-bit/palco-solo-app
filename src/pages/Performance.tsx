@@ -15,7 +15,7 @@ import { useLocalTracksStore } from '@/store/localTracksStore'
 import { useLyricsStore } from '@/store/lyricsStore'
 import { Slider } from '@/components/ui/slider'
 import { formatTime } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { cn, matchesSearch } from '@/lib/utils'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import type { Track } from '@/types/track'
 
@@ -222,7 +222,7 @@ export default function Performance() {
   const results = useMemo(() => {
     if (!search.trim()) return allTracks.slice(0, 40)
     const q = search.toLowerCase()
-    return allTracks.filter(t => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)).slice(0, 40)
+    return allTracks.filter(t => matchesSearch(q, [t.title, t.artist])).slice(0, 40)
   }, [allTracks, search])
 
   // Progress bar touch

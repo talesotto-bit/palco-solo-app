@@ -15,6 +15,18 @@ export function formatTime(seconds: number): string {
 }
 
 /** Clamp a value between min and max */
+/** Texto para busca: minúsculo e sem acento ("Arranhão" → "arranhao") */
+export function normalizeSearch(text: string): string {
+  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
+/** Cada palavra da busca precisa aparecer em algum dos campos (em qualquer ordem) */
+export function matchesSearch(query: string, fields: string[]): boolean {
+  const words = normalizeSearch(query).split(/\s+/).filter(Boolean)
+  const hay = normalizeSearch(fields.join(' '))
+  return words.every(w => hay.includes(w))
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
