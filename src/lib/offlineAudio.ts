@@ -78,3 +78,16 @@ export function isAvailableOffline(urls: string[]): boolean {
   const remote = urls.filter(cacheable)
   return remote.length > 0 && remote.every(u => !!idx[u])
 }
+
+/** Quanto espaço as músicas guardadas ocupam (para a tela de configurações) */
+export function offlineStats(): { files: number; bytes: number; maxBytes: number } {
+  const idx = readIndex()
+  const vals = Object.values(idx)
+  return { files: vals.length, bytes: vals.reduce((n, e) => n + e.size, 0), maxBytes: MAX_BYTES }
+}
+
+/** Apaga todas as músicas guardadas no aparelho */
+export async function clearOffline(): Promise<void> {
+  try { if (supported()) await caches.delete(CACHE_NAME) } catch {}
+  writeIndex({})
+}

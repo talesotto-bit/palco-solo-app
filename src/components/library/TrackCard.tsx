@@ -92,7 +92,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             {track.title}
           </p>
           <p className="text-[11px] text-[#808080] truncate">
-            {track.artist}
+            {track.artist}{track.version ? ` · ${track.version}` : ''}
           </p>
         </div>
 
@@ -210,7 +210,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             {track.title}
           </p>
           <p className="text-[11px] text-[#808080] truncate mt-0.5 leading-tight">
-            {track.artist}
+            {track.artist}{track.version ? ` · ${track.version}` : ''}
           </p>
         </div>
         <button

@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { Onboarding, shouldShowOnboarding } from '@/components/Onboarding'
 import { useAllTracks } from '@/hooks/useAllTracks'
 import { Sidebar } from './Sidebar'
 import { MobileNav } from './MobileNav'
@@ -18,6 +19,7 @@ export function AppLayout() {
   const showMiniPlayer = hasTrack && !isPlayerPage && !isPerformanceMode
   const addTrack = useAddToShow(s => s.track)
   const { byId } = useAllTracks()
+  const [onboarding, setOnboarding] = useState(shouldShowOnboarding)
   // reabre a última música (o celular pode recarregar a página em segundo plano)
   useEffect(() => { if (byId.size) void usePlayerStore.getState().restoreLastTrack(id => byId.get(id)) }, [byId])
   const closeAdd = useAddToShow(s => s.close)
@@ -57,6 +59,7 @@ export function AppLayout() {
         {!isPerformanceMode && <MobileNav />}
       </div>
       <AddToShowSheet track={addTrack} onClose={closeAdd} />
+      {onboarding && <Onboarding onDone={() => setOnboarding(false)} />}
     </div>
   )
 }

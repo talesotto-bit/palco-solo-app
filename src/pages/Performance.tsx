@@ -76,7 +76,7 @@ function StageLyrics({ scale }: { scale: number }) {
   const userUntil = useRef(0)
   useAutoScroll(box, !syncedLines && !!plainLyrics)
 
-  useEffect(() => { if (track && trackId !== track.id) void fetchLyrics(track.artist, track.title, track.id) }, [track?.id, trackId, fetchLyrics])
+  useEffect(() => { if (track && trackId !== track.id) void fetchLyrics(track.artist, track.title, track.id, track.lrclibId) }, [track?.id, trackId, fetchLyrics])
   const active = syncedLines ? findActiveLine(syncedLines, currentTime - sync.offset) : -1
   const searching = isLoading || (!!track && trackId !== track.id)
 
@@ -90,6 +90,7 @@ function StageLyrics({ scale }: { scale: number }) {
   const base = 26 * scale
   if (!track) return null
   return (
+    <div className="relative h-full">
     <div ref={box} onTouchMove={() => { userUntil.current = Date.now() + 4000 }} onWheel={() => { userUntil.current = Date.now() + 4000 }}
       className="h-full overflow-y-auto px-5 overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
       {searching && <p className="py-16 text-center text-white/50 flex items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" /> Buscando letra...</p>}
@@ -113,12 +114,11 @@ function StageLyrics({ scale }: { scale: number }) {
         </div>
       )}
       {!syncedLines && plainLyrics && <div className="py-6 whitespace-pre-wrap font-semibold text-white/90 leading-snug" style={{ fontSize: base * 0.85 }}>{plainLyrics}</div>}
+    </div>
       {syncedLines && playing && (
-        <div className="fixed right-3 z-10" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 112px)' }}>
-          <button onClick={sync.markStart} className="h-9 px-3 rounded-full bg-black/70 border border-white/15 text-xs font-bold text-white/80 active:bg-white/20">
-            Letra fora? Toque quando começar a cantar
-          </button>
-        </div>
+        <button onClick={sync.markStart} className="absolute right-3 bottom-2 z-10 h-9 px-3 rounded-full bg-black/80 border border-white/15 text-[11px] font-bold text-white/70 active:bg-white/20">
+          Letra fora do tempo? Toque quando começar a cantar
+        </button>
       )}
     </div>
   )

@@ -12,7 +12,7 @@ interface LyricsState {
   error: string | null
   trackId: string | null
   source: string | null
-  fetchLyrics: (artist: string, title: string, trackId: string) => Promise<void>
+  fetchLyrics: (artist: string, title: string, trackId: string, lrclibId?: number) => Promise<void>
   searchManual: (query: string, trackId: string) => Promise<void>
   resetToSearch: () => void
   clear: () => void
@@ -89,7 +89,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   trackId: null,
   source: null,
 
-  fetchLyrics: async (artist: string, title: string, trackId: string) => {
+  fetchLyrics: async (artist: string, title: string, trackId: string, lrclibId?: number) => {
     if (get().trackId === trackId && (get().plainLyrics || get().syncedLines)) return
 
     const cleanedTitle = cleanTitleForSearch(title)
@@ -109,6 +109,24 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     }
 
     set({ isLoading: true, error: null, trackId, plainLyrics: null, syncedLines: null, source: null })
+
+    // Letra exata pelo id do LRCLIB (identificada no catálogo): mais rápida e sempre a música certa
+    if (lrclibId) {
+      try {
+        const r = await fetch(`https://lrclib.net/api/get/${lrclibId}`)
+        if (r.ok) {
+          const d = await r.json()
+          if (d.plainLyrics || d.syncedLyrics) {
+            setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB' })
+            if (get().trackId !== trackId) return
+            const parsed = d.syncedLyrics ? parseLrc(d.syncedLyrics) : null
+            set({ plainLyrics: d.plainLyrics || null, syncedLines: parsed && parsed.length ? parsed : null, source: 'LRCLIB', isLoading: false })
+            return
+          }
+        }
+      } catch { /* cai na busca normal */ }
+      if (get().trackId !== trackId) return
+    }
 
     try {
       const params = new URLSearchParams({ artist, title: cleanedTitle })

@@ -88,7 +88,7 @@ export function SongPicker({ open, onClose, existing, onAdd, title = 'Adicionar 
                 <CoverImg track={t} className="h-11 w-11 rounded-md" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-medium truncate">{t.title}</span>
-                  <span className="block text-xs text-[#8a8a8a] truncate">{t.artist}{t.keyNote ? ` · Tom ${t.keyNote}` : ''}</span>
+                  <span className="block text-xs text-[#8a8a8a] truncate">{t.artist}{t.version ? ` · ${t.version}` : ''}{t.keyNote ? ` · Tom ${t.keyNote}` : ''}</span>
                 </span>
                 {inShow ? (
                   <span className="text-[11px] font-semibold text-[#8a8a8a] shrink-0">No show</span>

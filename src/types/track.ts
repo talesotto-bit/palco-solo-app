@@ -95,6 +95,10 @@ export interface Track {
   stems: Stem[]         // inclui o mix principal como stem[0]
   hasLyrics: boolean
   lyricsUrl?: string
+  /** id da letra no LRCLIB (busca exata, com sincronia) */
+  lrclibId?: number
+  /** versão do playback: Forró, Ao vivo, Versão 2... */
+  version?: string
   tags: string[]
   isNew?: boolean
   isFeatured?: boolean

@@ -33,7 +33,7 @@ export function LyricsPanel() {
   useEffect(() => {
     if (!track) return
     if (trackId === track.id) return
-    fetchLyrics(track.artist, track.title, track.id)
+    fetchLyrics(track.artist, track.title, track.id, track.lrclibId)
   }, [track?.id, trackId, fetchLyrics])
 
   const sync = useLyricSync(syncedLines)

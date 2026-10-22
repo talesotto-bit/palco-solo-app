@@ -5,13 +5,26 @@ import { INSTRUMENT_LABELS } from '@/types/track'
 
 const R2_PUBLIC_URL = 'https://pub-81339f96e6c746e8ac25fbe60e95563c.r2.dev'
 
-/** Compact catalog format: short keys to minimize JSON size */
+/**
+ * Formato compacto do catálogo (chaves curtas para o arquivo ficar leve no celular).
+ * Pistas: "arquivo.mp3" (pasta da música), "~arquivo.mp3" (versão otimizada em opt/),
+ * "nome::arquivo" quando o nome difere do arquivo, "nome::@chave/completa" fora do padrão.
+ * O formato antigo ([nome, chave]) continua aceito.
+ */
 interface CatalogSongCompact {
-  n: string           // name
+  n: string           // nome da pasta
   s: string           // slug
-  g: string           // genreSlug
-  sc: number          // stemCount
-  st: [string, string][]  // stems as [name, key] tuples
+  g: string           // gênero (pasta)
+  sc?: number
+  st: (string | [string, string])[]
+  t?: string          // título correto
+  a?: string          // artista
+  d?: number          // duração (s)
+  li?: number         // id da letra no LRCLIB
+  v?: string          // versão (Forró, Ao vivo, Versão 2...)
+  k?: string          // tom
+  b?: number          // BPM
+  m?: 1               // bloco/medley
 }
 
 /** Expanded format used internally */
@@ -21,6 +34,20 @@ interface CatalogSong {
   genreSlug: string
   stems: { name: string; slug: string; url: string }[]
   stemCount: number
+  meta: Pick<CatalogSongCompact, 't' | 'a' | 'd' | 'li' | 'v' | 'k' | 'b' | 'm'>
+}
+
+function stemFromEntry(c: CatalogSongCompact, e: string | [string, string]): { name: string; key: string } {
+  if (Array.isArray(e)) return { name: e[0], key: e[1] }
+  let name: string | null = null
+  let file = e
+  const sep = e.indexOf('::')
+  if (sep >= 0) { name = e.slice(0, sep); file = e.slice(sep + 2) }
+  if (file.startsWith('@')) return { name: name ?? file.slice(1), key: file.slice(1) }
+  const optimized = file.startsWith('~')
+  if (optimized) file = file.slice(1)
+  const key = `${optimized ? 'opt/' : ''}stems/${c.g}/${c.s}/${file}`
+  return { name: name ?? file.replace(/\.[a-z0-9]+$/i, ''), key }
 }
 
 function expandCatalog(compact: CatalogSongCompact[]): CatalogSong[] {
@@ -28,12 +55,16 @@ function expandCatalog(compact: CatalogSongCompact[]): CatalogSong[] {
     name: c.n,
     slug: c.s,
     genreSlug: c.g,
-    stemCount: c.sc,
-    stems: c.st.map(([name, key]) => ({
-      name,
-      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
-      url: `${R2_PUBLIC_URL}/${key}`,
-    })),
+    stemCount: c.sc ?? c.st.length,
+    meta: { t: c.t, a: c.a, d: c.d, li: c.li, v: c.v, k: c.k, b: c.b, m: c.m },
+    stems: c.st.map(e => {
+      const { name, key } = stemFromEntry(c, e)
+      return {
+        name,
+        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+        url: `${R2_PUBLIC_URL}/${key}`,
+      }
+    }),
   }))
 }
 
@@ -328,15 +359,18 @@ function cleanStemName(stemName: string, songName: string): string {
 // ─── Convert catalog song to Track ─────────────────────────────────────
 
 function catalogToTrack(song: CatalogSong, index: number): Track {
-  const { artist, title } = parseFolderName(song.name)
+  const parsed = parseFolderName(song.name)
+  const meta = song.meta || {}
+  const title = meta.t || parsed.title
+  const artist = meta.a ?? parsed.artist
 
   // Extract BPM from raw name if present
   const bpmMatch = song.name.match(/(\d+(?:\.\d+)?)\s*BPM/i)
-  const bpm = bpmMatch ? Math.round(parseFloat(bpmMatch[1])) : 0
+  const bpm = meta.b ?? (bpmMatch ? Math.round(parseFloat(bpmMatch[1])) : 0)
 
   // Extract key from raw name if present
   const keyMatch = song.name.match(/[-\s]([A-G][b#]?)(?:\s*$|-\d)/)
-  const keyNote = keyMatch ? keyMatch[1] : ''
+  const keyNote = meta.k ?? (keyMatch ? keyMatch[1] : '')
 
   // Process stems with instrument detection and numbering
   const instrumentCounts = new Map<string, number>()
@@ -394,13 +428,15 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
     bpm,
     keyNote,
     keyScale: 'major',
-    durationSeconds: 0,
+    durationSeconds: meta.d || 0,
     coverUrl: generateCover(title, artist, index),
     previewUrl: finalStems[0]?.audioUrl || '',
     hasStems: song.stemCount > 1,
     stems: finalStems,
-    hasLyrics: false,
-    tags: [effectiveGenreSlug],
+    hasLyrics: !!meta.li,
+    lrclibId: meta.li,
+    version: meta.v,
+    tags: meta.m ? [effectiveGenreSlug, 'bloco'] : [effectiveGenreSlug],
   }
 }
 
@@ -455,6 +491,9 @@ export const useCatalogStore = create<CatalogStateInternal>((set) => ({
         label: genreSlugToLabel(id),
         count,
       })).sort((a, b) => b.count - a.count)
+      // Blocos/medleys: sequências prontas para o show (filtro próprio, no começo)
+      const blocos = tracks.filter(t => t.tags?.includes('bloco')).length
+      if (blocos) genres.unshift({ id: 'bloco', label: 'Blocos prontos', count: blocos })
 
       set({ tracks, genres, isLoading: false, _loadedUrl: url })
     } catch (err: any) {

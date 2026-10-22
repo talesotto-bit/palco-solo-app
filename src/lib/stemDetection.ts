@@ -154,10 +154,21 @@ export function parseFolderName(folderName: string): { artist: string; title: st
   // Pattern 2: Extract known artist from name
   // Catalog names follow "TITLE ARTIST" (e.g. "30 CADEADOS GUSTTAVO LIMA")
   const upper = name.toUpperCase()
+  // "LEGIAO URBANA TEMPO PERDIDO": artista no começo
+  for (const artist of KNOWN_ARTISTS) {
+    if (upper.startsWith(artist + ' ') && upper.length > artist.length + 2) {
+      return { artist: toTitleCase(artist), title: toTitleCase(name.slice(artist.length).trim()) }
+    }
+  }
   for (const artist of KNOWN_ARTISTS) {
     const idx = upper.lastIndexOf(artist)
     if (idx > 0) {
       const titlePart = name.slice(0, idx).replace(/[-–—\s]+$/, '').trim()
+      // "OS PARALAMAS DO SUCESSO UMA BRASILEIRA": artigo antes do artista faz parte do nome dele
+      if (/^(OS|AS|O|A|THE|LOS|LAS)$/i.test(titlePart)) {
+        const rest = name.slice(idx + artist.length).trim()
+        if (rest) return { artist: toTitleCase(`${titlePart} ${artist}`), title: toTitleCase(rest) }
+      }
       if (titlePart.length > 0) {
         return { artist: toTitleCase(artist), title: toTitleCase(titlePart) }
       }
