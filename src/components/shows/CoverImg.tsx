@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useCoverArt } from '@/hooks/useCoverArt'
 import { cn } from '@/lib/utils'
 
@@ -18,12 +19,13 @@ export function CoverImg({ track, artist, title, coverUrl, className }: Props) {
   const a = track?.artist ?? artist ?? ''
   const t = track?.title ?? title ?? ''
   const url = useCoverArt(a, t, track?.coverUrl ?? coverUrl ?? '')
-  if (!url) {
+  const [failed, setFailed] = useState<string | null>(null)
+  if (!url || failed === url) {
     return (
       <span className={cn('shrink-0 flex items-center justify-center bg-gradient-to-br from-[#2a3a5a] to-[#1a1a1a] text-white/40 font-black', className)}>
         {initials(t)}
       </span>
     )
   }
-  return <img src={url} alt="" loading="lazy" className={cn('shrink-0 object-cover bg-white/5', className)} />
+  return <img src={url} alt="" loading="lazy" onError={() => setFailed(url)} className={cn('shrink-0 object-cover bg-white/5', className)} />
 }

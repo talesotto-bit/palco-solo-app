@@ -6,6 +6,7 @@ import { useFavoritesStore } from '@/store/favoritesStore'
 import { TrackCard } from '@/components/library/TrackCard'
 import { cn, matchesSearch } from '@/lib/utils'
 import { getArtistScore } from '@/lib/featuredArtists'
+import { HomeSections } from '@/components/library/HomeSections'
 
 const BATCH_SIZE = 60
 
@@ -16,6 +17,7 @@ export default function Library() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showFavs, setShowFavs] = useState(false)
   const [visibleCount, setVisibleCount] = useState(BATCH_SIZE)
+  const [showAll, setShowAll] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   const localTracks = useLocalTracksStore(s => s.tracks)
@@ -74,6 +76,8 @@ export default function Library() {
     return list
   }, [allTracks, debouncedSearch, genre, showFavs, favIds])
 
+  const byId = useMemo(() => new Map(allTracks.map(t => [t.id, t])), [allTracks])
+  const isHome = !showAll && genre === 'all' && !showFavs && !debouncedSearch.trim()
   const displayTracks = filtered.slice(0, visibleCount)
   const hasMore = visibleCount < filtered.length
   const totalCount = filtered.length
@@ -85,16 +89,16 @@ export default function Library() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h1 className="text-lg md:text-2xl font-bold text-white">
-              {catalogLoading ? 'Carregando...' : 'Biblioteca'}
+              {catalogLoading ? 'Carregando...' : isHome ? 'Início' : 'Biblioteca'}
             </h1>
             <p className="text-[11px] md:text-xs text-[#808080] mt-0.5">
               {catalogLoading ? '' : genre !== 'all'
                 ? catalogGenres.find(g => g.id === genre)?.label || genre
-                : `${allTracks.length} faixas`}
+                : `${allTracks.length.toLocaleString('pt-BR')} músicas`}
             </p>
           </div>
 
-          {!catalogLoading && allTracks.length > 0 && (
+          {!catalogLoading && allTracks.length > 0 && !isHome && (
             <div className="flex items-center bg-[#2a2a2a] rounded-lg p-0.5">
               <button
                 onClick={() => setViewMode('grid')}
@@ -123,7 +127,7 @@ export default function Library() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#808080]" />
           <input
             type="text"
-            placeholder="Buscar por titulo ou artista..."
+            placeholder="Buscar música ou artista"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full h-10 rounded-lg bg-[#2a2a2a] pl-10 pr-10 text-sm text-white placeholder:text-[#808080] border-0 outline-none focus:ring-1 focus:ring-white/20 transition"
@@ -142,7 +146,7 @@ export default function Library() {
         {catalogGenres.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:-mx-6 md:px-6 scrollbar-none">
             <button
-              onClick={() => { setGenre('all'); setShowFavs(false) }}
+              onClick={() => { setGenre('all'); setShowFavs(false); setShowAll(false) }}
               className={cn(
                 'shrink-0 h-8 rounded-full px-4 text-xs font-semibold transition-colors',
                 genre === 'all' && !showFavs
@@ -150,7 +154,7 @@ export default function Library() {
                   : 'bg-[#2a2a2a] text-[#b3b3b3] hover:bg-[#3a3a3a]'
               )}
             >
-              Todos
+              Início
             </button>
             <button
               onClick={() => { setShowFavs(!showFavs); setGenre('all') }}
@@ -227,8 +231,14 @@ export default function Library() {
           </div>
         )}
 
+        {!catalogLoading && isHome && allTracks.length > 0 && (
+          <HomeSections tracks={allTracks} byId={byId}
+            onSeeGenre={g => { setGenre(g); setShowFavs(false) }}
+            onSeeAll={() => setShowAll(true)} />
+        )}
+
         {/* Track list */}
-        {!catalogLoading && totalCount > 0 && (
+        {!catalogLoading && !isHome && totalCount > 0 && (
           <div>
             {(debouncedSearch || genre !== 'all' || showFavs) && (
               <p className="text-xs text-[#808080] mb-3">

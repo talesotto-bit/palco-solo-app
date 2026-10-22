@@ -79,7 +79,8 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
 
         <img
           src={coverUrl}
-          alt={track.title}
+          alt=""
+          onError={(e) => { const img = e.currentTarget; if (track.coverUrl && img.src !== track.coverUrl) img.src = track.coverUrl }}
           className="h-10 w-10 rounded object-cover shrink-0 bg-[#2a2a2a]"
           loading="lazy"
         />
@@ -144,7 +145,8 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
       <div className="relative aspect-square mb-2.5 rounded-md overflow-hidden shadow-lg shadow-black/40">
         <img
           src={coverUrl}
-          alt={track.title}
+          alt=""
+          onError={(e) => { const img = e.currentTarget; if (track.coverUrl && img.src !== track.coverUrl) img.src = track.coverUrl }}
           className="h-full w-full object-cover bg-[#2a2a2a]"
           loading="lazy"
         />

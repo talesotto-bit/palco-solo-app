@@ -1,5 +1,6 @@
 import { VolumeX, RotateCcw, Layers } from 'lucide-react'
-import { usePlayerStore } from '@/store/playerStore'
+import { usePlayerStore, stemInstrument } from '@/store/playerStore'
+import { usePrefsStore, PLAYABLE } from '@/store/prefsStore'
 import { Slider } from '@/components/ui/slider'
 import { INSTRUMENT_LABELS, INSTRUMENT_ICONS } from '@/types/track'
 import type { InstrumentId } from '@/types/track'
@@ -84,6 +85,24 @@ interface StemMixerProps {
   visibleStemIds?: Set<string>
 }
 
+function MineBanner() {
+  const track = usePlayerStore(s => s.track)
+  const stemStates = usePlayerStore(s => s.stemStates)
+  const plays = usePrefsStore(s => s.plays)
+  if (!track || !plays.length) return null
+  const mine = track.stems.filter(st => plays.includes(stemInstrument(st) as any))
+  if (!mine.length) return null
+  const off = mine.filter(st => stemStates[st.id]?.muted)
+  if (!off.length) return null
+  const names = PLAYABLE.filter(p => plays.includes(p.id)).map(p => p.label.split(' ')[0].toLowerCase()).join(', ')
+  return (
+    <div className="mx-4 md:mx-5 mt-3 flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))]/10 px-3 py-2 text-xs">
+      <span className="flex-1 text-[#d0d0d0]">{off.map(s => s.label).join(', ')} {off.length > 1 ? 'desligados' : 'desligado'}: você toca {names} ao vivo.</span>
+      <button onClick={() => off.forEach(s => usePlayerStore.getState().setStemMuted(s.id, false))} className="h-7 px-2.5 rounded-full bg-white/10 font-bold shrink-0">Ligar</button>
+    </div>
+  )
+}
+
 export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
   // Individual selectors — prevents re-render on every currentTime update (60fps)
   const track = usePlayerStore(s => s.track)
@@ -120,6 +139,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
 
   return (
     <div className="rounded-lg bg-white/5 overflow-hidden">
+      <MineBanner />
       {/* Header */}
       <div className="flex items-center justify-between px-4 md:px-5 py-3 md:py-4">
         <div className="flex items-center gap-3">

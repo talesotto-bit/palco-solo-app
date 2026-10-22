@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, Play, ListMusic, ChevronRight, Copy, Trash2, Sparkles, CalendarDays, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
 import { useShowsStore, songFromTrack, type Show } from '@/store/showsStore'
@@ -29,6 +29,10 @@ export default function Shows() {
   const [menuFor, setMenuFor] = useState<Show | null>(null)
 
   useEffect(() => { void loadRepertorios().then(setReps) }, [])
+  const location = useLocation()
+  useEffect(() => {
+    if ((location.state as any)?.create) { setCreating(true); navigate(location.pathname, { replace: true, state: null }) }
+  }, [location, navigate])
 
   const duration = (sh: Show) => sh.songs.reduce((n, s) => n + (byId.get(s.trackId)?.durationSeconds || 0), 0)
 

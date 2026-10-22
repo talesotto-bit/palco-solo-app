@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { InstallCard } from '@/components/InstallApp'
 import { useStageSettings } from '@/store/stageSettingsStore'
+import { InstrumentPicker } from '@/components/InstrumentPicker'
 import { usePlayerStore } from '@/store/playerStore'
 import { offlineStats, clearOffline } from '@/lib/offlineAudio'
 import { cn } from '@/lib/utils'
@@ -37,6 +38,14 @@ export default function Settings() {
         <h1 className="text-2xl font-bold">Configurações</h1>
         <p className="text-sm text-[#9a9a9a] mt-1">Tudo fica salvo neste aparelho.</p>
       </div>
+
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8a8a8a]">O que você toca ao vivo</h2>
+        <div className="rounded-2xl bg-white/[0.05] p-4">
+          <p className="text-xs text-[#9a9a9a] mb-3">Esses instrumentos já abrem desligados no mixer de todas as músicas. Músicas que você já ajustou ficam como estão.</p>
+          <InstrumentPicker />
+        </div>
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8a8a8a]">Palco</h2>

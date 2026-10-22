@@ -88,7 +88,7 @@ export default function PlayerPage() {
               <div className="flex gap-4 md:gap-8 items-center md:items-start">
                 <div className="w-24 md:w-56 shrink-0">
                   <div className="relative aspect-square rounded-lg overflow-hidden shadow-2xl shadow-black/60">
-                    <img src={coverUrl} alt={track.title} className="h-full w-full object-cover bg-[#2a2a2a]" />
+                    <img src={coverUrl} alt="" onError={e => { if (track.coverUrl && e.currentTarget.src !== track.coverUrl) e.currentTarget.src = track.coverUrl }} className="h-full w-full object-cover bg-[#2a2a2a]" />
                     {isPlaying && (
                       <div className="absolute bottom-2 left-2 flex items-end gap-1 h-4">
                         <span className="eq-bar w-1" /><span className="eq-bar w-1" style={{ animationDuration: '0.8s' }} /><span className="eq-bar w-1" style={{ animationDuration: '0.5s' }} />

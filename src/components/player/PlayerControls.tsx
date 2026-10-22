@@ -13,15 +13,18 @@ interface PlayerControlsProps {
 }
 
 export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
-  const [showSoundTip, setShowSoundTip] = useState(true)
+  // Aviso do modo silencioso: só no iPhone/iPad antigo (iOS 17+ toca mesmo no silencioso) e até o músico fechar
+  const needsTip = /iPhone|iPad|iPod/i.test(navigator.userAgent) && !('audioSession' in navigator)
+  const [showSoundTip, setShowSoundTip] = useState(() => {
+    try { return needsTip && !localStorage.getItem('sound-tip-closed') } catch { return false }
+  })
   const tipTimerRef = useRef<ReturnType<typeof setTimeout>>()
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
   useEffect(() => {
-    if (!isMobile) { setShowSoundTip(false); return }
+    if (!showSoundTip) return
     tipTimerRef.current = setTimeout(() => setShowSoundTip(false), 60_000)
     return () => clearTimeout(tipTimerRef.current)
-  }, [])
+  }, [showSoundTip])
 
   // Individual selectors — prevents re-render on every currentTime update (60fps)
   const playbackState = usePlayerStore(s => s.playbackState)
@@ -123,7 +126,7 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
           <Volume2 className="h-3.5 w-3.5 shrink-0" />
           <span>Sem som? Retire o telefone do Modo Silencioso e aumente o volume!</span>
           <button
-            onClick={() => setShowSoundTip(false)}
+            onClick={() => { setShowSoundTip(false); try { localStorage.setItem('sound-tip-closed', '1') } catch {} }}
             className="ml-auto p-0.5 rounded hover:bg-white/10 transition-colors shrink-0"
           >
             <X className="h-3 w-3" />

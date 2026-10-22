@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Layers, Gauge, Mic2, ChevronRight } from 'lucide-react'
+import { Layers, Gauge, Mic2, ChevronRight, Guitar } from 'lucide-react'
+import { InstrumentPicker } from '@/components/InstrumentPicker'
 import { cn } from '@/lib/utils'
 
 const KEY = 'onboarding-v1'
@@ -15,6 +16,12 @@ const STEPS = [
     icon: Gauge,
     title: 'No tom da sua voz',
     text: 'Suba ou desça de ½ em ½ tom e ajuste a velocidade sem mudar o tom. A letra e a cifra acompanham. Tudo fica salvo em cada música.',
+  },
+  {
+    icon: Guitar,
+    title: 'Você toca algum instrumento?',
+    text: 'Marque o que você toca ao vivo. Esses instrumentos já abrem desligados em todas as músicas (dá para ligar quando quiser).',
+    picker: true,
   },
   {
     icon: Mic2,
@@ -53,6 +60,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
         <h2 className="mt-4 text-2xl font-black leading-tight">{step.title}</h2>
         <p className="mt-2 text-[15px] text-white/75 leading-relaxed">{step.text}</p>
+        {'picker' in step && step.picker && <div className="mt-4"><InstrumentPicker /></div>}
         <div className="mt-6 flex gap-2">
           {last ? (
             <>

@@ -12,6 +12,8 @@ import { clamp } from '@/lib/utils'
 import { AudioCache, isCacheUrl, urlToKey } from '@/lib/audioCache'
 import { useTrackSettingsStore } from './trackSettingsStore'
 import { useStageSettings } from './stageSettingsStore'
+import { usePrefsStore } from './prefsStore'
+import { detectInstrument } from '@/lib/stemDetection'
 
 const LAST_TRACK_KEY = 'player-last-track-v1'
 
@@ -74,11 +76,22 @@ interface PlayerStore extends PlayerState {
   _setError: (error: string | null) => void
 }
 
-/** Estado inicial do mixer: tudo ligado, menos click e contagem (que vão no fone, não na caixa) */
+/** Instrumento de uma pista (pelo nome), para saber se o músico toca ele ao vivo */
+export function stemInstrument(stem: { id: string; label: string }) {
+  return detectInstrument(`${stem.label} ${stem.id}`.replace(/-/g, ' '))
+}
+
+/**
+ * Estado inicial do mixer: tudo ligado, menos click e contagem (vão no fone, não na caixa)
+ * e os instrumentos que o músico toca ao vivo (ele mesmo faz essa parte).
+ */
 export function buildStemStates(track: Track): Record<string, StemState> {
   const states: Record<string, StemState> = {}
+  const plays = new Set<string>(usePrefsStore.getState().plays)
+  const many = track.stems.length > 2
   track.stems.forEach(stem => {
-    states[stem.id] = { id: stem.id, muted: isSupportStem(stem), solo: false, volume: 1 }
+    const mine = many && plays.has(stemInstrument(stem))
+    states[stem.id] = { id: stem.id, muted: isSupportStem(stem) || mine, solo: false, volume: 1 }
   })
   return states
 }
@@ -165,6 +178,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
       set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, loadingStems: [] })
       try { localStorage.setItem(LAST_TRACK_KEY, track.id) } catch {}
+      usePrefsStore.getState().pushRecent(track.id)
       audioEngine.setMediaMetadata({ title: track.title, artist: track.artist, artwork: track.coverUrl })
       try {
         AudioCache.revokeAll()

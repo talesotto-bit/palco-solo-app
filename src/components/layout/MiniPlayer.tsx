@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useRef } from 'react'
 import { audioEngine } from '@/audio/AudioEngine'
-import { Play, Pause, SkipBack, SkipForward, ChevronUp, Volume2, VolumeX } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, ChevronUp, Volume2, VolumeX, Loader2 } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useCoverArt } from '@/hooks/useCoverArt'
 import { Slider } from '@/components/ui/slider'
@@ -96,9 +96,11 @@ export function MiniPlayer() {
             onClick={() => { void audioEngine.unlock(); isPlaying ? pause() : play() }}
             className="flex items-center justify-center h-9 w-9 md:h-8 md:w-8 rounded-full bg-white hover:scale-105 active:scale-95 transition-transform shrink-0"
           >
-            {isPlaying
-              ? <Pause className="h-4 w-4 text-black fill-black" />
-              : <Play className="h-4 w-4 text-black fill-black ml-0.5" />
+            {playbackState === 'loading'
+              ? <Loader2 className="h-4 w-4 text-black animate-spin" />
+              : isPlaying
+                ? <Pause className="h-4 w-4 text-black fill-black" />
+                : <Play className="h-4 w-4 text-black fill-black ml-0.5" />
             }
           </button>
 
