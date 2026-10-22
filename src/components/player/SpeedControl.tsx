@@ -27,8 +27,8 @@ export function SpeedControl({ compact = false }: SpeedControlProps) {
   const track = usePlayerStore(s => s.track)
 
   const step = (direction: 1 | -1) => {
-    const next = Math.round((speed + direction * 0.05) * 100) / 100
-    if (next >= 0.5 && next <= 2.0) setSpeed(next)
+    const next = Math.round((usePlayerStore.getState().speed + direction * 0.05) * 100) / 100
+    if (next >= 0.5 && next <= 1.5) setSpeed(next)
   }
 
   const pct = Math.round(speed * 100)
@@ -50,7 +50,7 @@ export function SpeedControl({ compact = false }: SpeedControlProps) {
           )}
         >
           <RotateCcw className="h-2.5 w-2.5" />
-          Reset
+          Normal
         </button>
       </div>
 
@@ -92,7 +92,7 @@ export function SpeedControl({ compact = false }: SpeedControlProps) {
       <div className="space-y-1">
         <Slider
           min={0.5}
-          max={2.0}
+          max={1.5}
           step={0.01}
           value={[speed]}
           onValueChange={([v]) => setSpeed(Math.round(v * 100) / 100)}
@@ -100,7 +100,7 @@ export function SpeedControl({ compact = false }: SpeedControlProps) {
         <div className="flex justify-between text-[10px] md:text-[9px] text-[#535353] px-0.5">
           <span>50%</span>
           <span>100%</span>
-          <span>200%</span>
+          <span>150%</span>
         </div>
       </div>
 

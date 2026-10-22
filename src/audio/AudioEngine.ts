@@ -1,40 +1,50 @@
-import * as Tone from 'tone'
+/**
+ * Motor de áudio do app (Web Audio puro).
+ *
+ * - Cada pista (stem) vira um AudioBuffer tocado por um AudioBufferSourceNode; todas usam o mesmo relógio.
+ * - Velocidade: playbackRate em todas as pistas. O tom que a velocidade altera é corrigido no Signalsmith Stretch.
+ * - Tom: Signalsmith Stretch no barramento mestre. Só entra no caminho quando tom ≠ 0 ou velocidade ≠ 1.
+ * - Memória: pistas iguais nos dois canais viram mono, silêncio do começo e do fim é cortado e pistas
+ *   totalmente mudas são descartadas. Assim músicas com muitas pistas cabem na memória do celular.
+ * - Pistas de apoio (click, contagem) só são baixadas quando o músico liga.
+ * - O tempo informado (currentTime) é o da música original, já descontando a latência do processamento
+ *   e da saída de som (caixa Bluetooth), para a letra sincronizada bater com o que se ouve.
+ */
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
 import { encodeMp3 } from '@/lib/mp3Encoder'
 import { getOfflineAudio, putOfflineAudio } from '@/lib/offlineAudio'
 
-let _audioUnlocked = false
-
-async function tryUnlockAudio(): Promise<boolean> {
-  try { await Tone.start() } catch {}
-  const ctx = Tone.getContext()
-  if ((ctx.state as string) === 'running') { _audioUnlocked = true; return true }
-  try { await (ctx.rawContext as AudioContext).resume() } catch {}
-  if ((ctx.state as string) === 'running') { _audioUnlocked = true; return true }
-  return false
-}
-
-function ensureAudioUnlock() {
-  if (_audioUnlocked) return
-  const unlock = async () => {
-    if (await tryUnlockAudio()) {
-      ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
-        document.removeEventListener(evt, unlock, true)
-      )
-    }
+/**
+ * Signalsmith Stretch (MIT) é servido como arquivo estático em /vendor: o código dele é enviado
+ * para a thread de áudio como texto e a minificação do build quebraria isso.
+ */
+type StretchFactory = (ctx: BaseAudioContext, opts?: AudioWorkletNodeOptions) => Promise<StretchNode>
+let stretchFactory: Promise<StretchFactory> | null = null
+function loadStretchFactory(): Promise<StretchFactory> {
+  if (!stretchFactory) {
+    const url = `${location.origin}/vendor/signalsmith-stretch-1.3.2.mjs`
+    stretchFactory = import(/* @vite-ignore */ url).then(m => m.default as StretchFactory)
+    stretchFactory.catch(() => { stretchFactory = null })
   }
-  ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
-    document.addEventListener(evt, unlock, { capture: true, passive: true })
-  )
+  return stretchFactory
 }
 
-export interface LoadedStem {
+type StretchNode = AudioWorkletNode & {
+  start: (when?: number) => Promise<unknown>
+  stop: (when?: number) => Promise<unknown>
+  schedule: (opts: Record<string, number | boolean>) => Promise<unknown>
+  latency: () => Promise<number>
+  addBuffers: (buffers: Float32Array[]) => Promise<number>
+}
+
+interface LoadedStem {
   id: string
-  player: Tone.Player
-  gain: Tone.Gain
-  panner: Tone.Panner
-  originalBuffer: AudioBuffer
+  buffer: AudioBuffer
+  /** segundos da música em que o buffer começa (silêncio inicial cortado) */
+  offset: number
+  gain: GainNode
+  source: AudioBufferSourceNode | null
 }
 
 export type AudioEngineEvent =
@@ -42,462 +52,655 @@ export type AudioEngineEvent =
   | { type: 'ended' }
   | { type: 'error'; message: string }
   | { type: 'loaded' }
-  | { type: 'loading' }
+  | { type: 'loading'; loaded?: number; total?: number }
+  | { type: 'warning'; message: string }
+  | { type: 'stemLoading'; id: string; active: boolean }
   | { type: 'pitchProcessing'; active: boolean }
 
 type EventCallback = (event: AudioEngineEvent) => void
+export type MediaHandlers = Partial<Record<'play' | 'pause' | 'next' | 'prev' | 'seek', (arg?: number) => void>>
+
+const SILENCE = 0.001 // -60 dB
+const FETCH_CONCURRENCY = 4
+const FADE = 0.025
+
+/** Pistas que não fazem parte do som do show e só carregam sob demanda */
+export function isSupportStem(stem: Pick<Stem, 'id' | 'label'>): boolean {
+  const s = `${stem.id} ${stem.label}`.toLowerCase()
+  return /\b(click|clique|metronomo|metrônomo|contagem|count|cue)\b|click-|contagem-|-click|-contagem/.test(s)
+}
+
+async function pool<T>(items: T[], limit: number, fn: (item: T, i: number) => Promise<void>) {
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; await fn(items[i], i) }
+  })
+  await Promise.all(workers)
+}
+
+/** Corta silêncio do começo/fim e junta canais idênticos em mono. Retorna null se a pista é muda. */
+function optimizeBuffer(ctx: BaseAudioContext, buf: AudioBuffer): { buffer: AudioBuffer; offset: number } | null {
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c))
+  const len = buf.length
+  let first = len, last = -1
+  for (const d of chans) {
+    for (let i = 0; i < first; i++) { if (d[i] > SILENCE || d[i] < -SILENCE) { first = i; break } }
+    for (let i = len - 1; i > last; i--) { if (d[i] > SILENCE || d[i] < -SILENCE) { last = i; break } }
+  }
+  if (last < 0) return null
+  const pad = Math.round(buf.sampleRate * 0.05)
+  const start = Math.max(0, first - pad)
+  const end = Math.min(len, last + pad)
+
+  let mono = chans.length === 1
+  if (chans.length === 2) {
+    let diff = 0, level = 0
+    const [l, r] = chans
+    for (let i = start; i < end; i += 8) { const d = l[i] - r[i]; diff += d * d; level += l[i] * l[i] + r[i] * r[i] }
+    mono = level === 0 || Math.sqrt(diff / (level / 2)) < 0.01
+  }
+  const outChannels = mono ? 1 : chans.length
+  // Pista já enxuta: devolve a mesma, sem cópia
+  if (start === 0 && end === len && outChannels === chans.length) return { buffer: buf, offset: 0 }
+  const out = ctx.createBuffer(outChannels, end - start, buf.sampleRate)
+  for (let c = 0; c < outChannels; c++) out.copyToChannel(chans[c].subarray(start, end), c)
+  return { buffer: out, offset: start / buf.sampleRate }
+}
 
 class AudioEngine {
-  private stems: Map<string, LoadedStem> = new Map()
-  private mixBus: Tone.Gain | null = null
-  private masterGain: Tone.Gain | null = null
-  private pitchShift: Tone.PitchShift | null = null
-  private _pitchConnected = false
+  private ctx: AudioContext | null = null
+  private mixBus: GainNode | null = null
+  private master: GainNode | null = null
+  private stretch: StretchNode | null = null
+  private stretchPromise: Promise<StretchNode | null> | null = null
+  private stretchLatency = 0
+  private stretchActive = false
+  private stretchFailed = false
+
+  private stems = new Map<string, LoadedStem>()
+  private pending = new Map<string, Stem>() // pistas de apoio ainda não baixadas
+  private stemStates: Record<string, StemState> = {}
+  private listeners = new Set<EventCallback>()
 
   private _pitch = 0
   private _speed = 1
   private _volume = 0.85
   private _duration = 0
-  private listeners: Set<EventCallback> = new Set()
-  private rafId: number | null = null
-  private _cancelRaf: (() => void) | null = null
-  private isLoaded = false
-  private _loadId = 0
+  private _loaded = false
+  private _playing = false
+  private anchorCtxTime = 0
+  private anchorPos = 0
+  private loadId = 0
+  private timer: number | null = null
+  private lastEmit = 0
+  private countInNodes: AudioScheduledSourceNode[] = []
 
   constructor() {
-    ensureAudioUnlock()
+    const unlock = () => { this.unlock() }
+    ;['touchstart', 'touchend', 'click', 'keydown'].forEach(evt =>
+      document.addEventListener(evt, unlock, { capture: true, passive: true }))
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && Tone.getContext().state === 'suspended') {
-        (Tone.getContext().rawContext as AudioContext).resume().catch(() => {})
-      }
+      if (document.visibilityState === 'visible' && this.ctx?.state === 'suspended') this.ctx.resume().catch(() => {})
     })
   }
 
-  on(cb: EventCallback) {
-    this.listeners.add(cb)
-    return () => this.listeners.delete(cb)
+  // ─── Contexto e desbloqueio (iOS exige gesto do usuário) ──────────────────
+
+  private ensureContext(): AudioContext {
+    if (this.ctx) return this.ctx
+    // iPhone: toca mesmo com a chave do silencioso ligada
+    try { const s = (navigator as any).audioSession; if (s) s.type = 'playback' } catch {}
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext
+    // 44,1 kHz é a taxa das músicas: decodifica sem reamostrar (menos memória e processamento)
+    try { this.ctx = new Ctx({ latencyHint: 'playback', sampleRate: 44100 }) as AudioContext }
+    catch { this.ctx = new Ctx({ latencyHint: 'playback' }) as AudioContext }
+    this.master = this.ctx.createGain()
+    this.master.gain.value = this._volume
+    this.master.connect(this.ctx.destination)
+    this.mixBus = this.ctx.createGain()
+    this.mixBus.connect(this.master)
+    return this.ctx
   }
 
-  private emit(event: AudioEngineEvent) {
-    this.listeners.forEach(cb => cb(event))
+  /** Chamar em qualquer toque: libera o áudio e já prepara o processador de tom */
+  async unlock(): Promise<boolean> {
+    const ctx = this.ensureContext()
+    if (ctx.state !== 'running') { try { await ctx.resume() } catch {} }
+    if (ctx.state === 'running') void this.getStretch()
+    return ctx.state === 'running'
   }
 
-  private _ensurePitchShift(): boolean {
-    if (this._pitchConnected && this.pitchShift) return true
-    if (!this.mixBus || !this.masterGain) return false
-    try {
-      this.pitchShift = new Tone.PitchShift({ pitch: 0, windowSize: 0.08, delayTime: 0, feedback: 0, wet: 1 })
-      this.mixBus.disconnect(this.masterGain)
-      this.mixBus.connect(this.pitchShift)
-      this.pitchShift.connect(this.masterGain)
-      this._pitchConnected = true
-      return true
-    } catch (err) {
-      console.warn('[AudioEngine] PitchShift creation failed:', err)
-      this.pitchShift = null
-      return false
-    }
-  }
-
-  private _applyPitch(): void {
-    if (!this.pitchShift) return
-    const speedComp = this._speed === 1 ? 0 : -Math.log2(this._speed) * 12
-    this.pitchShift.pitch = this._pitch + speedComp
-  }
-
-  private async fetchAudio(url: string): Promise<AudioBuffer> {
-    // Música já aberta antes: toca do aparelho, sem internet
-    const offline = await getOfflineAudio(url)
-    if (offline) {
-      try { return await Tone.getContext().decodeAudioData(offline) } catch { /* cópia corrompida: baixa de novo */ }
-    }
-
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000)
-    try {
-      const resp = await fetch(url, { signal: controller.signal })
-      clearTimeout(timeoutId)
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      const arrayBuf = await resp.arrayBuffer()
-      // decodeAudioData consome o buffer, então guarda uma cópia antes
-      void putOfflineAudio(url, arrayBuf.slice(0))
-      return await Tone.getContext().decodeAudioData(arrayBuf)
-    } catch (err) {
-      clearTimeout(timeoutId)
-      throw err
-    }
-  }
-
-  async load(stems: Stem[]): Promise<void> {
-    try { await Tone.start() } catch {}
-
-    const loadId = ++this._loadId
-    this.emit({ type: 'loading' })
-    await this.dispose()
-
-    const ctx = Tone.getContext()
-    if ((ctx.state as string) !== 'running') {
-      try { await (ctx.rawContext as AudioContext).resume() } catch {}
-    }
-
-    this.mixBus = new Tone.Gain(1)
-    this.masterGain = new Tone.Gain(this._volume)
-    this.mixBus.connect(this.masterGain)
-    this.masterGain.toDestination()
-
-    const transport = Tone.getTransport()
-    transport.stop()
-    transport.position = 0
-
-    const loadStem = async (stem: Stem): Promise<boolean> => {
-      try {
-        const audioBuf = await this.fetchAudio(stem.audioUrl)
-        if (audioBuf.duration < 0.5 || !this.mixBus) return false
-
-        const player = new Tone.Player()
-        player.buffer.set(audioBuf)
-
-        const gain = new Tone.Gain(1)
-        const panner = new Tone.Panner(0)
-
-        player.connect(gain)
-        gain.connect(panner)
-        panner.connect(this.mixBus)
-
-        player.sync().start(0)
-        player.playbackRate = this._speed
-
-        this.stems.set(stem.id, { id: stem.id, player, gain, panner, originalBuffer: audioBuf })
-        return true
-      } catch (err) {
-        console.error(`[AudioEngine] Stem ${stem.id} failed:`, err)
-        return false
-      }
-    }
-
-    const primaryStem = stems[0]
-    const rest = stems.slice(1)
-
-    const primaryOk = await loadStem(primaryStem)
-    if (loadId !== this._loadId) return
-    if (!primaryOk) {
-      this.emit({ type: 'error', message: 'Não foi possível carregar a faixa. Verifique sua conexão.' })
-      return
-    }
-
-    const primaryLoaded = this.stems.get(primaryStem.id)
-    this._duration = primaryLoaded?.originalBuffer.duration ?? 0
-
-    this.isLoaded = true
-    this.emit({ type: 'loaded' })
-
-    if (Math.abs(this._pitch) > 0.05 || Math.abs(this._speed - 1) > 0.01) {
-      if (this._ensurePitchShift()) this._applyPitch()
-    }
-
-    for (let i = 0; i < rest.length; i++) {
-      if (loadId !== this._loadId) break
-      await new Promise(r => setTimeout(r, 50))
-      if (loadId !== this._loadId) break
-      await loadStem(rest[i])
-      let maxDuration = this._duration
-      this.stems.forEach(({ originalBuffer }) => {
-        if (originalBuffer.duration > maxDuration) maxDuration = originalBuffer.duration
-      })
-      this._duration = maxDuration
-    }
-  }
-
-  async play(): Promise<void> {
-    if (!this.isLoaded) return
-
-    try { await Tone.start() } catch {}
-    const ctx = Tone.getContext()
-    if ((ctx.state as string) !== 'running') {
-      try { await (ctx.rawContext as AudioContext).resume() } catch {}
-    }
-
-    if ((ctx.state as string) !== 'running') {
-      const unlockOnGesture = () => {
-        tryUnlockAudio().then(ok => {
-          if (ok) {
-            Tone.getTransport().start()
-            this.startTimeUpdater()
-            this.emit({ type: 'timeupdate', currentTime: this.currentTime, duration: this.duration })
-          }
+  private getStretch(): Promise<StretchNode | null> {
+    if (this.stretch) return Promise.resolve(this.stretch)
+    if (this.stretchFailed) return Promise.resolve(null)
+    if (!this.stretchPromise) {
+      const ctx = this.ensureContext()
+      this.stretchPromise = loadStretchFactory()
+        .then(factory => factory(ctx, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] }))
+        .then(async (node: StretchNode) => {
+          this.stretch = node
+          try { this.stretchLatency = (await node.latency()) || 0 } catch { this.stretchLatency = 0.1 }
+          await node.schedule({ active: true, semitones: 0 })
+          return node
         })
-        ;['touchstart', 'touchend', 'click'].forEach(e =>
-          document.removeEventListener(e, unlockOnGesture, true)
-        )
+        .catch((err: unknown) => {
+          console.warn('[AudioEngine] processador de tom indisponível:', err)
+          this.stretchFailed = true
+          return null
+        })
+    }
+    return this.stretchPromise!
+  }
+
+  // ─── Eventos ─────────────────────────────────────────────────────────────
+
+  on(cb: EventCallback) { this.listeners.add(cb); return () => this.listeners.delete(cb) }
+  private emit(e: AudioEngineEvent) { this.listeners.forEach(cb => cb(e)) }
+
+  // ─── Carregamento ────────────────────────────────────────────────────────
+
+  private async fetchBytes(url: string, signalId: number): Promise<ArrayBuffer> {
+    const offline = await getOfflineAudio(url)
+    if (offline) return offline
+    let lastErr: unknown
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (signalId !== this.loadId) throw new Error('cancelado')
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 60000)
+      try {
+        const resp = await fetch(url, { signal: ctrl.signal })
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        const data = await resp.arrayBuffer()
+        void putOfflineAudio(url, data.slice(0))
+        return data
+      } catch (err) {
+        lastErr = err
+        await new Promise(r => setTimeout(r, 800 * (attempt + 1)))
+      } finally { clearTimeout(t) }
+    }
+    throw lastErr
+  }
+
+  private async loadStem(stem: Stem, signalId: number): Promise<LoadedStem | null> {
+    const ctx = this.ensureContext()
+    const bytes = await this.fetchBytes(stem.audioUrl, signalId)
+    if (signalId !== this.loadId) return null
+    const decoded = await new Promise<AudioBuffer>((resolve, reject) => {
+      // forma com callbacks: funciona também no Safari antigo
+      ctx.decodeAudioData(bytes, resolve, reject)
+    })
+    if (decoded.duration > this._duration) this._duration = decoded.duration
+    const opt = optimizeBuffer(ctx, decoded)
+    if (!opt || signalId !== this.loadId) return null
+    const gain = ctx.createGain()
+    gain.gain.value = this.targetGain(stem.id)
+    gain.connect(this.mixBus!)
+    return { id: stem.id, buffer: opt.buffer, offset: opt.offset, gain, source: null }
+  }
+
+  async load(stems: Stem[], initialStates?: Record<string, StemState>): Promise<void> {
+    const id = ++this.loadId
+    this.disposeTrack()
+    this.ensureContext()
+    this.stemStates = initialStates ? { ...initialStates } : {}
+    this.emit({ type: 'loading', loaded: 0, total: stems.length })
+
+    // Pistas de apoio desligadas ficam para depois
+    const now: Stem[] = []
+    for (const s of stems) {
+      const st = this.stemStates[s.id]
+      if (isSupportStem(s) && (!st || st.muted)) this.pending.set(s.id, s)
+      else now.push(s)
+    }
+    if (now.length === 0 && stems.length > 0) { now.push(stems[0]); this.pending.delete(stems[0].id) }
+
+    let done = 0, failed = 0
+    await pool(now, FETCH_CONCURRENCY, async (s) => {
+      try {
+        const loaded = await this.loadStem(s, id)
+        if (loaded && id === this.loadId) this.stems.set(s.id, loaded)
+      } catch (err) {
+        if (id === this.loadId) { failed++; console.error(`[AudioEngine] pista ${s.id} falhou:`, err) }
       }
-      ;['touchstart', 'touchend', 'click'].forEach(e =>
-        document.addEventListener(e, unlockOnGesture, { capture: true, once: true })
-      )
-      this.emit({ type: 'error', message: 'Toque na tela para ativar o áudio.' })
+      done++
+      if (id === this.loadId) this.emit({ type: 'loading', loaded: done, total: now.length })
+    })
+    if (id !== this.loadId) return
+
+    if (this.stems.size === 0) {
+      this.emit({ type: 'error', message: 'Não foi possível carregar a música. Verifique sua conexão e tente de novo.' })
       return
     }
-
-    Tone.getTransport().start()
-    this.startTimeUpdater()
+    if (failed > 0) this.emit({ type: 'warning', message: `${failed} pista(s) não carregaram. A música toca com as demais.` })
+    this._loaded = true
+    this.anchorPos = 0
+    this.emit({ type: 'loaded' })
+    this.emit({ type: 'timeupdate', currentTime: 0, duration: this._duration })
   }
 
-  pause(): void {
-    Tone.getTransport().pause()
-    this.stopTimeUpdater()
+  /** Baixa (sem decodificar) as pistas de uma música para tocar sem espera e sem internet depois */
+  async prefetch(urls: string[], onProgress?: (done: number, total: number) => void): Promise<number> {
+    let done = 0, ok = 0
+    await pool(urls, 2, async (url) => {
+      try {
+        if (!(await getOfflineAudio(url))) {
+          const resp = await fetch(url)
+          if (resp.ok) await putOfflineAudio(url, await resp.arrayBuffer())
+          else throw new Error(String(resp.status))
+        }
+        ok++
+      } catch {}
+      done++
+      onProgress?.(done, urls.length)
+    })
+    return ok
   }
 
-  stop(): void {
-    Tone.getTransport().stop()
-    Tone.getTransport().position = 0
-    this.stopTimeUpdater()
-    this.emit({ type: 'timeupdate', currentTime: 0, duration: this.duration })
+  // ─── Relógio e reprodução ────────────────────────────────────────────────
+
+  /** posição bruta na linha do tempo da música (o que está sendo enviado ao processamento) */
+  private rawPosition(): number {
+    if (!this.ctx || !this._playing) return this.anchorPos
+    return this.anchorPos + Math.max(0, this.ctx.currentTime - this.anchorCtxTime) * this._speed
   }
 
-  seek(seconds: number): void {
-    const clamped = Math.max(0, Math.min(seconds, this.duration - 0.1))
-    if (this.masterGain && this.isPlaying) {
-      const g = this.masterGain.gain
-      const now = Tone.now()
-      g.cancelScheduledValues(now)
-      g.setValueAtTime(0, now)
-      Tone.getTransport().seconds = clamped
-      g.linearRampToValueAtTime(this._volume, now + 0.04)
-    } else {
-      Tone.getTransport().seconds = clamped
-    }
+  /** atraso entre o que o motor envia e o que sai da caixa, em segundos reais */
+  private outputDelay(): number {
+    const ctx = this.ctx as any
+    const out = (ctx?.outputLatency || 0) + (ctx?.baseLatency || 0)
+    return out + (this.stretchActive ? this.stretchLatency : 0)
   }
 
-  get currentTime(): number { return Tone.getTransport().seconds }
-
-  get duration(): number {
-    return this._speed > 0 ? this._duration / this._speed : this._duration
+  get currentTime(): number {
+    const p = this.rawPosition()
+    if (!this._playing) return p
+    return Math.max(0, p - this.outputDelay() * this._speed)
   }
 
-  get isPlaying(): boolean { return Tone.getTransport().state === 'started' }
-  get loaded(): boolean { return this.isLoaded }
+  get duration(): number { return this._duration }
+  get isPlaying(): boolean { return this._playing }
+  get loaded(): boolean { return this._loaded }
   get pitch(): number { return this._pitch }
   get speed(): number { return this._speed }
 
-  setPitch(semitones: number): void {
-    this._pitch = semitones
-    const needsShift = Math.abs(semitones) > 0.05 || Math.abs(this._speed - 1) > 0.01
-
-    if (needsShift) {
-      if (this._ensurePitchShift()) {
-        if (this.isPlaying && this.masterGain) {
-          const g = this.masterGain.gain
-          const vol = this._volume
-          const now = Tone.now()
-          g.cancelScheduledValues(now)
-          g.setValueAtTime(vol, now)
-          g.linearRampToValueAtTime(0.001, now + 0.03)
-          setTimeout(() => {
-            this._applyPitch()
-            setTimeout(() => {
-              if (this.masterGain) {
-                const n2 = Tone.now()
-                const g2 = this.masterGain.gain
-                g2.cancelScheduledValues(n2)
-                g2.setValueAtTime(0.001, n2)
-                g2.linearRampToValueAtTime(vol, n2 + 0.05)
-              }
-            }, 40)
-          }, 35)
-        } else {
-          this._applyPitch()
-        }
-      }
-    } else if (this.pitchShift) {
-      this.pitchShift.pitch = 0
-    }
+  private startSources(pos: number, when: number) {
+    const ctx = this.ctx!
+    this.stems.forEach(st => this.startStem(st, pos, when, ctx))
+    this.anchorCtxTime = when
+    this.anchorPos = pos
   }
 
-  setSpeed(speed: number): void {
-    const prev = this._speed
-    this._speed = speed
-
-    if (this.masterGain && this.isPlaying && Math.abs(speed - prev) > 0.01) {
-      const g = this.masterGain.gain
-      const now = Tone.now()
-      const vol = this._volume
-      g.cancelScheduledValues(now)
-      g.setValueAtTime(vol, now)
-      g.linearRampToValueAtTime(0.001, now + 0.025)
-      setTimeout(() => {
-        this.stems.forEach(({ player }) => { player.playbackRate = this._speed })
-        if (Math.abs(this._pitch) > 0.05 || Math.abs(this._speed - 1) > 0.01) {
-          if (this._ensurePitchShift()) this._applyPitch()
-        } else if (this.pitchShift) {
-          this.pitchShift.pitch = 0
-        }
-        setTimeout(() => {
-          if (this.masterGain) {
-            const n2 = Tone.now()
-            const g2 = this.masterGain.gain
-            g2.cancelScheduledValues(n2)
-            g2.setValueAtTime(0.001, n2)
-            g2.linearRampToValueAtTime(vol, n2 + 0.04)
-          }
-        }, 40)
-      }, 30)
-    } else {
-      this.stems.forEach(({ player }) => { player.playbackRate = this._speed })
-      if (Math.abs(this._pitch) > 0.05 || Math.abs(this._speed - 1) > 0.01) {
-        if (this._ensurePitchShift()) this._applyPitch()
-      } else if (this.pitchShift) {
-        this.pitchShift.pitch = 0
-      }
-    }
+  private startStem(st: LoadedStem, pos: number, when: number, ctx: AudioContext) {
+    const rel = pos - st.offset
+    if (rel >= st.buffer.duration) return
+    const src = ctx.createBufferSource()
+    src.buffer = st.buffer
+    src.playbackRate.value = this._speed
+    src.connect(st.gain)
+    if (rel >= 0) src.start(when, rel)
+    else src.start(when + -rel / this._speed, 0)
+    src.onended = () => { try { src.disconnect() } catch {} ; if (st.source === src) st.source = null }
+    st.source = src
   }
 
-  setVolume(volume: number): void {
-    this._volume = volume
-    if (this.masterGain) this.masterGain.gain.rampTo(volume, 0.05)
-  }
-
-  setStemStates(stemStates: Record<string, StemState>): void {
-    const stemIds = Object.keys(stemStates)
-    const hasSolo = stemIds.some(id => stemStates[id]?.solo)
-    stemIds.forEach(id => {
-      const stemState = stemStates[id]
-      const loaded = this.stems.get(id)
-      if (!loaded || !stemState) return
-      let targetVolume: number
-      if (hasSolo) { targetVolume = stemState.solo ? stemState.volume : 0 }
-      else { targetVolume = stemState.muted ? 0 : stemState.volume }
-      loaded.gain.gain.rampTo(targetVolume, 0.05)
+  private stopSources(when?: number) {
+    this.stems.forEach(st => {
+      if (st.source) { try { st.source.stop(when) } catch {} ; st.source = null }
     })
   }
 
-  setStemVolume(stemId: string, volume: number): void {
-    const loaded = this.stems.get(stemId)
-    if (loaded) loaded.gain.gain.rampTo(volume, 0.05)
+  private fadeTo(value: number, at: number, dur = FADE) {
+    if (!this.master) return
+    const g = this.master.gain
+    g.cancelScheduledValues(at)
+    g.setValueAtTime(g.value, at)
+    g.linearRampToValueAtTime(value, at + dur)
+  }
+
+  /** Reinicia tudo na posição pos, com fade curto para não estalar (usado por seek, velocidade e tom) */
+  private restartAt(pos: number) {
+    const ctx = this.ctx!
+    const t = ctx.currentTime
+    this.fadeTo(0, t)
+    this.stopSources(t + FADE)
+    this.startSources(pos, t + FADE)
+    this.fadeTo(this._volume, t + FADE)
+  }
+
+  async play(opts?: { countIn?: { beats: number; bpm: number } }): Promise<void> {
+    if (!this._loaded || this._playing) return
+    const ok = await this.unlock()
+    if (!ok) { this.emit({ type: 'error', message: 'Toque na tela para ativar o som.' }); return }
+    await this.applyRouting()
+    const ctx = this.ctx!
+    let when = ctx.currentTime + 0.05
+    if (opts?.countIn && opts.countIn.bpm > 0) when = this.scheduleCountIn(when, opts.countIn.beats, opts.countIn.bpm)
+    if (this.anchorPos >= this._duration - 0.2) this.anchorPos = 0
+    this.master!.gain.cancelScheduledValues(ctx.currentTime)
+    this.master!.gain.setValueAtTime(this._volume, ctx.currentTime)
+    this.startSources(this.anchorPos, when)
+    this._playing = true
+    this.startTimer()
+    this.updateMediaSession()
+  }
+
+  /** Contagem de entrada sintetizada (bipes no andamento da música). Retorna quando a música começa */
+  private scheduleCountIn(start: number, beats: number, bpm: number): number {
+    const ctx = this.ctx!
+    const beat = 60 / (bpm * this._speed)
+    // a música passa pelo processador de tom (latência); os bipes não, então atrasam igual
+    const delay = this.stretchActive ? this.stretchLatency : 0
+    for (let i = 0; i < beats; i++) {
+      const t = start + delay + i * beat
+      const osc = ctx.createOscillator()
+      const g = ctx.createGain()
+      osc.frequency.value = i === 0 ? 1600 : 1100
+      g.gain.setValueAtTime(0.0001, t)
+      g.gain.exponentialRampToValueAtTime(0.5, t + 0.004)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
+      osc.connect(g); g.connect(this.ctx!.destination)
+      osc.start(t); osc.stop(t + 0.1)
+      this.countInNodes.push(osc)
+    }
+    return start + beats * beat
+  }
+
+  pause(): void {
+    if (!this._playing) return
+    const pos = this.rawPosition()
+    const ctx = this.ctx!
+    this.countInNodes.forEach(n => { try { n.stop() } catch {} }); this.countInNodes = []
+    this.fadeTo(0, ctx.currentTime, 0.015)
+    this.stopSources(ctx.currentTime + 0.02)
+    this._playing = false
+    // volta um pouquinho para compensar o que estava "no caminho" (latência)
+    this.anchorPos = Math.max(0, Math.min(pos - this.outputDelay() * this._speed, this._duration))
+    this.stopTimer()
+    this.emit({ type: 'timeupdate', currentTime: this.anchorPos, duration: this._duration })
+    this.updateMediaSession()
+  }
+
+  stop(): void {
+    if (this._playing) {
+      const ctx = this.ctx!
+      this.countInNodes.forEach(n => { try { n.stop() } catch {} }); this.countInNodes = []
+      this.fadeTo(0, ctx.currentTime, 0.015)
+      this.stopSources(ctx.currentTime + 0.02)
+    }
+    this._playing = false
+    this.anchorPos = 0
+    this.stopTimer()
+    this.emit({ type: 'timeupdate', currentTime: 0, duration: this._duration })
+    this.updateMediaSession()
+  }
+
+  seek(seconds: number): void {
+    const pos = Math.max(0, Math.min(seconds, Math.max(0, this._duration - 0.1)))
+    if (this._playing) this.restartAt(pos)
+    else this.anchorPos = pos
+    this.emit({ type: 'timeupdate', currentTime: pos, duration: this._duration })
+  }
+
+  // ─── Tom e velocidade ────────────────────────────────────────────────────
+
+  private needsStretch() { return Math.abs(this._pitch) > 0.01 || Math.abs(this._speed - 1) > 0.001 }
+
+  private routing: Promise<void> = Promise.resolve()
+
+  /** Coloca ou tira o processador de tom do caminho. Em fila: mudanças seguidas não se atropelam */
+  private applyRouting(): Promise<void> {
+    this.routing = this.routing.then(() => this.doRouting()).catch(() => {})
+    return this.routing
+  }
+
+  private async doRouting(): Promise<void> {
+    if (!this.mixBus || !this.master) return
+    if (this.needsStretch()) {
+      const node = await this.getStretch()
+      if (!this.needsStretch()) return this.doRouting()
+      if (!node) {
+        if (Math.abs(this._pitch) > 0.01) this.emit({ type: 'warning', message: 'Este aparelho não suporta mudar o tom.' })
+        return
+      }
+      const semis = this._pitch - 12 * Math.log2(this._speed)
+      void node.schedule({ active: true, semitones: semis })
+      if (!this.stretchActive) {
+        this.mixBus.disconnect()
+        this.mixBus.connect(node)
+        node.disconnect()
+        node.connect(this.master)
+        this.stretchActive = true
+      }
+    } else if (this.stretchActive && this.stretch) {
+      this.mixBus.disconnect()
+      this.mixBus.connect(this.master)
+      try { this.stretch.disconnect() } catch {}
+      this.stretchActive = false
+    }
+  }
+
+  setPitch(semitones: number): void {
+    this._pitch = semitones
+    void this.retune()
+  }
+
+  setSpeed(speed: number): void {
+    if (Math.abs(speed - this._speed) < 0.0005) return
+    const pos = this.rawPosition()
+    this._speed = speed
+    if (this._playing && this.ctx) {
+      // re-ancora o relógio com a nova velocidade
+      this.anchorPos = pos; this.anchorCtxTime = this.ctx.currentTime
+    }
+    void this.retune(true)
+  }
+
+  private async retune(speedChanged = false) {
+    const wasActive = this.stretchActive
+    const willBeActive = this.needsStretch()
+    if (!this._playing || !this.ctx) { await this.applyRouting(); return }
+    if (wasActive !== willBeActive || speedChanged) {
+      // mudança de caminho ou de velocidade: reinicia as fontes com fade (sem estalo)
+      const pos = this.rawPosition()
+      await this.applyRouting()
+      if (this._playing) this.restartAt(pos)
+    } else {
+      await this.applyRouting()
+    }
   }
 
   resetPitch(): void { this.setPitch(0) }
   resetSpeed(): void { this.setSpeed(1) }
-  resetMix(): void { this.stems.forEach(({ gain }) => { gain.gain.rampTo(1, 0.1) }) }
 
-  private startTimeUpdater(): void {
-    this.stopTimeUpdater()
-    let cancelled = false
-    const update = () => {
-      if (cancelled || !this.isLoaded) return
-      const transport = Tone.getTransport()
-      if (transport.state !== 'started') { this.rafId = requestAnimationFrame(update); return }
-      const ct = transport.seconds
-      if (!Number.isFinite(ct) || ct < 0) { this.rafId = requestAnimationFrame(update); return }
-      const effectiveDur = this.duration
-      this.emit({ type: 'timeupdate', currentTime: ct, duration: effectiveDur })
-      if (effectiveDur > 0 && ct >= effectiveDur - 0.15) {
-        this.stop()
-        this.emit({ type: 'ended' })
-        return
-      }
-      this.rafId = requestAnimationFrame(update)
-    }
-    this._cancelRaf = () => { cancelled = true }
-    this.rafId = requestAnimationFrame(update)
+  setVolume(volume: number): void {
+    this._volume = volume
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(volume, this.ctx.currentTime, 0.02)
   }
 
-  private stopTimeUpdater(): void {
-    if (this._cancelRaf) { this._cancelRaf(); this._cancelRaf = null }
-    if (this.rafId !== null) { cancelAnimationFrame(this.rafId); this.rafId = null }
+  // ─── Mixer ───────────────────────────────────────────────────────────────
+
+  private targetGain(id: string): number {
+    const states = this.stemStates
+    const st = states[id]
+    if (!st) return 1
+    const hasSolo = Object.values(states).some(s => s.solo)
+    if (hasSolo) return st.solo ? st.volume : 0
+    return st.muted ? 0 : st.volume
   }
 
-  exportMixdown(stemStates: Record<string, StemState>): Blob | null {
-    if (!this.isLoaded || this.stems.size === 0) return null
+  setStemStates(stemStates: Record<string, StemState>): void {
+    this.stemStates = { ...stemStates }
+    const t = this.ctx?.currentTime ?? 0
+    this.stems.forEach(st => st.gain.gain.setTargetAtTime(this.targetGain(st.id), t, 0.015))
+    // pista de apoio ligada pela primeira vez: baixa agora e entra no ponto certo
+    this.pending.forEach((stem, id) => {
+      if (this.targetGain(id) > 0) { this.pending.delete(id); void this.loadLazy(stem) }
+    })
+  }
+
+  private async loadLazy(stem: Stem) {
+    const id = this.loadId
+    this.emit({ type: 'stemLoading', id: stem.id, active: true })
     try {
+      const loaded = await this.loadStem(stem, id)
+      if (!loaded || id !== this.loadId) return
+      this.stems.set(stem.id, loaded)
+      if (this._playing && this.ctx) {
+        const when = this.ctx.currentTime + 0.05
+        const pos = this.anchorPos + (when - this.anchorCtxTime) * this._speed
+        this.startStem(loaded, pos, when, this.ctx)
+      }
+    } catch (err) {
+      console.error('[AudioEngine] pista de apoio falhou:', err)
+      this.emit({ type: 'warning', message: `Não foi possível carregar "${stem.label}".` })
+    } finally {
+      this.emit({ type: 'stemLoading', id: stem.id, active: false })
+    }
+  }
+
+  setStemVolume(stemId: string, volume: number): void {
+    const st = this.stemStates[stemId]
+    if (st) this.setStemStates({ ...this.stemStates, [stemId]: { ...st, volume } })
+  }
+
+  resetMix(): void {
+    const t = this.ctx?.currentTime ?? 0
+    this.stems.forEach(st => st.gain.gain.setTargetAtTime(1, t, 0.03))
+  }
+
+  // ─── Tela bloqueada / fones Bluetooth (Media Session) ────────────────────
+
+  private mediaHandlers: MediaHandlers = {}
+
+  setMediaHandlers(h: MediaHandlers) {
+    this.mediaHandlers = h
+    const ms = (navigator as any).mediaSession
+    if (!ms) return
+    const set = (action: string, fn: ((d: any) => void) | null) => { try { ms.setActionHandler(action, fn) } catch {} }
+    set('play', h.play ? () => h.play!() : null)
+    set('pause', h.pause ? () => h.pause!() : null)
+    set('nexttrack', h.next ? () => h.next!() : null)
+    set('previoustrack', h.prev ? () => h.prev!() : null)
+    set('seekto', h.seek ? (d: any) => h.seek!(d.seekTime) : null)
+  }
+
+  setMediaMetadata(meta: { title: string; artist: string; artwork?: string }) {
+    const ms = (navigator as any).mediaSession
+    const MM = (window as any).MediaMetadata
+    if (!ms || !MM) return
+    try {
+      ms.metadata = new MM({ title: meta.title, artist: meta.artist,
+        artwork: meta.artwork && !meta.artwork.startsWith('data:') ? [{ src: meta.artwork, sizes: '512x512' }] : [] })
+    } catch {}
+  }
+
+  private updateMediaSession() {
+    const ms = (navigator as any).mediaSession
+    if (!ms) return
+    try { ms.playbackState = this._playing ? 'playing' : 'paused' } catch {}
+  }
+
+  // ─── Atualização de tempo ────────────────────────────────────────────────
+
+  private startTimer() {
+    this.stopTimer()
+    const tick = () => {
+      if (!this._playing) return
+      const now = performance.now()
+      if (now - this.lastEmit > 60) {
+        this.lastEmit = now
+        const ct = this.currentTime
+        this.emit({ type: 'timeupdate', currentTime: ct, duration: this._duration })
+        if (this._duration > 0 && this.rawPosition() >= this._duration) {
+          this.stop()
+          this.emit({ type: 'ended' })
+          return
+        }
+      }
+      this.timer = requestAnimationFrame(tick)
+    }
+    this.timer = requestAnimationFrame(tick)
+    // rAF para com a tela apagada: um intervalo garante o fim da música e o avanço do setlist
+    this.fallbackTimer = window.setInterval(() => {
+      if (this._playing && document.visibilityState !== 'visible' && this.rawPosition() >= this._duration) {
+        this.stop(); this.emit({ type: 'ended' })
+      }
+    }, 500)
+  }
+  private fallbackTimer: number | null = null
+
+  private stopTimer() {
+    if (this.timer !== null) { cancelAnimationFrame(this.timer); this.timer = null }
+    if (this.fallbackTimer !== null) { clearInterval(this.fallbackTimer); this.fallbackTimer = null }
+  }
+
+  // ─── Exportar a mixagem (com tom e velocidade) ───────────────────────────
+
+  async exportMixdown(stemStates: Record<string, StemState>): Promise<Blob | null> {
+    if (!this._loaded || this.stems.size === 0) return null
+    try {
+      const sr = this.ctx!.sampleRate
+      const length = Math.ceil(this._duration * sr)
       const hasSolo = Object.values(stemStates).some(s => s.solo)
-      const audible: { buffer: AudioBuffer; volume: number }[] = []
-      let maxLength = 0
-      for (const [id, loaded] of this.stems) {
-        const state = stemStates[id]
-        if (!state) continue
-        let vol: number
-        if (hasSolo) { vol = state.solo ? state.volume : 0 }
-        else { vol = state.muted ? 0 : state.volume }
-        if (vol === 0) continue
-        const buf = loaded.originalBuffer
-        if (!buf || buf.length < 1) continue
-        audible.push({ buffer: buf, volume: vol * this._volume })
-        if (buf.length > maxLength) maxLength = buf.length
-      }
-      if (audible.length === 0 || maxLength === 0) return null
+      const mixCtx = new OfflineAudioContext(2, length, sr)
+      let audible = 0
+      this.stems.forEach(st => {
+        const s = stemStates[st.id]
+        const vol = !s ? 1 : hasSolo ? (s.solo ? s.volume : 0) : (s.muted ? 0 : s.volume)
+        if (vol <= 0) return
+        audible++
+        const src = mixCtx.createBufferSource(); src.buffer = st.buffer
+        const g = mixCtx.createGain(); g.gain.value = vol * this._volume
+        src.connect(g); g.connect(mixCtx.destination); src.start(st.offset)
+      })
+      if (!audible) return null
+      let mixed = await mixCtx.startRendering()
 
-      const sampleRate = audible[0].buffer.sampleRate
-      const outL = new Float32Array(maxLength)
-      const outR = new Float32Array(maxLength)
-      for (const { buffer, volume } of audible) {
-        const srcL = buffer.getChannelData(0)
-        const srcR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : srcL
-        const len = buffer.length
-        for (let i = 0; i < len; i++) {
-          outL[i] += srcL[i] * volume
-          outR[i] += srcR[i] * volume
-        }
+      if (this.needsStretch() && !this.stretchFailed) {
+        const outLen = Math.ceil(length / this._speed)
+        const stCtx = new OfflineAudioContext(2, outLen, sr)
+        const node = await (await loadStretchFactory())(stCtx, { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] })
+        await node.addBuffers([mixed.getChannelData(0), mixed.getChannelData(1)])
+        await node.schedule({ active: true, input: 0, output: 0, rate: this._speed, semitones: this._pitch })
+        node.connect(stCtx.destination)
+        mixed = await stCtx.startRendering()
       }
-
-      let finalL = outL
-      let finalR = outR
-      let finalLength = maxLength
-      if (Math.abs(this._speed - 1) > 0.001) {
-        finalLength = Math.round(maxLength / this._speed)
-        finalL = new Float32Array(finalLength)
-        finalR = new Float32Array(finalLength)
-        for (let i = 0; i < finalLength; i++) {
-          const srcIdx = i * this._speed
-          const idx0 = Math.floor(srcIdx)
-          const idx1 = Math.min(idx0 + 1, maxLength - 1)
-          const frac = srcIdx - idx0
-          finalL[i] = outL[idx0] * (1 - frac) + outL[idx1] * frac
-          finalR[i] = outR[idx0] * (1 - frac) + outR[idx1] * frac
-        }
-      }
-
-      const offCtx = new OfflineAudioContext(2, finalLength, sampleRate)
-      const mixed = offCtx.createBuffer(2, finalLength, sampleRate)
-      mixed.getChannelData(0).set(finalL)
-      mixed.getChannelData(1).set(finalR)
       return encodeMp3(mixed)
     } catch (err) {
-      console.error('[AudioEngine] exportMixdown failed:', err)
+      console.error('[AudioEngine] exportar falhou:', err)
       return null
     }
   }
 
-  async dispose(): Promise<void> {
-    this.stopTimeUpdater()
-    const transport = Tone.getTransport()
-    transport.stop()
-    transport.cancel()
+  // ─── Limpeza ─────────────────────────────────────────────────────────────
 
-    this.stems.forEach(({ player, gain, panner }) => {
-      try { player.unsync() } catch {}
-      try { player.stop() } catch {}
-      try { player.dispose() } catch {}
-      try { gain.dispose() } catch {}
-      try { panner.dispose() } catch {}
-    })
+  private disposeTrack() {
+    this.stopTimer()
+    if (this._playing) this.stopSources()
+    this._playing = false
+    this.stems.forEach(st => { try { st.gain.disconnect() } catch {} })
     this.stems.clear()
-
-    if (this.pitchShift) {
-      try { this.pitchShift.dispose() } catch {}
-      this.pitchShift = null
-    }
-    this._pitchConnected = false
-    if (this.mixBus) {
-      try { this.mixBus.dispose() } catch {}
-      this.mixBus = null
-    }
-    if (this.masterGain) {
-      try { this.masterGain.dispose() } catch {}
-      this.masterGain = null
-    }
-
-    this.isLoaded = false
+    this.pending.clear()
+    this._loaded = false
     this._duration = 0
+    this.anchorPos = 0
+  }
+
+  async dispose(): Promise<void> { this.loadId++; this.disposeTrack() }
+
+  /** Diagnóstico (usado nos testes e no suporte) */
+  stats() {
+    let bytes = 0, mono = 0
+    this.stems.forEach(st => { bytes += st.buffer.length * st.buffer.numberOfChannels * 4; if (st.buffer.numberOfChannels === 1) mono++ })
+    return {
+      stems: this.stems.size, pending: [...this.pending.keys()], mono, memoryMB: Math.round(bytes / 1e6),
+      stretchActive: this.stretchActive, stretchLatency: this.stretchLatency, stretchFailed: this.stretchFailed,
+      playing: this._playing, position: this.currentTime, duration: this._duration, speed: this._speed, pitch: this._pitch,
+      ctxState: this.ctx?.state, sampleRate: this.ctx?.sampleRate,
+      sources: [...this.stems.values()].filter(st => st.source).length,
+    }
   }
 }
 
 export const audioEngine = new AudioEngine()
+if (typeof window !== 'undefined') (window as any).__pt = { engine: audioEngine }

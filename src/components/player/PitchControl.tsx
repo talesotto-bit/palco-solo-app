@@ -2,7 +2,7 @@ import { Minus, Plus, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
-import { formatTons } from '@/lib/musicTheory'
+import { formatTons, transposeKey } from '@/lib/musicTheory'
 import { useState } from 'react'
 
 interface PitchControlProps {
@@ -16,20 +16,22 @@ export function PitchControl({ compact = false }: PitchControlProps) {
   const pitch = usePlayerStore(s => s.pitch)
   const setPitch = usePlayerStore(s => s.setPitch)
   const resetPitch = usePlayerStore(s => s.resetPitch)
+  const keyNote = usePlayerStore(s => s.track?.keyNote || '')
   const [fineMode, setFineMode] = useState(false)
 
   const semitones = Math.round(pitch)
   const cents = Math.round((pitch - semitones) * 100)
 
   // ½ tom por clique (1 semitom); valores fracionados antigos são arredondados
+  // lê o valor atual do store: toques rápidos seguidos somam certo
   const stepCoarse = (dir: 1 | -1) => {
-    const next = Math.round(pitch) + dir
+    const next = Math.round(usePlayerStore.getState().pitch) + dir
     if (next >= -12 && next <= 12) setPitch(next)
   }
 
   // Ajuste fino de 10 cents, para afinar com instrumento fora do padrão
   const stepFine = (dir: 1 | -1) => {
-    const next = Math.round((pitch + dir * 0.1) * 10) / 10
+    const next = Math.round((usePlayerStore.getState().pitch + dir * 0.1) * 10) / 10
     if (next >= -12 && next <= 12) setPitch(next)
   }
 
@@ -84,6 +86,11 @@ export function PitchControl({ compact = false }: PitchControlProps) {
           )}>
             {semitones === 0 ? 'Original' : formatTons(semitones)}
           </span>
+          {keyNote && (
+            <p className="text-[11px] text-white/70 mt-0.5">
+              Tom da música: <b className="text-white">{semitones === 0 ? keyNote : `${keyNote} → ${transposeKey(keyNote, semitones)}`}</b>
+            </p>
+          )}
           {(semitones !== 0 || cents !== 0) && (
             <p className="text-[10px] text-[#808080] mt-0.5 tabular-nums">
               {semitones !== 0 && `${semitones > 0 ? '+' : ''}${semitones} semitom${Math.abs(semitones) > 1 ? 's' : ''}`}

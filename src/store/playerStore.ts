@@ -1,31 +1,25 @@
 /**
- * PlayerStore — estado global do player com Zustand
- *
- * Gerencia todo o estado de reprodução e coordena com o AudioEngine.
- * Componentes consomem via hooks: usePlayerStore, usePlayerActions.
+ * PlayerStore — estado global do player (Zustand), coordenado com o AudioEngine.
+ * Também guarda a fila (setlist em execução) para avançar sozinho entre as músicas.
  */
 
 import { create } from 'zustand'
-import { audioEngine } from '@/audio/AudioEngine'
+import { toast } from 'sonner'
+import { audioEngine, isSupportStem } from '@/audio/AudioEngine'
 import type { Track } from '@/types/track'
 import type { PlayerState, StemState } from '@/types/player'
 import { clamp } from '@/lib/utils'
 import { AudioCache, isCacheUrl, urlToKey } from '@/lib/audioCache'
-
-/** Revoke previous blob URLs before loading a new track */
-function cleanupPreviousBlobUrls() {
-  AudioCache.revokeAll()
-}
 import { useTrackSettingsStore } from './trackSettingsStore'
+
+const LAST_TRACK_KEY = 'player-last-track-v1'
 
 let _trackLoadId = 0
 let _pendingPlay = false
 
-/** Resolve cache:// URLs para blob URLs reais antes de carregar no engine */
+/** Resolve cache:// URLs (músicas importadas do aparelho) para blob URLs reais */
 async function resolveTrackUrls(track: Track): Promise<Track> {
-  const cacheKeys = track.stems
-    .filter(s => isCacheUrl(s.audioUrl))
-    .map(s => urlToKey(s.audioUrl))
+  const cacheKeys = track.stems.filter(s => isCacheUrl(s.audioUrl)).map(s => urlToKey(s.audioUrl))
   if (!cacheKeys.length) return track
   const resolved = await AudioCache.resolveMany(cacheKeys)
   return {
@@ -38,10 +32,15 @@ async function resolveTrackUrls(track: Track): Promise<Track> {
 }
 
 interface PlayerStore extends PlayerState {
-  // Actions
-  loadTrack: (track: Track) => Promise<void>
+  loadProgress: { loaded: number; total: number } | null
+  loadingStems: string[]
+  queue: Track[]
+  queueIndex: number
+  autoAdvance: boolean
+  loadTrack: (track: Track, opts?: { autoplay?: boolean }) => Promise<void>
   play: () => Promise<void>
   pause: () => void
+  togglePlay: () => void
   stop: () => void
   seek: (seconds: number) => void
   skipBackward: (seconds?: number) => void
@@ -55,56 +54,73 @@ interface PlayerStore extends PlayerState {
   resetMix: () => void
   resetPitch: () => void
   resetSpeed: () => void
+  saveTrackSettings: () => void
+  setQueue: (tracks: Track[], startIndex?: number, opts?: { autoplay?: boolean }) => Promise<void>
+  playQueueIndex: (index: number, opts?: { autoplay?: boolean }) => Promise<void>
+  next: () => Promise<boolean>
+  prev: () => Promise<boolean>
+  setAutoAdvance: (on: boolean) => void
+  restoreLastTrack: (findTrack: (id: string) => Track | undefined) => Promise<void>
   togglePerformanceMode: () => void
   togglePrecount: () => void
   isExporting: boolean
   downloadMix: () => Promise<void>
-  // Internal — called by AudioEngine event listener
   _setTime: (currentTime: number, duration: number) => void
   _setPlaybackState: (state: PlayerState['playbackState']) => void
   _setError: (error: string | null) => void
 }
 
-function buildStemStates(track: Track): Record<string, StemState> {
+/** Estado inicial do mixer: tudo ligado, menos click e contagem (que vão no fone, não na caixa) */
+export function buildStemStates(track: Track): Record<string, StemState> {
   const states: Record<string, StemState> = {}
   track.stems.forEach(stem => {
-    states[stem.id] = { id: stem.id, muted: false, solo: false, volume: 1 }
+    states[stem.id] = { id: stem.id, muted: isSupportStem(stem), solo: false, volume: 1 }
   })
   return states
 }
 
 export const usePlayerStore = create<PlayerStore>((set, get) => {
-  // Subscribe to AudioEngine events once
-
   audioEngine.on(event => {
     switch (event.type) {
       case 'loading':
-        get()._setPlaybackState('loading')
+        set({ playbackState: 'loading', loadProgress: event.total ? { loaded: event.loaded ?? 0, total: event.total } : null })
         break
       case 'loaded':
-        get()._setPlaybackState('paused')
+        set({ playbackState: 'paused', loadProgress: null })
         break
-      case 'timeupdate': {
-        get()._setTime(event.currentTime, event.duration)
-        if (audioEngine.isPlaying && get().playbackState !== 'playing') {
-          set({ playbackState: 'playing', error: null })
+      case 'timeupdate':
+        set({ currentTime: event.currentTime, duration: event.duration })
+        break
+      case 'ended': {
+        set({ playbackState: 'stopped', currentTime: 0 })
+        const { autoAdvance, queue, queueIndex } = get()
+        if (autoAdvance && queueIndex >= 0 && queueIndex < queue.length - 1) {
+          void get().playQueueIndex(queueIndex + 1, { autoplay: true })
         }
         break
       }
-      case 'ended':
-        get()._setPlaybackState('stopped')
-        break
       case 'error':
-        get()._setError(event.message)
-        get()._setPlaybackState('error')
+        set({ error: event.message, playbackState: 'error', loadProgress: null })
         break
-      case 'pitchProcessing':
+      case 'warning':
+        toast.warning(event.message)
+        break
+      case 'stemLoading':
+        set(s => ({ loadingStems: event.active ? [...s.loadingStems, event.id] : s.loadingStems.filter(x => x !== event.id) }))
         break
     }
   })
 
+  // Fones Bluetooth e tela bloqueada
+  audioEngine.setMediaHandlers({
+    play: () => { void get().play() },
+    pause: () => get().pause(),
+    seek: (t) => { if (typeof t === 'number') get().seek(t) },
+    next: () => { void get().next() },
+    prev: () => { void get().prev() },
+  })
+
   return {
-    // Initial state
     track: null,
     playbackState: 'idle',
     currentTime: 0,
@@ -118,168 +134,193 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     precountBeats: 4,
     error: null,
     isPitchProcessing: false,
+    loadProgress: null,
+    loadingStems: [],
+    queue: [],
+    queueIndex: -1,
+    autoAdvance: true,
 
-    // ─── Track loading ──────────────────────────────────────────────────────
-    loadTrack: async (track: Track) => {
+    // ─── Carregar música ────────────────────────────────────────────────────
+    loadTrack: async (track, opts) => {
       const loadId = ++_trackLoadId
-      const defaultStems = buildStemStates(track)
       const saved = useTrackSettingsStore.getState().get(track.id)
-
-      const stemStates = saved ? { ...defaultStems, ...saved.stemStates } : defaultStems
+      const defaults = buildStemStates(track)
+      // só aproveita do salvo as pistas que ainda existem
+      const stemStates = { ...defaults }
+      if (saved) for (const id of Object.keys(saved.stemStates)) if (stemStates[id]) stemStates[id] = { ...saved.stemStates[id], id }
       const pitch = saved?.pitch ?? 0
       const speed = saved?.speed ?? 1
+      _pendingPlay = !!opts?.autoplay
 
-      set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0 })
+      set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, loadingStems: [] })
+      try { localStorage.setItem(LAST_TRACK_KEY, track.id) } catch {}
+      audioEngine.setMediaMetadata({ title: track.title, artist: track.artist, artwork: track.coverUrl })
       try {
-        cleanupPreviousBlobUrls()
-        let resolvedTrack: Track
-        try {
-          resolvedTrack = await resolveTrackUrls(track)
-        } catch {
-          resolvedTrack = track
-        }
+        AudioCache.revokeAll()
+        let resolved: Track
+        try { resolved = await resolveTrackUrls(track) } catch { resolved = track }
         if (loadId !== _trackLoadId) return
-
         audioEngine.setPitch(pitch)
         audioEngine.setSpeed(speed)
-
-        await audioEngine.load(resolvedTrack.stems)
-        if (loadId !== _trackLoadId) return
-
-        if (!audioEngine.loaded) return
-
-        audioEngine.setPitch(pitch)
-        audioEngine.setSpeed(speed)
-        if (saved) audioEngine.setStemStates(stemStates)
-
+        await audioEngine.load(resolved.stems, stemStates)
+        if (loadId !== _trackLoadId || !audioEngine.loaded) return
         set({ playbackState: 'paused', duration: audioEngine.duration })
-
-        if (_pendingPlay) {
-          _pendingPlay = false
-          get().play()
-        }
+        if (_pendingPlay) { _pendingPlay = false; await get().play() }
       } catch (err: any) {
         console.error('[PlayerStore] loadTrack failed:', err)
         _pendingPlay = false
         if (loadId !== _trackLoadId) return
-        const detail = err?.message || String(err)
-        set({ playbackState: 'error', error: `Erro ao carregar: ${detail}` })
+        set({ playbackState: 'error', error: `Não foi possível abrir a música: ${err?.message || err}` })
       }
     },
 
-    // ─── Playback ───────────────────────────────────────────────────────────
+    // ─── Reprodução ─────────────────────────────────────────────────────────
     play: async () => {
-      const state = get().playbackState
-      if (state === 'playing') return
-      if (state === 'loading') {
-        _pendingPlay = true
+      const { playbackState, track, precountEnabled, precountBeats } = get()
+      if (playbackState === 'playing') return
+      if (playbackState === 'loading') { _pendingPlay = true; void audioEngine.unlock(); return }
+      if (!track) return
+      if (playbackState === 'error') {
+        // tenta de novo do zero (ex.: caiu a internet no meio do carregamento)
+        await get().loadTrack(track, { autoplay: true })
         return
       }
-      if (state === 'error') set({ error: null })
-      try {
-        await audioEngine.play()
-        if (audioEngine.isPlaying) {
-          set({ playbackState: 'playing', error: null })
-        }
-      } catch (err) {
-        console.error('[PlayerStore] play failed:', err)
-      }
+      const countIn = precountEnabled && track.bpm > 0 && audioEngine.currentTime < 0.5
+        ? { beats: precountBeats, bpm: track.bpm } : undefined
+      await audioEngine.play({ countIn })
+      if (audioEngine.isPlaying) set({ playbackState: 'playing', error: null })
     },
 
-    pause: () => {
-      audioEngine.pause()
-      set({ playbackState: 'paused' })
+    pause: () => { audioEngine.pause(); set({ playbackState: 'paused' }) },
+
+    togglePlay: () => {
+      const st = get().playbackState
+      if (st === 'playing') get().pause()
+      else void get().play()
     },
 
-    stop: () => {
-      audioEngine.stop()
-      set({ playbackState: 'stopped', currentTime: 0 })
-    },
+    stop: () => { audioEngine.stop(); set({ playbackState: 'stopped', currentTime: 0 }) },
 
-    seek: (seconds: number) => {
-      audioEngine.seek(seconds)
-      set({ currentTime: seconds })
-    },
+    seek: (seconds) => { audioEngine.seek(seconds); set({ currentTime: seconds }) },
 
     skipBackward: (seconds = 5) => {
-      const newTime = Math.max(0, get().currentTime - seconds)
-      audioEngine.seek(newTime)
-      set({ currentTime: newTime })
+      const t = Math.max(0, audioEngine.currentTime - seconds)
+      audioEngine.seek(t); set({ currentTime: t })
     },
 
     skipForward: (seconds = 5) => {
-      const newTime = Math.min(get().duration, get().currentTime + seconds)
-      audioEngine.seek(newTime)
-      set({ currentTime: newTime })
+      const t = Math.min(get().duration, audioEngine.currentTime + seconds)
+      audioEngine.seek(t); set({ currentTime: t })
     },
 
-    // ─── Pitch (-12..+12 semitones, supports fractional for fine-tuning) ────
-    setPitch: (semitones: number) => {
+    // ─── Tom (semitons; ½ tom = 1 semitom) e velocidade ─────────────────────
+    setPitch: (semitones) => {
       const clamped = clamp(Math.round(semitones * 10) / 10, -12, 12)
       audioEngine.setPitch(clamped)
       set({ pitch: clamped })
+      get().saveTrackSettings()
     },
+    resetPitch: () => { audioEngine.resetPitch(); set({ pitch: 0 }); get().saveTrackSettings() },
 
-    resetPitch: () => {
-      audioEngine.resetPitch()
-      set({ pitch: 0 })
-    },
-
-    // ─── Speed (0.5..2.0) ───────────────────────────────────────────────────
-    setSpeed: (speed: number) => {
-      const clamped = clamp(speed, 0.5, 2.0)
+    setSpeed: (speed) => {
+      const clamped = clamp(Math.round(speed * 100) / 100, 0.5, 1.5)
       audioEngine.setSpeed(clamped)
       set({ speed: clamped })
+      get().saveTrackSettings()
     },
+    resetSpeed: () => { audioEngine.resetSpeed(); set({ speed: 1 }); get().saveTrackSettings() },
 
-    resetSpeed: () => {
-      audioEngine.resetSpeed()
-      set({ speed: 1 })
-    },
-
-    // ─── Volume ─────────────────────────────────────────────────────────────
-    setVolume: (volume: number) => {
+    setVolume: (volume) => {
       const clamped = clamp(volume, 0, 1)
       audioEngine.setVolume(clamped)
       set({ volume: clamped })
     },
 
-    // ─── Stem controls ──────────────────────────────────────────────────────
-    setStemMuted: (stemId: string, muted: boolean) => {
+    // ─── Mixer ──────────────────────────────────────────────────────────────
+    setStemMuted: (stemId, muted) => {
       const stemStates = { ...get().stemStates }
       if (!stemStates[stemId]) return
       stemStates[stemId] = { ...stemStates[stemId], muted }
       audioEngine.setStemStates(stemStates)
       set({ stemStates })
+      get().saveTrackSettings()
     },
 
-    setStemSolo: (stemId: string, solo: boolean) => {
+    setStemSolo: (stemId, solo) => {
       const stemStates = { ...get().stemStates }
-      // Toggle solo: if enabling, disable solo on others
-      Object.keys(stemStates).forEach(id => {
-        stemStates[id] = { ...stemStates[id], solo: id === stemId ? solo : false }
-      })
+      Object.keys(stemStates).forEach(id => { stemStates[id] = { ...stemStates[id], solo: id === stemId ? solo : false } })
       audioEngine.setStemStates(stemStates)
       set({ stemStates })
     },
 
-    setStemVolume: (stemId: string, volume: number) => {
+    setStemVolume: (stemId, volume) => {
       const stemStates = { ...get().stemStates }
       if (!stemStates[stemId]) return
       stemStates[stemId] = { ...stemStates[stemId], volume }
       audioEngine.setStemStates(stemStates)
       set({ stemStates })
+      get().saveTrackSettings()
     },
 
     resetMix: () => {
       const track = get().track
       if (!track) return
       const stemStates = buildStemStates(track)
-      audioEngine.resetMix()
+      audioEngine.setStemStates(stemStates)
       set({ stemStates })
+      get().saveTrackSettings()
     },
 
-    // ─── Export ──────────────────────────────────────────────────────────────
+    /** Lembra tom, velocidade e mixer de cada música (abre do jeito que o músico deixou) */
+    saveTrackSettings: () => {
+      const { track, pitch, speed, stemStates } = get()
+      if (!track) return
+      useTrackSettingsStore.getState().save(track.id, pitch, speed, stemStates)
+    },
+
+    // ─── Fila (setlist em execução) ─────────────────────────────────────────
+    setQueue: async (tracks, startIndex = 0, opts) => {
+      set({ queue: tracks, queueIndex: -1 })
+      if (tracks.length) await get().playQueueIndex(startIndex, opts)
+    },
+
+    playQueueIndex: async (index, opts) => {
+      const { queue } = get()
+      const t = queue[index]
+      if (!t) return
+      set({ queueIndex: index })
+      await get().loadTrack(t, opts)
+      // deixa a próxima já baixada para entrar sem espera
+      const nextTrack = queue[index + 1]
+      if (nextTrack) void audioEngine.prefetch(nextTrack.stems.filter(s => !isSupportStem(s)).map(s => s.audioUrl).filter(u => /^https?:/.test(u)))
+    },
+
+    next: async () => {
+      const { queue, queueIndex, playbackState } = get()
+      if (queueIndex < 0 || queueIndex >= queue.length - 1) return false
+      await get().playQueueIndex(queueIndex + 1, { autoplay: playbackState === 'playing' })
+      return true
+    },
+
+    prev: async () => {
+      const { queueIndex, playbackState } = get()
+      // como nos players de música: volta ao começo se já passou de 3 s
+      if (audioEngine.currentTime > 3 || queueIndex <= 0) { get().seek(0); return queueIndex > 0 }
+      await get().playQueueIndex(queueIndex - 1, { autoplay: playbackState === 'playing' })
+      return true
+    },
+
+    setAutoAdvance: (on) => set({ autoAdvance: on }),
+
+    restoreLastTrack: async (findTrack) => {
+      if (get().track) return
+      let id: string | null = null
+      try { id = localStorage.getItem(LAST_TRACK_KEY) } catch {}
+      const t = id ? findTrack(id) : undefined
+      if (t) await get().loadTrack(t)
+    },
+
+    // ─── Exportar ───────────────────────────────────────────────────────────
     isExporting: false,
 
     downloadMix: async () => {
@@ -287,62 +328,32 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       if (!track) return
       set({ isExporting: true, error: null })
       try {
-        // Yield so the UI can show the loading state
         await new Promise(r => setTimeout(r, 50))
-
-        const blob = audioEngine.exportMixdown(stemStates)
-        if (!blob || blob.size < 100) {
-          set({ error: 'Não foi possível exportar. Toque a faixa primeiro e tente novamente.' })
-          return
-        }
-
+        const blob = await audioEngine.exportMixdown(stemStates)
+        if (!blob || blob.size < 100) { toast.error('Não foi possível exportar. Abra a música e tente de novo.'); return }
         const pitchStr = pitch !== 0 ? `_${pitch > 0 ? '+' : ''}${pitch}st` : ''
         const speedStr = speed !== 1 ? `_${speed}x` : ''
         const filename = `${track.title} - ${track.artist}${pitchStr}${speedStr}.mp3`
-
-        // iOS Safari doesn't support <a download> for blob URLs — use Web Share API
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
         if (isIOS && navigator.share) {
-          try {
-            const file = new File([blob], filename, { type: 'audio/mpeg' })
-            await navigator.share({ files: [file] })
-            return
-          } catch {
-            // User cancelled share or not supported — fall through to standard download
-          }
+          try { await navigator.share({ files: [new File([blob], filename, { type: 'audio/mpeg' })] }); return } catch {}
         }
-
-        // Standard download (works on Android, desktop, and iOS fallback)
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.style.display = 'none'
-        document.body.appendChild(a)
-        a.click()
-        // Delay cleanup so the browser can start the download
-        setTimeout(() => {
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-        }, 500)
+        a.href = url; a.download = filename; a.style.display = 'none'
+        document.body.appendChild(a); a.click()
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url) }, 500)
       } catch (err) {
         console.error('[Export] Failed:', err)
-        set({ error: 'Erro ao exportar. Tente novamente.' })
+        toast.error('Erro ao exportar. Tente novamente.')
       } finally {
         set({ isExporting: false })
       }
     },
 
-    // ─── UI state ───────────────────────────────────────────────────────────
-    togglePerformanceMode: () => {
-      set(s => ({ isPerformanceMode: !s.isPerformanceMode }))
-    },
+    togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
+    togglePrecount: () => set(s => ({ precountEnabled: !s.precountEnabled })),
 
-    togglePrecount: () => {
-      set(s => ({ precountEnabled: !s.precountEnabled }))
-    },
-
-    // ─── Internal setters (called by engine listener) ───────────────────────
     _setTime: (currentTime, duration) => set({ currentTime, duration }),
     _setPlaybackState: (playbackState) => set({ playbackState }),
     _setError: (error) => set({ error }),

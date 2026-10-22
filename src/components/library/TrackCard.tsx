@@ -1,5 +1,5 @@
 import { Play, Pause, Layers, Heart } from 'lucide-react'
-import * as Tone from 'tone'
+import { audioEngine } from '@/audio/AudioEngine'
 import type { Track } from '@/types/track'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/store/playerStore'
@@ -32,7 +32,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
   const handlePlay = async (e: React.MouseEvent) => {
     e.stopPropagation()
     // Unlock audio immediately within user gesture — iOS Safari requires this
-    try { await Tone.start() } catch {}
+    void audioEngine.unlock()
     if (isPlaying) {
       pause()
     } else if (isActive) {

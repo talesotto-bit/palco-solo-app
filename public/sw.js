@@ -61,7 +61,7 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstPage(request))
-  } else if (url.pathname.startsWith('/assets/')) {
+  } else if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/vendor/')) {
     event.respondWith(cacheFirst(request))
   } else if (/^\/(catalog\.json|demo-catalog\.json|icons\/|manifest\.webmanifest)/.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request))

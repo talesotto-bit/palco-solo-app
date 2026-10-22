@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import * as Tone from 'tone'
+import { audioEngine } from '@/audio/AudioEngine'
 import {
   Play, Pause, Square, SkipBack, SkipForward,
   RotateCcw, Volume2, VolumeX, Loader2, X,
@@ -65,7 +65,7 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
         {/* Play / Pause */}
         <button
           disabled={!hasTrack || isLoading}
-          onClick={() => { Tone.start().catch(() => {}); isPlaying ? pause() : play() }}
+          onClick={() => { void audioEngine.unlock(); isPlaying ? pause() : play() }}
           className={cn(
             'flex items-center justify-center rounded-full bg-white text-black',
             'hover:scale-105 active:scale-95 transition-transform disabled:opacity-50',
