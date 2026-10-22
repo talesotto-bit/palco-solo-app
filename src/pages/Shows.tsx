@@ -64,6 +64,12 @@ export default function Shows() {
         </button>
       </div>
 
+      <button onClick={() => navigate('/app/pedidos')} className="mt-4 w-full flex items-center gap-3 rounded-2xl bg-gradient-to-r from-[hsl(var(--primary))]/20 to-white/[0.03] px-4 py-3 text-left active:opacity-80">
+        <span className="text-2xl">💸</span>
+        <span className="flex-1 min-w-0"><span className="block font-bold">Pedidos e Gorjeta via Pix</span><span className="block text-xs text-[#b5b5b5]">QR code na mesa: o público pede música e manda gorjeta no seu Pix</span></span>
+        <ChevronRight className="h-5 w-5 text-[#9a9a9a]" />
+      </button>
+
       {sorted.length === 0 && (
         <div className="mt-6 rounded-2xl bg-gradient-to-br from-[hsl(var(--primary))]/20 to-white/[0.03] p-5">
           <ListMusic className="h-8 w-8 text-[hsl(var(--primary))]" />

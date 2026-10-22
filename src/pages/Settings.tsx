@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Headphones, Repeat, Timer, HardDrive, Sparkles, Trash2, Info } from 'lucide-react'
+import { Headphones, Repeat, Timer, HardDrive, Sparkles, Trash2, Info, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { InstallCard } from '@/components/InstallApp'
@@ -84,6 +84,13 @@ export default function Settings() {
               className="mt-3 h-10 px-4 rounded-full bg-white/[0.07] text-sm font-semibold flex items-center gap-2"><Trash2 className="h-4 w-4" /> Liberar espaço</button>
           </div>
         </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8a8a8a]">Recursos extras</h2>
+        <a href="/app/pedidos" className="block rounded-2xl bg-white/[0.05]">
+          <Row icon={Wallet} title="Pedidos e Gorjeta via Pix" desc="QR code para o público pedir música e mandar gorjeta no seu Pix" />
+        </a>
       </section>
 
       <section className="space-y-2">

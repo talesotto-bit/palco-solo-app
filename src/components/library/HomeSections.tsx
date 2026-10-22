@@ -101,6 +101,12 @@ export function HomeSections({ tracks, byId, onSeeGenre, onSeeAll }: Props) {
         ))}
       </Row>
 
+      <button onClick={() => navigate('/app/pedidos')} className="mt-6 w-full flex items-center gap-3 rounded-2xl bg-gradient-to-r from-[#1f4a35] to-[#1a1a1a] px-4 py-4 text-left active:opacity-80">
+        <span className="text-3xl">💸</span>
+        <span className="flex-1 min-w-0"><span className="block font-bold text-[16px]">Ganhe gorjeta via Pix nos shows</span><span className="block text-xs text-white/60">QR code na mesa: o público pede música e paga direto no seu Pix</span></span>
+        <ChevronRight className="h-5 w-5 text-white/50" />
+      </button>
+
       {reps.length > 0 && (
         <Row title="Repertórios prontos" action={{ label: 'Ver todos', onClick: () => navigate('/app/shows') }}>
           {reps.map(r => (

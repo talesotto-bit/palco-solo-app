@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, SkipBack, SkipForward, X, ListMusic, Mic, AlignLeft, Guitar, Minus, Plus,
-  SlidersHorizontal, Timer, Repeat, Loader2, Maximize, BatteryMedium, AlertTriangle, StickyNote,
+  SlidersHorizontal, Timer, Repeat, Loader2, Maximize, BatteryMedium, AlertTriangle, StickyNote, QrCode,
 } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useShowsStore } from '@/store/showsStore'
@@ -27,6 +27,9 @@ import { ChordSheet } from '@/components/player/ChordSheet'
 import { useCifra, cifraClubUrl } from '@/components/player/CifrasPanel'
 import { formatTons, transposeKey } from '@/lib/musicTheory'
 import { formatTime, cn } from '@/lib/utils'
+import { useUnlocks } from '@/lib/unlocks'
+import { usePedidosStore } from '@/store/pedidosStore'
+import { StageQR } from '@/components/StageQR'
 import type { Track, Stem } from '@/types/track'
 
 // ─── utilidades ──────────────────────────────────────────────────────────────
@@ -182,6 +185,10 @@ export default function Performance() {
 
   const settings = useStageSettings()
   const [mixer, setMixer] = useState(false)
+  const [qr, setQr] = useState(false)
+  const pedidosOn = useUnlocks(s => s.features.includes('pedidos'))
+  const pedidosLink = usePedidosStore(s => s.link)
+  const pedidosArtist = usePedidosStore(s => s.profile.artist)
   const [showStart] = useState(() => Date.now())
 
   // monta a fila do show (sem reiniciar se o show já está tocando)
@@ -404,9 +411,11 @@ export default function Performance() {
           )}
           {track?.bpm ? <Chip on={settings.precount} onClick={() => P().togglePrecount()} icon={Timer} label="Contar 4" /> : null}
           <Chip on={false} onClick={() => setMixer(true)} icon={SlidersHorizontal} label="Mixer" />
+          <Chip on={false} onClick={() => { if (pedidosOn && pedidosLink) setQr(true); else navigate('/app/pedidos') }} icon={QrCode} label="QR Pedidos" />
         </div>
       </div>
 
+      {qr && pedidosLink && <StageQR link={pedidosLink} artist={pedidosArtist} onClose={() => setQr(false)} />}
       <Sheet open={mixer} onClose={() => setMixer(false)} title="Mixer da música">
         <div className="p-3" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}><StemMixer /></div>
       </Sheet>

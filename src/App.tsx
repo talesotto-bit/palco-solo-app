@@ -18,6 +18,9 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 // telas raras ficam fora do pacote principal (app abre mais rápido no celular)
 const Admin = lazy(() => import('@/pages/Admin'))
 const Demo = lazy(() => import('@/pages/Demo'))
+const PublicRequest = lazy(() => import('@/pages/PublicRequest'))
+const Pedidos = lazy(() => import('@/pages/Pedidos'))
+const Activate = lazy(() => import('@/pages/Activate'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +39,9 @@ export default function App() {
             <Route path="/demo" element={<ErrorBoundary><Suspense fallback={null}><Demo /></Suspense></ErrorBoundary>} />
             <Route path="/trial" element={<Navigate to="/app/library" replace />} />
             <Route path="/" element={<Navigate to="/app/library" replace />} />
+            {/* Página do público (QR de pedidos) e ativação de recursos comprados */}
+            <Route path="/p" element={<Suspense fallback={null}><PublicRequest /></Suspense>} />
+            <Route path="/ativar/:code" element={<Suspense fallback={null}><Activate /></Suspense>} />
 
             {/* Performance — fullscreen, outside AppLayout */}
             <Route
@@ -53,6 +59,7 @@ export default function App() {
               <Route path="player" element={<PlayerPage />} />
               <Route path="shows" element={<Shows />} />
               <Route path="shows/:id" element={<ShowEditor />} />
+              <Route path="pedidos" element={<Suspense fallback={null}><Pedidos /></Suspense>} />
               <Route path="separar" element={<Navigate to="/app/library" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="admin" element={<Suspense fallback={null}><Admin /></Suspense>} />
