@@ -11,11 +11,13 @@ import type { PlayerState, StemState } from '@/types/player'
 import { clamp } from '@/lib/utils'
 import { AudioCache, isCacheUrl, urlToKey } from '@/lib/audioCache'
 import { useTrackSettingsStore } from './trackSettingsStore'
+import { useStageSettings } from './stageSettingsStore'
 
 const LAST_TRACK_KEY = 'player-last-track-v1'
 
 let _trackLoadId = 0
 let _pendingPlay = false
+let _advanceTimer: ReturnType<typeof setTimeout> | null = null
 
 /** Resolve cache:// URLs (músicas importadas do aparelho) para blob URLs reais */
 async function resolveTrackUrls(track: Track): Promise<Track> {
@@ -36,7 +38,10 @@ interface PlayerStore extends PlayerState {
   loadingStems: string[]
   queue: Track[]
   queueIndex: number
-  autoAdvance: boolean
+  /** próxima música agendada (contagem regressiva entre músicas do show) */
+  pendingAdvance: { index: number; at: number } | null
+  cancelAdvance: () => void
+  advanceNow: () => void
   loadTrack: (track: Track, opts?: { autoplay?: boolean }) => Promise<void>
   play: () => Promise<void>
   pause: () => void
@@ -59,7 +64,6 @@ interface PlayerStore extends PlayerState {
   playQueueIndex: (index: number, opts?: { autoplay?: boolean }) => Promise<void>
   next: () => Promise<boolean>
   prev: () => Promise<boolean>
-  setAutoAdvance: (on: boolean) => void
   restoreLastTrack: (findTrack: (id: string) => Track | undefined) => Promise<void>
   togglePerformanceMode: () => void
   togglePrecount: () => void
@@ -93,9 +97,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         break
       case 'ended': {
         set({ playbackState: 'stopped', currentTime: 0 })
-        const { autoAdvance, queue, queueIndex } = get()
+        const { queue, queueIndex } = get()
+        const { autoAdvance, advanceGap } = useStageSettings.getState()
         if (autoAdvance && queueIndex >= 0 && queueIndex < queue.length - 1) {
-          void get().playQueueIndex(queueIndex + 1, { autoplay: true })
+          const index = queueIndex + 1
+          if (advanceGap <= 0) { void get().playQueueIndex(index, { autoplay: true }); break }
+          set({ pendingAdvance: { index, at: Date.now() + advanceGap * 1000 } })
+          if (_advanceTimer) clearTimeout(_advanceTimer)
+          _advanceTimer = setTimeout(() => { get().advanceNow() }, advanceGap * 1000)
         }
         break
       }
@@ -130,7 +139,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     volume: 0.85,
     stemStates: {},
     isPerformanceMode: false,
-    precountEnabled: false,
+    precountEnabled: useStageSettings.getState().precount,
     precountBeats: 4,
     error: null,
     isPitchProcessing: false,
@@ -138,11 +147,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     loadingStems: [],
     queue: [],
     queueIndex: -1,
-    autoAdvance: true,
+    pendingAdvance: null,
 
     // ─── Carregar música ────────────────────────────────────────────────────
     loadTrack: async (track, opts) => {
       const loadId = ++_trackLoadId
+      if (_advanceTimer) { clearTimeout(_advanceTimer); _advanceTimer = null }
+      if (get().pendingAdvance) set({ pendingAdvance: null })
       const saved = useTrackSettingsStore.getState().get(track.id)
       const defaults = buildStemStates(track)
       // só aproveita do salvo as pistas que ainda existem
@@ -176,12 +187,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
     // ─── Reprodução ─────────────────────────────────────────────────────────
     play: async () => {
-      const { playbackState, track, precountEnabled, precountBeats } = get()
+      const { playbackState, track, precountBeats } = get()
+      const precountEnabled = useStageSettings.getState().precount
       if (playbackState === 'playing') return
       if (playbackState === 'loading') { _pendingPlay = true; void audioEngine.unlock(); return }
       if (!track) return
-      if (playbackState === 'error') {
-        // tenta de novo do zero (ex.: caiu a internet no meio do carregamento)
+      if (playbackState === 'error' || playbackState === 'idle') {
+        // erro: tenta de novo do zero (ex.: caiu a internet). idle: música restaurada, áudio ainda não baixado
         await get().loadTrack(track, { autoplay: true })
         return
       }
@@ -310,14 +322,29 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       return true
     },
 
-    setAutoAdvance: (on) => set({ autoAdvance: on }),
+    cancelAdvance: () => {
+      if (_advanceTimer) { clearTimeout(_advanceTimer); _advanceTimer = null }
+      set({ pendingAdvance: null })
+    },
+
+    advanceNow: () => {
+      const p = get().pendingAdvance
+      if (_advanceTimer) { clearTimeout(_advanceTimer); _advanceTimer = null }
+      set({ pendingAdvance: null })
+      if (p) void get().playQueueIndex(p.index, { autoplay: true })
+    },
 
     restoreLastTrack: async (findTrack) => {
       if (get().track) return
       let id: string | null = null
       try { id = localStorage.getItem(LAST_TRACK_KEY) } catch {}
       const t = id ? findTrack(id) : undefined
-      if (t) await get().loadTrack(t)
+      if (!t) return
+      // só mostra a música; o áudio é baixado quando o músico apertar play (economiza dados)
+      const saved = useTrackSettingsStore.getState().get(t.id)
+      const stemStates = buildStemStates(t)
+      if (saved) for (const sid of Object.keys(saved.stemStates)) if (stemStates[sid]) stemStates[sid] = { ...saved.stemStates[sid], id: sid }
+      set({ track: t, stemStates, pitch: saved?.pitch ?? 0, speed: saved?.speed ?? 1, playbackState: 'idle', currentTime: 0, duration: 0 })
     },
 
     // ─── Exportar ───────────────────────────────────────────────────────────
@@ -352,7 +379,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     },
 
     togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
-    togglePrecount: () => set(s => ({ precountEnabled: !s.precountEnabled })),
+    togglePrecount: () => {
+      const on = !useStageSettings.getState().precount
+      useStageSettings.getState().set({ precount: on })
+      set({ precountEnabled: on })
+    },
 
     _setTime: (currentTime, duration) => set({ currentTime, duration }),
     _setPlaybackState: (playbackState) => set({ playbackState }),

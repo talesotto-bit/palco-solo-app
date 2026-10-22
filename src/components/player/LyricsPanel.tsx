@@ -1,21 +1,12 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Loader2, AlertCircle, Search, RotateCcw, ArrowDownToLine } from 'lucide-react'
+import { Loader2, AlertCircle, Search, RotateCcw, ArrowDownToLine, Minus, Plus, Hand } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { cn } from '@/lib/utils'
 import { useLyricsStore } from '@/store/lyricsStore'
-import type { LrcLine } from '@/store/lyricsStore'
+import { useLyricSync, findActiveLine } from '@/hooks/useLyricSync'
 
 const FONT_SIZES = [14, 16, 18, 20, 24]
-
-function findActiveLine(lines: LrcLine[], time: number): number {
-  let idx = -1
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].time <= time) idx = i
-    else break
-  }
-  return idx
-}
 
 export function LyricsPanel() {
   const track = usePlayerStore(s => s.track)
@@ -45,7 +36,8 @@ export function LyricsPanel() {
     fetchLyrics(track.artist, track.title, track.id)
   }, [track?.id, trackId, fetchLyrics])
 
-  const activeLine = syncedLines ? findActiveLine(syncedLines, currentTime) : -1
+  const sync = useLyricSync(syncedLines)
+  const activeLine = syncedLines ? findActiveLine(syncedLines, currentTime - sync.offset) : -1
 
   // Letra sem sincronização: rola acompanhando o progresso da música
   const [autoScroll, setAutoScroll] = useState(true)
@@ -172,6 +164,24 @@ export function LyricsPanel() {
         )}
       </div>
 
+      {/* Sincronia da letra com o playback */}
+      {syncedLines && syncedLines.length > 0 && (
+        <div className="flex items-center justify-between gap-2 px-3 py-1.5 shrink-0 bg-black/20 text-[11px]">
+          <span className="text-[#9a9a9a] leading-tight">
+            Sincronia: <b className="text-white">{sync.mode === 'auto' ? 'automática' : sync.mode === 'manual' ? `ajustada (${sync.offset > 0 ? '+' : ''}${sync.offset.toFixed(1)}s)` : 'original'}</b>
+          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={() => sync.nudge(-0.25)} aria-label="Letra mais cedo" className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center"><Minus className="h-3.5 w-3.5" /></button>
+            <button onClick={() => sync.nudge(0.25)} aria-label="Letra mais tarde" className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center"><Plus className="h-3.5 w-3.5" /></button>
+            {playbackState === 'playing' && (
+              <button onClick={sync.markStart} title="Toque quando o cantor começar"
+                className="h-8 px-2 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] font-bold flex items-center gap-1"><Hand className="h-3.5 w-3.5" /> Começou</button>
+            )}
+            {sync.mode === 'manual' && <button onClick={sync.reset} className="h-8 px-2 rounded-full bg-white/5 text-[#b3b3b3]">Auto</button>}
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div
         ref={scrollRef}
@@ -249,7 +259,7 @@ export function LyricsPanel() {
                 style={{ fontSize: `${i === activeLine ? fontSize + 2 : fontSize}px` }}
                 onClick={() => {
                   const seek = usePlayerStore.getState().seek
-                  seek(line.time)
+                  seek(Math.max(0, line.time + sync.offset))
                   userScrolledRef.current = false
                 }}
               >

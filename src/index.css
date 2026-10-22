@@ -150,3 +150,7 @@
     bottom: 0;
   }
 }
+
+/* rolagem horizontal sem barra (atalhos do palco, ações) */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

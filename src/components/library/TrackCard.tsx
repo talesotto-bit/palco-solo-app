@@ -1,5 +1,6 @@
-import { Play, Pause, Layers, Heart } from 'lucide-react'
+import { Play, Pause, Layers, Heart, ListPlus } from 'lucide-react'
 import { audioEngine } from '@/audio/AudioEngine'
+import { useAddToShow } from '@/store/addToShowStore'
 import type { Track } from '@/types/track'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/store/playerStore'
@@ -23,6 +24,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
 
   const isFav = useFavoritesStore(s => s.isFavorite)(track.id)
   const toggleFav = useFavoritesStore(s => s.toggle)
+  const openAddToShow = useAddToShow(s => s.open)
 
   const coverUrl = useCoverArt(track.artist, track.title, track.coverUrl)
 
@@ -112,7 +114,16 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
         </button>
 
         <button
-          className="hidden group-hover:flex items-center justify-center h-8 w-8 rounded-full bg-[hsl(var(--primary))] shrink-0 hover:scale-105 transition-transform"
+          className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-[#9a9a9a] hover:text-white active:bg-white/10"
+          aria-label="Adicionar ao show"
+          onClick={(e) => { e.stopPropagation(); openAddToShow(track) }}
+        >
+          <ListPlus className="h-4 w-4" />
+        </button>
+
+        <button
+          className="flex md:hidden md:group-hover:flex items-center justify-center h-9 w-9 rounded-full bg-[hsl(var(--primary))] shrink-0 hover:scale-105 transition-transform"
+          aria-label={isPlaying ? 'Pausar' : 'Tocar'}
           onClick={handlePlay}
         >
           {isPlaying
@@ -146,7 +157,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             'transition-all duration-200',
             isPlaying
               ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0',
+              : 'opacity-100 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0',
             'hover:scale-105 active:scale-95'
           )}
         >
@@ -179,7 +190,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             'absolute bottom-2 left-2 p-1 rounded-full transition-all duration-200',
             isFav
               ? 'opacity-100'
-              : 'opacity-0 group-hover:opacity-100'
+              : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'
           )}
           onClick={(e) => { e.stopPropagation(); toggleFav(track.id) }}
         >
@@ -190,15 +201,26 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
         </button>
       </div>
 
-      <p className={cn(
-        'text-[13px] font-semibold truncate leading-tight',
-        isActive ? 'text-[hsl(var(--primary))]' : 'text-white'
-      )}>
-        {track.title}
-      </p>
-      <p className="text-[11px] text-[#808080] truncate mt-0.5 leading-tight">
-        {track.artist}
-      </p>
+      <div className="flex items-start gap-1">
+        <div className="min-w-0 flex-1">
+          <p className={cn(
+            'text-[13px] font-semibold truncate leading-tight',
+            isActive ? 'text-[hsl(var(--primary))]' : 'text-white'
+          )}>
+            {track.title}
+          </p>
+          <p className="text-[11px] text-[#808080] truncate mt-0.5 leading-tight">
+            {track.artist}
+          </p>
+        </div>
+        <button
+          className="shrink-0 -mr-1 -mt-0.5 h-8 w-8 flex items-center justify-center rounded-full text-[#9a9a9a] hover:text-white active:bg-white/10"
+          aria-label="Adicionar ao show"
+          onClick={(e) => { e.stopPropagation(); openAddToShow(track) }}
+        >
+          <ListPlus className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   )
 }

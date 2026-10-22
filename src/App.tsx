@@ -1,8 +1,7 @@
-import { useEffect } from 'react'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
-import { useAuthStore } from '@/store/authStore'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -10,11 +9,15 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import Library from '@/pages/Library'
 import PlayerPage from '@/pages/PlayerPage'
 import Performance from '@/pages/Performance'
+import Shows from '@/pages/Shows'
+import ShowEditor from '@/pages/ShowEditor'
 import Settings from '@/pages/Settings'
-import Admin from '@/pages/Admin'
 import NotFound from '@/pages/NotFound'
-import Demo from '@/pages/Demo'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+
+// telas raras ficam fora do pacote principal (app abre mais rápido no celular)
+const Admin = lazy(() => import('@/pages/Admin'))
+const Demo = lazy(() => import('@/pages/Demo'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,12 +26,6 @@ const queryClient = new QueryClient({
 })
 
 export default function App() {
-  const initialize = useAuthStore(s => s.initialize)
-
-  useEffect(() => {
-    initialize()
-  }, [initialize])
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -36,7 +33,7 @@ export default function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Navigate to="/app/library" replace />} />
-            <Route path="/demo" element={<ErrorBoundary><Demo /></ErrorBoundary>} />
+            <Route path="/demo" element={<ErrorBoundary><Suspense fallback={null}><Demo /></Suspense></ErrorBoundary>} />
             <Route path="/trial" element={<Navigate to="/app/library" replace />} />
             <Route path="/" element={<Navigate to="/app/library" replace />} />
 
@@ -54,9 +51,11 @@ export default function App() {
               <Route index element={<Navigate to="library" replace />} />
               <Route path="library" element={<Library />} />
               <Route path="player" element={<PlayerPage />} />
+              <Route path="shows" element={<Shows />} />
+              <Route path="shows/:id" element={<ShowEditor />} />
               <Route path="separar" element={<Navigate to="/app/library" replace />} />
               <Route path="settings" element={<Settings />} />
-              <Route path="admin" element={<Admin />} />
+              <Route path="admin" element={<Suspense fallback={null}><Admin /></Suspense>} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
@@ -65,7 +64,7 @@ export default function App() {
 
         <Toaster
           theme="dark"
-          position="bottom-right"
+          position="top-center"
           toastOptions={{
             style: {
               background: 'hsl(0, 0%, 7%)',

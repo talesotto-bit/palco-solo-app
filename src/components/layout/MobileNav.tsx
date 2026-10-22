@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom'
-import { Home, Music2, Mic2, Settings } from 'lucide-react'
+import { Library, Music2, Mic2, Settings, ListMusic } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/store/playerStore'
 
 const NAV_ITEMS = [
-  { label: 'Início', to: '/app/library', icon: Home },
+  { label: 'Músicas', to: '/app/library', icon: Library },
   { label: 'Player', to: '/app/player', icon: Music2 },
+  { label: 'Shows', to: '/app/shows', icon: ListMusic },
   { label: 'Palco', to: '/app/performance', icon: Mic2 },
   { label: 'Config', to: '/app/settings', icon: Settings },
 ]
@@ -31,12 +32,12 @@ export function MobileNav() {
                 'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-w-0 transition-colors',
                 isActive
                   ? 'text-[hsl(var(--primary))]'
-                  : 'text-[#535353] active:text-white'
+                  : 'text-[#8a8a8a] active:text-white'
               )
             }
           >
-            <Icon className="h-[18px] w-[18px]" />
-            <span className="text-[9px] font-semibold leading-none">{label}</span>
+            <Icon className="h-5 w-5" />
+            <span className="text-[10px] font-semibold leading-none">{label}</span>
           </NavLink>
         ))}
       </div>

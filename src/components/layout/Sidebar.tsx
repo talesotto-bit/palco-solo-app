@@ -1,15 +1,16 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  Home, Library, Mic2, Settings,
-  Music2, ShieldCheck,
+  Library, Mic2, Settings,
+  Music2, ShieldCheck, ListMusic,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore, isAdmin } from '@/store/authStore'
 import { usePlayerStore } from '@/store/playerStore'
 
 const NAV_MAIN = [
-  { label: 'Início', to: '/app/library', icon: Home },
+  { label: 'Músicas', to: '/app/library', icon: Library },
   { label: 'Player', to: '/app/player', icon: Music2 },
+  { label: 'Shows', to: '/app/shows', icon: ListMusic },
   { label: 'Palco', to: '/app/performance', icon: Mic2 },
 ]
 

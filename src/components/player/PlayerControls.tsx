@@ -36,7 +36,7 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
 
   const isPlaying = playbackState === 'playing'
   const isLoading = playbackState === 'loading'
-  const hasTrack = playbackState !== 'idle'
+  const hasTrack = usePlayerStore(s => !!s.track)
 
   const isLarge = size === 'large'
 

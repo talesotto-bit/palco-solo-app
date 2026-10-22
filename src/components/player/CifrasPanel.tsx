@@ -1,246 +1,224 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Loader2, Search, RotateCcw, Music, ArrowDownToLine } from 'lucide-react'
+import { Loader2, Search, Music, ArrowDownToLine, ClipboardPaste, ExternalLink, Pencil, Trash2, Minus, Plus, X, Check } from 'lucide-react'
+import { toast } from 'sonner'
 import { usePlayerStore } from '@/store/playerStore'
+import { useCifraStore, cachedCifra, type CifraData } from '@/store/cifraStore'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
-import { transposeChord, transposeKey, formatTons } from '@/lib/musicTheory'
+import { transposeKey, formatTons } from '@/lib/musicTheory'
+import { parseSheet, countChords } from '@/lib/chordSheet'
 import { cn } from '@/lib/utils'
+import { ChordSheet } from './ChordSheet'
 
-interface CifraData {
-  title: string
-  artist: string
-  content: string
-  tuning?: string
-  capo?: string
-  source: string
+const FONT_SIZES = [13, 15, 17, 20, 24]
+
+function slug(s: string) {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
-const FONT_SIZES = [12, 14, 16, 18, 20]
+export function cifraClubUrl(artist: string, title: string) {
+  return artist ? `https://www.cifraclub.com.br/${slug(artist)}/${slug(title)}/` : `https://www.cifraclub.com.br/?q=${encodeURIComponent(title)}`
+}
+
+/** Busca a cifra (servidor → cópia no aparelho) e mantém a cópia para o show sem internet */
+export function useCifra(trackId: string | undefined, artist: string, title: string) {
+  const own = useCifraStore(s => (trackId ? s.own[trackId] : undefined))
+  const setCached = useCifraStore(s => s.setCached)
+  const [remote, setRemote] = useState<CifraData | null>(null)
+  const [state, setState] = useState<'idle' | 'loading' | 'not_found' | 'error' | 'ok'>('idle')
+  const abortRef = useRef<AbortController | null>(null)
+
+  const fetchCifra = useCallback(async (a: string, t: string, force = false) => {
+    if (!trackId) return
+    if (!force) {
+      const c = cachedCifra(trackId)
+      if (c) { setRemote(c); setState('ok'); return }
+      if (c === null) { setRemote(null); setState('not_found'); return }
+    }
+    abortRef.current?.abort()
+    const ctrl = new AbortController(); abortRef.current = ctrl
+    setState('loading'); setRemote(null)
+    try {
+      const params = new URLSearchParams({ title: t })
+      if (a) params.set('artist', a)
+      const res = await fetch(`/api/cifra?${params}`, { signal: ctrl.signal })
+      if (ctrl.signal.aborted) return
+      if (res.status === 404) { setState('not_found'); setCached(trackId, null); return }
+      if (!res.ok) { setState('error'); return }
+      const data: CifraData = await res.json()
+      setRemote(data); setState('ok'); setCached(trackId, data)
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return
+      setState(navigator.onLine ? 'error' : 'not_found')
+    }
+  }, [trackId, setCached])
+
+  useEffect(() => {
+    if (!trackId || own) return
+    void fetchCifra(artist, title)
+    return () => abortRef.current?.abort()
+  }, [trackId, own, artist, title, fetchCifra])
+
+  return { own, remote, state, fetchCifra }
+}
 
 export function CifrasPanel() {
   const track = usePlayerStore(s => s.track)
-  // Acordes acompanham o tom do player (só semitons inteiros)
-  const transpose = usePlayerStore(s => Math.round(s.pitch))
+  const pitch = usePlayerStore(s => Math.round(s.pitch))
+  const offset = useCifraStore(s => (track ? s.offset[track.id] ?? 0 : 0))
+  const setOffset = useCifraStore(s => s.setOffset)
+  const setOwn = useCifraStore(s => s.setOwn)
+  const removeOwn = useCifraStore(s => s.removeOwn)
+  const { own, remote, state, fetchCifra } = useCifra(track?.id, track?.artist || '', track?.title || '')
+
   const [autoScroll, setAutoScroll] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   useAutoScroll(scrollRef, autoScroll)
-  const [cifra, setCifra] = useState<CifraData | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<'not_found' | 'fetch_error' | null>(null)
   const [fontIdx, setFontIdx] = useState(1)
   const [manualQuery, setManualQuery] = useState('')
-  const [loadedTrackId, setLoadedTrackId] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
-
-  const fetchCifra = useCallback(async (artist: string, title: string, trackId: string) => {
-    abortRef.current?.abort()
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-
-    setIsLoading(true)
-    setError(null)
-    setCifra(null)
-
-    try {
-      const params = new URLSearchParams({ title })
-      if (artist) params.set('artist', artist)
-      const res = await fetch(`/api/cifra?${params}`, { signal: ctrl.signal })
-
-      if (ctrl.signal.aborted) return
-
-      if (res.status === 404) {
-        setError('not_found')
-        setLoadedTrackId(trackId)
-        return
-      }
-      if (!res.ok) {
-        setError('fetch_error')
-        setLoadedTrackId(trackId)
-        return
-      }
-
-      const data: CifraData = await res.json()
-      setCifra(data)
-      setLoadedTrackId(trackId)
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return
-      setError('fetch_error')
-      setLoadedTrackId(trackId)
-    } finally {
-      if (!ctrl.signal.aborted) setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!track) return
-    if (loadedTrackId === track.id) return
-    fetchCifra(track.artist, track.title, track.id)
-  }, [track?.id, loadedTrackId, fetchCifra])
-
-  useEffect(() => () => { abortRef.current?.abort() }, [])
-
-  const fontSize = FONT_SIZES[fontIdx]
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
 
   if (!track) return null
+  const content = own?.text ?? remote?.content ?? ''
+  const hasSheet = !!content
+  const transpose = pitch + offset
+  const keyInfo = remote?.capo && !/^\d+$/.test(remote.capo) && !own ? remote.capo : null
+
+  const startEdit = (initial: string) => { setDraft(initial); setEditing(true) }
+  const saveDraft = () => {
+    const lines = parseSheet(draft)
+    if (!draft.trim()) { toast.error('Cole o texto da cifra antes de salvar.'); return }
+    if (countChords(lines) === 0) toast.warning('Não encontrei acordes no texto. Salvei mesmo assim como letra.')
+    setOwn(track.id, draft)
+    setEditing(false)
+    toast.success('Cifra salva neste aparelho. Ela muda de tom junto com a música.')
+  }
+  const pasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text.trim()) { startEdit(text); return }
+    } catch {}
+    startEdit('')
+  }
 
   return (
     <div className="flex flex-col min-h-[300px] lg:h-full rounded-lg bg-white/5 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 shrink-0">
-        <p className="text-sm font-bold text-white">Cifra</p>
-        {cifra && (
-          <div className="flex items-center gap-1">
-            {transpose !== 0 && (
-              <span className="text-[10px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full mr-1">
-                {formatTons(transpose)}
-              </span>
-            )}
-            <button
-              onClick={() => setAutoScroll(v => !v)}
-              aria-pressed={autoScroll}
-              title="Rolagem automática"
-              className={cn(
-                'h-7 px-2 rounded flex items-center gap-1 text-[10px] font-bold transition-colors',
-                autoScroll ? 'bg-amber-400/20 text-amber-400' : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
-              )}
-            >
-              <ArrowDownToLine className="h-3 w-3" />
-              Rolar
+      {/* Cabeçalho */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 shrink-0 border-b border-white/5">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-white">Cifra</p>
+          {hasSheet && (
+            <p className="text-[10px] text-[#9a9a9a] truncate">
+              {own ? 'Sua cifra (salva no aparelho)' : remote ? `Fonte: ${remote.source}` : ''}
+            </p>
+          )}
+        </div>
+        {hasSheet && !editing && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={() => setAutoScroll(v => !v)} aria-pressed={autoScroll} title="Rolagem automática"
+              className={cn('h-8 px-2 rounded flex items-center gap-1 text-[11px] font-bold transition-colors',
+                autoScroll ? 'bg-amber-400/20 text-amber-400' : 'bg-white/5 text-[#b3b3b3]')}>
+              <ArrowDownToLine className="h-3.5 w-3.5" /> Rolar
             </button>
-            <button
-              onClick={() => setFontIdx(i => Math.max(0, i - 1))}
-              disabled={fontIdx === 0}
-              className="h-7 w-7 rounded flex items-center justify-center text-xs font-bold text-[#b3b3b3] bg-white/5 hover:bg-white/10 disabled:opacity-30 transition-colors"
-            >
-              A-
-            </button>
-            <button
-              onClick={() => setFontIdx(i => Math.min(FONT_SIZES.length - 1, i + 1))}
-              disabled={fontIdx === FONT_SIZES.length - 1}
-              className="h-7 w-7 rounded flex items-center justify-center text-sm font-bold text-[#b3b3b3] bg-white/5 hover:bg-white/10 disabled:opacity-30 transition-colors"
-            >
-              A+
-            </button>
+            <button onClick={() => setFontIdx(i => Math.max(0, i - 1))} disabled={fontIdx === 0} aria-label="Diminuir letra"
+              className="h-8 w-8 rounded text-xs font-bold text-[#b3b3b3] bg-white/5 disabled:opacity-30">A-</button>
+            <button onClick={() => setFontIdx(i => Math.min(FONT_SIZES.length - 1, i + 1))} disabled={fontIdx === FONT_SIZES.length - 1} aria-label="Aumentar letra"
+              className="h-8 w-8 rounded text-sm font-bold text-[#b3b3b3] bg-white/5 disabled:opacity-30">A+</button>
           </div>
         )}
       </div>
 
-      {/* Content */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-4" style={{ WebkitOverflowScrolling: 'touch' }}>
-        {isLoading && (
+      {/* Ajuste do tom da cifra (para casar com o playback) */}
+      {hasSheet && !editing && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 shrink-0 bg-black/20 text-[11px]">
+          <div className="text-[#b3b3b3] leading-tight">
+            {keyInfo && <span>Tom: <b className="text-white">{transpose ? keyInfo.replace(/[A-G][#b]?m?/g, k => transposeKey(k, transpose)) : keyInfo}</b> · </span>}
+            {pitch !== 0 && <span className="text-amber-400 font-semibold">acompanha {formatTons(pitch)} · </span>}
+            <span>Cifra {offset === 0 ? 'no tom original' : formatTons(offset)}</span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-[#808080] mr-0.5 hidden min-[380px]:inline">Ajustar</span>
+            <button onClick={() => setOffset(track.id, offset - 1)} aria-label="Descer meio tom na cifra" className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center"><Minus className="h-3.5 w-3.5" /></button>
+            <button onClick={() => setOffset(track.id, offset + 1)} aria-label="Subir meio tom na cifra" className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center"><Plus className="h-3.5 w-3.5" /></button>
+          </div>
+        </div>
+      )}
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 pb-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+        {/* Editor: colar/editar cifra */}
+        {editing && (
+          <div className="py-3 space-y-2">
+            <p className="text-xs text-[#b3b3b3]">
+              Cole a cifra de qualquer site (ou digite). O app reconhece os acordes e muda o tom junto com a música.
+            </p>
+            <textarea value={draft} onChange={e => setDraft(e.target.value)} autoFocus spellCheck={false}
+              placeholder={'Ex.:\n       C            G/B\nParece que cê sente cheiro de bebida'}
+              className="w-full min-h-[320px] rounded-lg bg-black/40 p-3 font-mono text-[13px] text-white outline-none focus:ring-1 focus:ring-amber-400/50" />
+            {draft.trim() && <p className="text-[11px] text-[#9a9a9a]">{countChords(parseSheet(draft))} acordes reconhecidos</p>}
+            <div className="flex gap-2">
+              <button onClick={saveDraft} className="flex-1 h-11 rounded-full bg-amber-400 text-black text-sm font-bold flex items-center justify-center gap-1.5"><Check className="h-4 w-4" /> Salvar cifra</button>
+              <button onClick={() => setEditing(false)} className="h-11 px-4 rounded-full bg-white/10 text-sm font-semibold flex items-center gap-1"><X className="h-4 w-4" /> Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {!editing && !own && state === 'loading' && (
           <div className="flex flex-col items-center gap-3 py-10">
             <Loader2 className="h-6 w-6 animate-spin text-amber-400" />
             <p className="text-sm text-[#b3b3b3]">Buscando cifra...</p>
           </div>
         )}
 
-        {error === 'not_found' && (
-          <div className="flex flex-col items-center gap-3 py-8">
+        {/* Não achou: o músico resolve em 2 toques */}
+        {!editing && !own && (state === 'not_found' || state === 'error') && (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
             <Music className="h-8 w-8 text-[#535353]" />
-            <p className="text-sm text-[#808080] text-center">
-              Cifra não encontrada
-            </p>
-            <p className="text-xs text-[#808080] text-center">
-              Busque pelo artista e título
-            </p>
-            <form
-              className="w-full max-w-xs"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (manualQuery.trim()) {
-                  const parts = manualQuery.split(/\s*[-–]\s*/)
-                  const a = parts.length > 1 ? parts[0].trim() : track.artist
-                  const t = parts.length > 1 ? parts[1].trim() : manualQuery.trim()
-                  fetchCifra(a, t, track.id + '_manual')
-                }
-              }}
-            >
+            <p className="text-sm text-white font-semibold">{state === 'error' ? 'Sem conexão para buscar a cifra' : 'Ainda não temos a cifra desta música'}</p>
+            <p className="text-xs text-[#9a9a9a] max-w-xs">Abra no Cifra Club, copie a cifra e cole aqui. Ela fica salva no aparelho e muda de tom junto com a música.</p>
+            <div className="flex flex-col gap-2 w-full max-w-xs">
+              <a href={cifraClubUrl(track.artist, track.title)} target="_blank" rel="noopener noreferrer"
+                className="h-11 rounded-full bg-white/10 text-sm font-semibold flex items-center justify-center gap-2">
+                <ExternalLink className="h-4 w-4" /> Abrir no Cifra Club
+              </a>
+              <button onClick={pasteFromClipboard} className="h-11 rounded-full bg-amber-400 text-black text-sm font-bold flex items-center justify-center gap-2">
+                <ClipboardPaste className="h-4 w-4" /> Colar cifra
+              </button>
+            </div>
+            <form className="w-full max-w-xs mt-2" onSubmit={(e) => {
+              e.preventDefault()
+              const q = manualQuery.trim(); if (!q) return
+              const parts = q.split(/\s*[-–]\s*/)
+              const a = parts.length > 1 ? parts[0] : track.artist
+              const t = parts.length > 1 ? parts[1] : q
+              void fetchCifra(a, t, true)
+            }}>
+              <p className="text-[11px] text-[#808080] mb-1">ou busque com outro nome</p>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#808080]" />
-                <input
-                  type="text"
-                  value={manualQuery}
-                  onChange={(e) => setManualQuery(e.target.value)}
-                  placeholder="Ex: Jorge e Mateus - Enquanto Houver"
-                  className="w-full h-9 rounded-lg bg-[#2a2a2a] pl-9 pr-3 text-xs text-white placeholder:text-[#606060] border-0 outline-none focus:ring-1 focus:ring-white/20 transition"
-                />
+                <input type="text" value={manualQuery} onChange={(e) => setManualQuery(e.target.value)} placeholder="Artista - Música"
+                  className="w-full h-10 rounded-lg bg-[#2a2a2a] pl-9 pr-3 text-sm text-white placeholder:text-[#606060] outline-none focus:ring-1 focus:ring-white/20" />
               </div>
-              <button
-                type="submit"
-                disabled={!manualQuery.trim()}
-                className="mt-2 w-full h-8 rounded-full text-xs font-semibold bg-amber-400 text-black hover:bg-amber-300 disabled:opacity-30 disabled:cursor-default transition-colors"
-              >
-                Buscar cifra
-              </button>
+              {state === 'error' && <button type="button" onClick={() => fetchCifra(track.artist, track.title, true)} className="mt-2 text-xs text-[#b3b3b3] underline">Tentar de novo</button>}
             </form>
           </div>
         )}
 
-        {error === 'fetch_error' && (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <p className="text-sm font-medium text-white">Erro ao buscar cifra</p>
-            <button
-              onClick={() => fetchCifra(track.artist, track.title, track.id)}
-              className="mt-1 h-8 rounded-full px-5 text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-colors"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        )}
-
-        {cifra && (
-          <div className="py-2">
-            {/* Track info */}
-            <div className="mb-4">
-              <p className="text-sm font-bold text-white">{cifra.title}</p>
-              <p className="text-xs text-[#808080]">{cifra.artist}</p>
-              {(cifra.tuning || cifra.capo) && (
-                <div className="flex gap-3 mt-2">
-                  {cifra.tuning && (
-                    <span className="text-[10px] text-[#b3b3b3] bg-white/5 px-2 py-0.5 rounded">
-                      Afinação: {cifra.tuning}
-                    </span>
-                  )}
-                  {cifra.capo && (
-                    <span className="text-[10px] text-[#b3b3b3] bg-white/5 px-2 py-0.5 rounded">
-                      {/^\d+$/.test(cifra.capo)
-                        ? `Capotraste: ${cifra.capo}ª casa`
-                        : transpose !== 0
-                          ? `Tom: ${cifra.capo.replace(/[A-G][#b]?m?/g, k => transposeKey(k, transpose))} (original ${cifra.capo})`
-                          : `Tom: ${cifra.capo}`}
-                    </span>
-                  )}
-                </div>
+        {!editing && hasSheet && (
+          <div className="py-3">
+            <ChordSheet content={content} transpose={transpose} fontSize={FONT_SIZES[fontIdx]} />
+            <div className="flex flex-wrap justify-center gap-2 pt-6">
+              <button onClick={() => startEdit(content.replace(/⟨([^⟩]*)⟩/g, '$1'))}
+                className="flex items-center gap-1.5 text-xs font-medium text-[#b3b3b3] bg-white/5 px-3 py-2 rounded-lg"><Pencil className="h-3.5 w-3.5" /> Editar cifra</button>
+              {own ? (
+                <button onClick={() => { removeOwn(track.id); toast('Cifra removida.') }}
+                  className="flex items-center gap-1.5 text-xs font-medium text-[#b3b3b3] bg-white/5 px-3 py-2 rounded-lg"><Trash2 className="h-3.5 w-3.5" /> Remover minha cifra</button>
+              ) : (
+                <button onClick={pasteFromClipboard}
+                  className="flex items-center gap-1.5 text-xs font-medium text-[#b3b3b3] bg-white/5 px-3 py-2 rounded-lg"><ClipboardPaste className="h-3.5 w-3.5" /> Colar outra cifra</button>
               )}
+              <a href={cifraClubUrl(track.artist, track.title)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs font-medium text-[#b3b3b3] bg-white/5 px-3 py-2 rounded-lg"><ExternalLink className="h-3.5 w-3.5" /> Cifra Club</a>
             </div>
-
-            {/* Chord content */}
-            <pre
-              className="whitespace-pre-wrap leading-relaxed font-mono overflow-x-auto"
-              style={{ fontSize: `${fontSize}px` }}
-            >
-              {cifra.content.split(/⟨([^⟩]*)⟩/).map((part, i) =>
-                i % 2 === 1
-                  ? <span key={i} className="font-bold text-amber-400">{transposeChord(part, transpose)}</span>
-                  : <span key={i} className="text-[#e0e0e0]">{part}</span>
-              )}
-            </pre>
-          </div>
-        )}
-
-        {cifra && (
-          <div className="flex justify-center py-4">
-            <button
-              onClick={() => {
-                setManualQuery('')
-                setCifra(null)
-                setError('not_found')
-                setLoadedTrackId(track.id + '_reset')
-              }}
-              className="flex items-center gap-2 text-sm font-medium text-[#b3b3b3] hover:text-white bg-white/5 hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Buscar outra cifra
-            </button>
           </div>
         )}
       </div>

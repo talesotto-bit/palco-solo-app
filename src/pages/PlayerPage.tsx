@@ -1,12 +1,14 @@
 import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import {
-  Mic2, Layers, Music2,
-  ArrowLeft, AlertCircle, ChevronDown, ChevronUp,
-  Gauge, Heart, Save, Check, Download, Loader2,
+  Mic2, Layers, Music2, ArrowLeft, AlertCircle, Heart, Download, Loader2, ListPlus, RotateCcw,
+  AlignLeft, Guitar, Gauge, SlidersHorizontal,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { usePlayerStore } from '@/store/playerStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
 import { useTrackSettingsStore } from '@/store/trackSettingsStore'
+import { useAddToShow } from '@/store/addToShowStore'
 import { PlayerControls } from '@/components/player/PlayerControls'
 import { ProgressBar } from '@/components/player/ProgressBar'
 import { PitchControl } from '@/components/player/PitchControl'
@@ -15,9 +17,9 @@ import { StemMixer } from '@/components/player/StemMixer'
 import { LyricsPanel } from '@/components/player/LyricsPanel'
 import { CifrasPanel } from '@/components/player/CifrasPanel'
 import { useCoverArt } from '@/hooks/useCoverArt'
-import { semitonesToLabel, speedToLabel } from '@/lib/utils'
-import { useState } from 'react'
-import { cn } from '@/lib/utils'
+import { semitonesToLabel, speedToLabel, cn } from '@/lib/utils'
+
+type Tab = 'letra' | 'cifra' | 'tom' | 'mixer'
 
 export default function PlayerPage() {
   const navigate = useNavigate()
@@ -25,18 +27,15 @@ export default function PlayerPage() {
   const pitch = usePlayerStore(s => s.pitch)
   const speed = usePlayerStore(s => s.speed)
   const playbackState = usePlayerStore(s => s.playbackState)
-  const stemStates = usePlayerStore(s => s.stemStates)
+  const loadProgress = usePlayerStore(s => s.loadProgress)
   const error = usePlayerStore(s => s.error)
-  const toggleFav = useFavoritesStore(s => s.toggle)
-  const isFav = useFavoritesStore(s => s.isFavorite)
-  const saveSettings = useTrackSettingsStore(s => s.save)
-  const hasSaved = useTrackSettingsStore(s => s.has)
-  const removeSettings = useTrackSettingsStore(s => s.remove)
   const isExporting = usePlayerStore(s => s.isExporting)
-  const downloadMix = usePlayerStore(s => s.downloadMix)
-  const [showTuning, setShowTuning] = useState(true)
-  const [justSaved, setJustSaved] = useState(false)
-  const [rightTab, setRightTab] = useState<'letra' | 'cifra'>('letra')
+  const toggleFav = useFavoritesStore(s => s.toggle)
+  const isFav = useFavoritesStore(s => (track ? s.ids.includes(track.id) : false))
+  const hasSaved = useTrackSettingsStore(s => (track ? !!s.settings[track.id] : false))
+  const removeSettings = useTrackSettingsStore(s => s.remove)
+  const openAddToShow = useAddToShow(s => s.open)
+  const [tab, setTab] = useState<Tab>('letra')
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
   if (!track) {
@@ -46,253 +45,142 @@ export default function PlayerPage() {
           <Music2 className="h-10 w-10 text-[#535353]" />
         </div>
         <div className="text-center">
-          <h2 className="text-xl font-bold text-white">Nenhuma faixa carregada</h2>
-          <p className="text-[#b3b3b3] text-sm mt-2 max-w-xs">
-            Selecione uma faixa na biblioteca para comecar.
-          </p>
+          <h2 className="text-xl font-bold text-white">Escolha uma música</h2>
+          <p className="text-[#b3b3b3] text-sm mt-2 max-w-xs">Abra uma música da biblioteca ou de um show para ajustar tom, mixer, letra e cifra.</p>
         </div>
-        <button
-          onClick={() => navigate('/app/library')}
-          className="h-10 rounded-full px-8 text-sm font-bold bg-white text-black hover:scale-105 transition-transform"
-        >
-          Abrir Biblioteca
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => navigate('/app/library')} className="h-11 rounded-full px-6 text-sm font-bold bg-white text-black">Abrir biblioteca</button>
+          <button onClick={() => navigate('/app/shows')} className="h-11 rounded-full px-6 text-sm font-bold bg-white/10 text-white">Meus shows</button>
+        </div>
       </div>
     )
   }
 
   const isPlaying = playbackState === 'playing'
+  const isLoading = playbackState === 'loading'
+  const restoreOriginal = () => {
+    const s = usePlayerStore.getState()
+    s.resetPitch(); s.resetSpeed(); s.resetMix()
+    removeSettings(track.id)
+    toast('Música de volta ao original')
+  }
+
+  const tabs: [Tab, string, typeof AlignLeft][] = [['letra', 'Letra', AlignLeft], ['cifra', 'Cifra', Guitar], ['tom', 'Tom', Gauge], ['mixer', 'Mixer', SlidersHorizontal]]
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className={cn(
-        'min-h-full transition-colors duration-1000',
-        isPlaying
-          ? 'bg-gradient-to-b from-[#1e3a2f] via-[#171717] to-[#121212]'
-          : 'bg-gradient-to-b from-[#2a2a2a] via-[#171717] to-[#121212]'
-      )}>
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-5">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 text-[#b3b3b3] hover:text-white transition-colors text-sm font-medium"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">Voltar</span>
+      <div className={cn('min-h-full transition-colors duration-1000',
+        isPlaying ? 'bg-gradient-to-b from-[#1e3a2f] via-[#171717] to-[#121212]' : 'bg-gradient-to-b from-[#2a2a2a] via-[#171717] to-[#121212]')}>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-6">
+          {/* Topo */}
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => navigate(-1)} className="h-10 -ml-2 px-2 flex items-center gap-2 text-[#b3b3b3] hover:text-white text-sm font-medium">
+              <ArrowLeft className="h-5 w-5" /><span className="hidden sm:inline">Voltar</span>
             </button>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => navigate('/app/performance')}
-                className="flex items-center gap-2 h-8 rounded-full px-4 text-xs font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors"
-              >
-                <Mic2 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Modo Palco</span>
-              </button>
-            </div>
+            <button onClick={() => navigate('/app/performance')} className="flex items-center gap-2 h-9 rounded-full px-4 text-xs font-bold bg-white/10 text-white hover:bg-white/20">
+              <Mic2 className="h-4 w-4" /> Modo Palco
+            </button>
           </div>
 
-          {/* Error */}
-          {error && (
-            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 mb-5">
-              <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
-              <p className="text-sm text-red-300">{error}</p>
-            </div>
-          )}
-
-          {/* Main two-column layout: controls left, lyrics right */}
-          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
-            {/* LEFT COLUMN — player controls */}
-            <div className="flex-1 min-w-0 space-y-5 md:space-y-6">
-              {/* Album art + track info */}
-              <div className="flex flex-col md:flex-row gap-5 md:gap-8 items-start">
-                {/* Album art */}
-                <div className="w-full max-w-[200px] mx-auto md:mx-0 md:max-w-none md:w-56 shrink-0">
+          <div className="flex flex-col lg:flex-row gap-5 lg:gap-8">
+            {/* Coluna principal */}
+            <div className="flex-1 min-w-0 space-y-4 md:space-y-6">
+              <div className="flex gap-4 md:gap-8 items-center md:items-start">
+                <div className="w-24 md:w-56 shrink-0">
                   <div className="relative aspect-square rounded-lg overflow-hidden shadow-2xl shadow-black/60">
-                    <img
-                      src={coverUrl}
-                      alt={track.title}
-                      className="h-full w-full object-cover bg-[#2a2a2a]"
-                    />
+                    <img src={coverUrl} alt={track.title} className="h-full w-full object-cover bg-[#2a2a2a]" />
                     {isPlaying && (
-                      <div className="absolute bottom-3 left-3 flex items-end gap-1 h-5">
-                        <span className="eq-bar w-1" style={{ animationDuration: '0.6s' }} />
-                        <span className="eq-bar w-1" style={{ animationDuration: '0.8s' }} />
-                        <span className="eq-bar w-1" style={{ animationDuration: '0.5s' }} />
-                        <span className="eq-bar w-1" style={{ animationDuration: '0.7s' }} />
+                      <div className="absolute bottom-2 left-2 flex items-end gap-1 h-4">
+                        <span className="eq-bar w-1" /><span className="eq-bar w-1" style={{ animationDuration: '0.8s' }} /><span className="eq-bar w-1" style={{ animationDuration: '0.5s' }} />
                       </div>
                     )}
                   </div>
                 </div>
-
-                {/* Track info */}
-                <div className="flex-1 min-w-0 w-full">
-                  <h1 className="text-lg md:text-2xl font-extrabold text-white leading-tight line-clamp-2">
-                    {track.title}
-                  </h1>
-                  <p className="text-sm text-[#b3b3b3] mt-1">{track.artist}</p>
-
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/10 text-white">
-                      {track.genreLabel}
-                    </span>
-                    {track.hasStems && (
-                      <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">
-                        <Layers className="h-3 w-3" />
-                        {track.stems.length} stems
-                      </span>
-                    )}
-                    {pitch !== 0 && (
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">
-                        {semitonesToLabel(pitch)}
-                      </span>
-                    )}
-                    {speed !== 1 && (
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/10 text-white/70">
-                        {speedToLabel(speed)}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <button
-                      onClick={() => toggleFav(track.id)}
-                      className="flex items-center gap-1.5 h-8 rounded-full px-3 text-xs font-semibold transition-colors bg-white/5 hover:bg-white/10"
-                    >
-                      <Heart className={cn(
-                        'h-3.5 w-3.5 transition-colors',
-                        isFav(track.id) ? 'fill-red-500 text-red-500' : 'text-[#b3b3b3]'
-                      )} />
-                      <span className={cn('hidden sm:inline', isFav(track.id) ? 'text-red-400' : 'text-[#b3b3b3]')}>
-                        {isFav(track.id) ? 'Favoritada' : 'Favoritar'}
-                      </span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        if (hasSaved(track.id)) {
-                          removeSettings(track.id)
-                        } else {
-                          saveSettings(track.id, pitch, speed, stemStates)
-                          setJustSaved(true)
-                          setTimeout(() => setJustSaved(false), 2000)
-                        }
-                      }}
-                      className={cn(
-                        'flex items-center gap-1.5 h-8 rounded-full px-3 text-xs font-semibold transition-colors',
-                        hasSaved(track.id)
-                          ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] hover:bg-red-500/20 hover:text-red-400'
-                          : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
-                      )}
-                    >
-                      {justSaved ? (
-                        <><Check className="h-3.5 w-3.5" /> Salvo!</>
-                      ) : hasSaved(track.id) ? (
-                        <><Save className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Ajustes Salvos</span></>
-                      ) : (
-                        <><Save className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Salvar</span></>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={downloadMix}
-                      disabled={isExporting || playbackState === 'loading'}
-                      className={cn(
-                        'flex items-center gap-1.5 h-8 rounded-full px-3 text-xs font-semibold transition-colors',
-                        isExporting
-                          ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] cursor-wait'
-                          : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10'
-                      )}
-                    >
-                      {isExporting ? (
-                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> <span className="hidden sm:inline">Exportando...</span></>
-                      ) : (
-                        <><Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Baixar</span></>
-                      )}
-                    </button>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-xl md:text-3xl font-extrabold text-white leading-tight line-clamp-2">{track.title}</h1>
+                  <p className="text-sm text-[#b3b3b3] mt-0.5 truncate">{track.artist}</p>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    {track.hasStems && <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]"><Layers className="h-3 w-3" />{track.stems.length} pistas</span>}
+                    {track.keyNote && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/10 text-white">Tom {track.keyNote}</span>}
+                    {pitch !== 0 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">{semitonesToLabel(pitch)}</span>}
+                    {speed !== 1 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/10 text-white/70">{speedToLabel(speed)}</span>}
                   </div>
                 </div>
               </div>
 
-              {/* Progress */}
-              <ProgressBar />
-
-              {/* Controls */}
-              <PlayerControls size="large" />
-
-              {/* Pitch & Speed */}
-              <button
-                onClick={() => setShowTuning(!showTuning)}
-                className="flex items-center gap-2 text-sm font-semibold text-[#b3b3b3] hover:text-white transition-colors"
-              >
-                <Gauge className="h-4 w-4" />
-                Tom & Velocidade
-                {(pitch !== 0 || speed !== 1) && (
-                  <span className="text-[hsl(var(--primary))] text-xs">
-                    {pitch !== 0 && semitonesToLabel(pitch)}
-                    {pitch !== 0 && speed !== 1 && ' · '}
-                    {speed !== 1 && speedToLabel(speed)}
-                  </span>
+              {/* Ações */}
+              <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
+                <button onClick={() => openAddToShow(track)} className="flex items-center gap-1.5 h-9 rounded-full px-3.5 text-xs font-bold bg-white text-black shrink-0">
+                  <ListPlus className="h-4 w-4" /> Adicionar ao show
+                </button>
+                <button onClick={() => toggleFav(track.id)} className="flex items-center gap-1.5 h-9 rounded-full px-3 text-xs font-semibold bg-white/[0.07] shrink-0">
+                  <Heart className={cn('h-4 w-4', isFav ? 'fill-red-500 text-red-500' : 'text-[#b3b3b3]')} />
+                  <span className={isFav ? 'text-red-400' : 'text-[#cfcfcf]'}>{isFav ? 'Favorita' : 'Favoritar'}</span>
+                </button>
+                {hasSaved && (
+                  <button onClick={restoreOriginal} className="flex items-center gap-1.5 h-9 rounded-full px-3 text-xs font-semibold bg-white/[0.07] text-[#cfcfcf] shrink-0">
+                    <RotateCcw className="h-4 w-4" /> Voltar ao original
+                  </button>
                 )}
-                {showTuning ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
+                <button onClick={() => void usePlayerStore.getState().downloadMix()} disabled={isExporting || isLoading}
+                  className="flex items-center gap-1.5 h-9 rounded-full px-3 text-xs font-semibold bg-white/[0.07] text-[#cfcfcf] shrink-0 disabled:opacity-40">
+                  {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} {isExporting ? 'Gerando MP3...' : 'Baixar MP3'}
+                </button>
+              </div>
 
-              {showTuning && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
-                  <div className="rounded-lg bg-white/5 p-4">
-                    <PitchControl />
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-4">
-                    <SpeedControl />
-                  </div>
+              {error && (
+                <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2.5">
+                  <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+                  <p className="text-sm text-red-300 flex-1">{error}</p>
+                  <button onClick={() => void usePlayerStore.getState().play()} className="h-8 px-3 rounded-full bg-white/10 text-xs font-bold shrink-0">Tentar de novo</button>
                 </div>
               )}
 
-              <div className="flex items-center justify-between rounded-lg bg-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/10 px-4 py-2.5">
-                <p className="text-[11px] text-[#b3b3b3]">
-                  Remova o <span className="font-bold text-white">Click</span> para uma melhor experiencia
-                </p>
-                <div className="flex items-center gap-2 text-[10px] text-[#808080] shrink-0 ml-3">
-                  <span><span className="inline-flex items-center justify-center h-4 w-4 rounded bg-white/10 text-[9px] font-bold text-white mr-0.5">M</span> Mute</span>
-                  <span><span className="inline-flex items-center justify-center h-4 w-4 rounded bg-white/10 text-[9px] font-bold text-white mr-0.5">S</span> Solo</span>
+              {/* Tocar */}
+              <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-[#171717]/90 backdrop-blur lg:static lg:bg-transparent lg:backdrop-blur-0 lg:p-0 lg:mx-0 space-y-2">
+                <ProgressBar />
+                <PlayerControls size="large" />
+                {isLoading && (
+                  <div className="flex items-center gap-2 text-xs text-[#b3b3b3]">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[hsl(var(--primary))]" />
+                    <span>Preparando as pistas{loadProgress ? ` (${loadProgress.loaded}/${loadProgress.total})` : ''}...</span>
+                    {loadProgress && <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-[hsl(var(--primary))] transition-all" style={{ width: `${(loadProgress.loaded / loadProgress.total) * 100}%` }} /></div>}
+                  </div>
+                )}
+                {/* Abas no celular */}
+                <div className="flex gap-1 lg:hidden pt-1">
+                  {tabs.map(([id, label, Icon]) => (
+                    <button key={id} onClick={() => setTab(id)}
+                      className={cn('flex-1 h-9 rounded-full text-[12px] font-bold flex items-center justify-center gap-1', tab === id ? 'bg-white text-black' : 'bg-white/[0.07] text-[#cfcfcf]')}>
+                      <Icon className="h-3.5 w-3.5" /> {label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Stem Mixer */}
-              <div id="player-mixer" className="scroll-mt-4">
+              <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-4', tab !== 'tom' && 'hidden lg:grid')}>
+                <div className="rounded-lg bg-white/5 p-4"><PitchControl /></div>
+                <div className="rounded-lg bg-white/5 p-4"><SpeedControl /></div>
+              </div>
+
+              <div id="player-mixer" className={cn('scroll-mt-4', tab !== 'mixer' && 'hidden lg:block')}>
+                <p className="text-[11px] text-[#9a9a9a] mb-2">Click e contagem começam desligados (som de show na caixa). Ligue para ouvir no fone. Tudo que você muda fica salvo nesta música.</p>
                 <StemMixer />
               </div>
             </div>
 
-            {/* RIGHT COLUMN — lyrics/cifras tabs */}
-            <div className="lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:sticky lg:top-4 lg:h-[calc(100vh-6rem)] flex flex-col">
-              <div className="flex rounded-t-lg overflow-hidden shrink-0">
-                <button
-                  onClick={() => setRightTab('letra')}
-                  className={cn(
-                    'flex-1 py-2.5 text-xs font-bold transition-colors',
-                    rightTab === 'letra'
-                      ? 'bg-white/10 text-white'
-                      : 'bg-white/[0.03] text-[#808080] hover:text-white hover:bg-white/5'
-                  )}
-                >
-                  Letra
-                </button>
-                <button
-                  onClick={() => setRightTab('cifra')}
-                  className={cn(
-                    'flex-1 py-2.5 text-xs font-bold transition-colors',
-                    rightTab === 'cifra'
-                      ? 'bg-white/10 text-white'
-                      : 'bg-white/[0.03] text-[#808080] hover:text-white hover:bg-white/5'
-                  )}
-                >
-                  Cifra
-                </button>
+            {/* Letra / cifra */}
+            <div className={cn('lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:sticky lg:top-4 lg:h-[calc(100vh-6rem)] flex flex-col', tab !== 'letra' && tab !== 'cifra' && 'hidden lg:flex')}>
+              <div className="hidden lg:flex rounded-t-lg overflow-hidden shrink-0">
+                {(['letra', 'cifra'] as const).map(id => (
+                  <button key={id} onClick={() => setTab(id)}
+                    className={cn('flex-1 py-2.5 text-xs font-bold transition-colors', (tab === id || (id === 'letra' && tab !== 'cifra')) ? 'bg-white/10 text-white' : 'bg-white/[0.03] text-[#808080] hover:text-white')}>
+                    {id === 'letra' ? 'Letra' : 'Cifra'}
+                  </button>
+                ))}
               </div>
-              <div className="flex-1 min-h-0">
-                {rightTab === 'letra' ? <LyricsPanel /> : <CifrasPanel />}
+              <div className="flex-1 min-h-0 min-h-[60vh] lg:min-h-0">
+                {tab === 'cifra' ? <CifrasPanel /> : <LyricsPanel />}
               </div>
             </div>
           </div>

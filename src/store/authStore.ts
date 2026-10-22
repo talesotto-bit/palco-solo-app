@@ -4,7 +4,6 @@
  */
 
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase'
 import type { User as SupaUser } from '@supabase/supabase-js'
 
 export type PlanType = 'none' | 'basic' | 'professional' | 'advanced' | 'pro_max'
@@ -48,6 +47,8 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     // Guard: only initialize once
     if (get().isInitialized) return
 
+    // carrega o Supabase só aqui (tela de administração): o app do cliente não precisa dele
+    const { supabase } = await import('@/lib/supabase')
     try {
       const sessionPromise = supabase.auth.getSession()
       const timeout = new Promise<never>((_, reject) =>

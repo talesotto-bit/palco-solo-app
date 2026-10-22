@@ -164,7 +164,7 @@ export function PitchControl({ compact = false }: PitchControlProps) {
                   : 'bg-white/5 text-[#b3b3b3] hover:bg-white/10 hover:text-white'
               )}
             >
-              {v === 0 ? '0' : formatTons(v).replace(/ tons?$/, '')}
+              {v === 0 ? 'Original' : formatTons(v)}
             </button>
           ))}
         </div>

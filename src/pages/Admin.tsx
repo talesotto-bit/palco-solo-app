@@ -25,6 +25,8 @@ const PLAN_OPTIONS: { value: PlanType; label: string }[] = [
 
 export default function Admin() {
   const user = useAuthStore(s => s.user)
+  const initAuth = useAuthStore(s => s.initialize)
+  useEffect(() => { void initAuth() }, [initAuth])
   const admin = isAdmin(user)
 
   const [buyers, setBuyers] = useState<ApprovedBuyer[]>([])

@@ -12,7 +12,6 @@
  */
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
-import { encodeMp3 } from '@/lib/mp3Encoder'
 import { getOfflineAudio, putOfflineAudio } from '@/lib/offlineAudio'
 
 /**
@@ -40,6 +39,7 @@ type StretchNode = AudioWorkletNode & {
 
 interface LoadedStem {
   id: string
+  label: string
   buffer: AudioBuffer
   /** segundos da música em que o buffer começa (silêncio inicial cortado) */
   offset: number
@@ -235,7 +235,7 @@ class AudioEngine {
     const gain = ctx.createGain()
     gain.gain.value = this.targetGain(stem.id)
     gain.connect(this.mixBus!)
-    return { id: stem.id, buffer: opt.buffer, offset: opt.offset, gain, source: null }
+    return { id: stem.id, label: stem.label, buffer: opt.buffer, offset: opt.offset, gain, source: null }
   }
 
   async load(stems: Stem[], initialStates?: Record<string, StemState>): Promise<void> {
@@ -665,6 +665,7 @@ class AudioEngine {
         node.connect(stCtx.destination)
         mixed = await stCtx.startRendering()
       }
+      const { encodeMp3 } = await import('@/lib/mp3Encoder')
       return encodeMp3(mixed)
     } catch (err) {
       console.error('[AudioEngine] exportar falhou:', err)
@@ -687,6 +688,18 @@ class AudioEngine {
   }
 
   async dispose(): Promise<void> { this.loadId++; this.disposeTrack() }
+
+  /**
+   * Onde a voz guia começa a cantar (segundos), para alinhar a letra sincronizada com o playback.
+   * null se a música não tem voz guia.
+   */
+  voiceStart(): number | null {
+    for (const st of this.stems.values()) {
+      const s = `${st.id} ${st.label}`.toLowerCase()
+      if (/(voz|guia|vocal|voice|lead)/.test(s) && !/(back|coro|choir|bv|backing)/.test(s)) return st.offset + 0.05
+    }
+    return null
+  }
 
   /** Diagnóstico (usado nos testes e no suporte) */
   stats() {

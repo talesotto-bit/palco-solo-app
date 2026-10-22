@@ -1,10 +1,14 @@
 import { Outlet, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useAllTracks } from '@/hooks/useAllTracks'
 import { Sidebar } from './Sidebar'
 import { MobileNav } from './MobileNav'
 import { MiniPlayer } from './MiniPlayer'
 import { usePlayerStore } from '@/store/playerStore'
 import { cn } from '@/lib/utils'
 import { InstallBanner } from '@/components/InstallApp'
+import { AddToShowSheet } from '@/components/shows/AddToShowSheet'
+import { useAddToShow } from '@/store/addToShowStore'
 
 export function AppLayout() {
   const isPerformanceMode = usePlayerStore(s => s.isPerformanceMode)
@@ -12,6 +16,11 @@ export function AppLayout() {
   const location = useLocation()
   const isPlayerPage = location.pathname.startsWith('/app/player')
   const showMiniPlayer = hasTrack && !isPlayerPage && !isPerformanceMode
+  const addTrack = useAddToShow(s => s.track)
+  const { byId } = useAllTracks()
+  // reabre a última música (o celular pode recarregar a página em segundo plano)
+  useEffect(() => { if (byId.size) void usePlayerStore.getState().restoreLastTrack(id => byId.get(id)) }, [byId])
+  const closeAdd = useAddToShow(s => s.close)
 
   return (
     <div className="flex flex-col h-dvh overflow-hidden bg-black">
@@ -47,6 +56,7 @@ export function AppLayout() {
         {/* Mobile bottom nav */}
         {!isPerformanceMode && <MobileNav />}
       </div>
+      <AddToShowSheet track={addTrack} onClose={closeAdd} />
     </div>
   )
 }
