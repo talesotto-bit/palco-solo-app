@@ -416,7 +416,7 @@ export default function Performance() {
         </div>
       </div>
 
-      {qr && pedidosLink && <StageQR link={pedidosLink} artist={pedidosArtist} onClose={() => setQr(false)} />}
+      {qr && pedidosLink && <StageQR link={pedidosLink} artist={pedidosArtist} theme={usePedidosStore.getState().profile.theme} onClose={() => setQr(false)} />}
       <Sheet open={mixer} onClose={() => setMixer(false)} title="Mixer da música">
         <div className="p-3" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}><StemMixer /></div>
       </Sheet>

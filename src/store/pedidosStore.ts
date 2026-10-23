@@ -11,6 +11,8 @@ export interface PedidosProfile {
   message: string
   showIds: string[]
   includeFavorites: boolean
+  theme?: number
+  instagram?: string
 }
 
 interface PedidosState {
@@ -25,7 +27,7 @@ export const usePedidosStore = create<PedidosState>()(
     (set) => ({
       profile: { artist: '', whatsapp: '', pixKey: '', payeeName: '', city: '', message: 'Peça sua música! Gorjetas são muito bem-vindas 🎤', showIds: [], includeFavorites: false },
       link: null,
-      setProfile: (patch) => set(s => ({ profile: { ...s.profile, ...patch }, link: null })),
+      setProfile: (patch) => set(s => ({ profile: { ...s.profile, ...patch } })),
       setLink: (link) => set({ link }),
     }),
     { name: 'pedidos-v1' }

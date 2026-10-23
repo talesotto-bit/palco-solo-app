@@ -12,6 +12,8 @@ export interface RequestPage {
   c?: string       // cidade (exigida pelo Pix)
   m?: string       // recado do músico para o público
   s: string[]      // repertório: "Música|Artista"
+  t?: number       // tema de cor
+  ig?: string      // Instagram do músico (sem @)
 }
 
 function toB64Url(bytes: Uint8Array): string {
