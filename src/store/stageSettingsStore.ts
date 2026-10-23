@@ -13,6 +13,10 @@ interface StageSettings {
   /** volume igual entre as músicas (normalização) */
   normalize: boolean
   view: StageView
+  /** luzes de palco que reagem ao som */
+  lights: boolean
+  /** plateia virtual: aplausos no fim de cada música (para ensaio) */
+  applause: boolean
   set: (patch: Partial<Omit<StageSettings, 'set'>>) => void
 }
 
@@ -25,6 +29,8 @@ export const useStageSettings = create<StageSettings>()(
       lyricScale: 1,
       normalize: true,
       view: 'letra',
+      lights: true,
+      applause: false,
       set: (patch) => set(patch),
     }),
     { name: 'stage-settings-v1' }

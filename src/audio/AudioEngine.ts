@@ -188,6 +188,8 @@ class AudioEngine {
   private mixBus: GainNode | null = null
   private norm: GainNode | null = null
   private limiter: DynamicsCompressorNode | null = null
+  private analyser: AnalyserNode | null = null
+  private levelBuf: Float32Array | null = null
   private normalizeOn = true
   private normGain = 1
   private master: GainNode | null = null
@@ -245,7 +247,11 @@ class AudioEngine {
     this.limiter.attack.value = 0.002; this.limiter.release.value = 0.15
     this.master.connect(this.norm)
     this.norm.connect(this.limiter)
-    this.limiter.connect(this.ctx.destination)
+    // medidor de nível (luzes do palco reagem ao som) — fica no caminho, não altera o áudio
+    this.analyser = this.ctx.createAnalyser()
+    this.analyser.fftSize = 1024
+    this.limiter.connect(this.analyser)
+    this.analyser.connect(this.ctx.destination)
     this.mixBus = this.ctx.createGain()
     this.mixBus.connect(this.master)
     return this.ctx
@@ -551,6 +557,19 @@ class AudioEngine {
     if (this.rawPosition() >= this.loop.b) { this.restartAt(this.loop.a); this.emit({ type: 'loopwrap' }); return true }
     return false
   }
+
+  /** Nível do som agora (0 a ~1), para as luzes do palco */
+  getLevel(): number {
+    if (!this.analyser || !this._playing) return 0
+    if (!this.levelBuf || this.levelBuf.length !== this.analyser.fftSize) this.levelBuf = new Float32Array(this.analyser.fftSize)
+    this.analyser.getFloatTimeDomainData(this.levelBuf as Float32Array<ArrayBuffer>)
+    let sq = 0
+    for (let i = 0; i < this.levelBuf.length; i += 2) sq += this.levelBuf[i] * this.levelBuf[i]
+    return Math.sqrt(sq / (this.levelBuf.length / 2))
+  }
+
+  /** Contexto de áudio (para efeitos do palco, como os aplausos de ensaio) */
+  get audioContext(): AudioContext | null { return this.ctx }
 
   /** Liga/desliga o "volume igual entre as músicas" */
   setNormalize(on: boolean) { this.normalizeOn = on; this.updateNorm() }

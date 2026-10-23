@@ -5,13 +5,17 @@
  * - Atalhos de palco: voz guia, click, tom, contagem, avançar sozinho, mixer.
  * - Pedal Bluetooth/teclado: espaço = play/pausa, → = próxima, ← = anterior.
  * - Tela sempre acesa, relógio, tempo de show e bateria.
+ * - Clima de show: luzes que reagem ao som, abertura 3-2-1, troca de música, trava de tela,
+ *   encerramento e plateia virtual (aplausos) para ensaio.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, SkipBack, SkipForward, X, ListMusic, Mic, AlignLeft, Guitar, Minus, Plus,
   SlidersHorizontal, Timer, Repeat, Loader2, Maximize, BatteryMedium, AlertTriangle, StickyNote, QrCode,
+  Lock, Lightbulb, Hand,
 } from 'lucide-react'
+import { StageLights, ShowProgress, ShowIntro, NextUp, StageLock, ShowFinale, playApplause, FxChip } from '@/components/stage/StageFx'
 import { usePlayerStore } from '@/store/playerStore'
 import { useShowsStore } from '@/store/showsStore'
 import { useStageSettings, type StageView } from '@/store/stageSettingsStore'
@@ -193,7 +197,13 @@ export default function Performance() {
   const pedidosOn = useUnlocks(s => s.features.includes('pedidos'))
   const pedidosLink = usePedidosStore(s => s.link)
   const pedidosArtist = usePedidosStore(s => s.profile.artist)
-  const [showStart] = useState(() => Date.now())
+  const [locked, setLocked] = useState(false)
+  // abertura do show: só quando o palco abre parado (não ao voltar com a música tocando)
+  const [intro, setIntro] = useState(() => usePlayerStore.getState().playbackState !== 'playing' && (location.state as any)?.startIndex === undefined)
+  const [finale, setFinale] = useState(false)
+  const firstPlayAt = useRef<number | null>(null)
+  const played = useRef(new Set<string>())
+  const prevState = useRef(playbackState)
 
   // monta a fila do show (sem reiniciar se o show já está tocando)
   const showTracks = useMemo(() => (show?.songs || []).map(s => byId.get(s.trackId)).filter(Boolean) as Track[], [show?.songs, byId])
@@ -230,7 +240,26 @@ export default function Performance() {
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0
   const nextTrack = queue[queueIndex + 1]
   const note = show?.songs.find(s => s.trackId === track?.id)?.note
-  const elapsed = Math.floor((Date.now() - showStart) / 60000)
+  const elapsed = firstPlayAt.current ? Math.floor((Date.now() - firstPlayAt.current) / 60000) : 0
+  // previsão de término: o que falta desta música + as próximas + as pausas
+  const restSec = Math.max(0, duration - currentTime) + queue.slice(queueIndex + 1).reduce((n, t) => n + (t.durationSeconds || 210) + (settings.autoAdvance ? settings.advanceGap : 20), 0)
+  const endsAt = queue.length > 1 && queueIndex >= 0 ? new Date(Date.now() + restSec * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
+  const showMinutes = Math.round(showTracks.reduce((n, t) => n + (t.durationSeconds || 210) + settings.advanceGap, 0) / 60)
+
+  // momentos do show: conta o que foi tocado, aplausos no fim de cada música, encerramento
+  useEffect(() => {
+    const prev = prevState.current
+    prevState.current = playbackState
+    if (playbackState === 'playing') {
+      if (!firstPlayAt.current) firstPlayAt.current = Date.now()
+      if (track) played.current.add(track.id)
+      setIntro(false)
+    }
+    if (prev === 'playing' && playbackState === 'stopped') {
+      if (settings.applause) void playApplause()
+      if (queueIndex === queue.length - 1 && queue.length > 0) setFinale(true)
+    }
+  }, [playbackState]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // barra de progresso arrastável
   const barRef = useRef<HTMLDivElement>(null)
@@ -274,16 +303,19 @@ export default function Performance() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black text-white flex flex-col overflow-hidden select-none" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <div className="fixed inset-0 z-50 isolate bg-black text-white flex flex-col overflow-hidden select-none" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <StageLights seed={track?.id || show.id} on={settings.lights} />
+      <ShowProgress total={queue.length} index={queueIndex} progress={progress} />
       {/* Topo */}
       <div className="flex items-center gap-2 px-3 pt-2 shrink-0">
         <button onClick={() => navigate(-1)} aria-label="Sair do palco" className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center shrink-0"><X className="h-4 w-4" /></button>
         <div className="min-w-0 flex-1 text-[11px] text-white/50 leading-tight">
           <p className="truncate font-semibold text-white/70">{show.name}</p>
-          <p className="tabular-nums">{queueIndex >= 0 ? `Música ${queueIndex + 1} de ${queue.length}` : ''}{elapsed > 0 ? ` · ${elapsed} min de show` : ''}{bgProgress ? ` · pistas ${bgProgress.loaded}/${bgProgress.total}` : ''}</p>
+          <p className="tabular-nums truncate">{queueIndex >= 0 ? `Música ${queueIndex + 1}/${queue.length}` : ''}{elapsed > 0 ? ` · ${elapsed} min` : ''}{endsAt ? ` · fim ${endsAt}` : ''}{bgProgress ? ` · pistas ${bgProgress.loaded}/${bgProgress.total}` : ''}</p>
         </div>
         {battery !== null && <span className={cn('flex items-center gap-0.5 text-[11px] tabular-nums', battery <= 20 ? 'text-red-400' : 'text-white/50')}><BatteryMedium className="h-4 w-4" />{battery}%</span>}
         <span className="text-base font-bold tabular-nums">{clock}</span>
+        <button onClick={() => { setLocked(true); setMixer(false) }} aria-label="Travar a tela" className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center shrink-0"><Lock className="h-4 w-4" /></button>
         {document.documentElement.requestFullscreen && !document.fullscreenElement && (
           <button onClick={() => document.documentElement.requestFullscreen().catch(() => {})} aria-label="Tela cheia" className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center shrink-0"><Maximize className="h-4 w-4" /></button>
         )}
@@ -377,7 +409,8 @@ export default function Performance() {
         )}
 
         {/* Contagem regressiva para a próxima */}
-        {pendingAdvance && <AdvanceOverlay at={pendingAdvance.at} title={queue[pendingAdvance.index]?.title || ''} />}
+        {pendingAdvance && <NextUp key={pendingAdvance.at} at={pendingAdvance.at} track={queue[pendingAdvance.index]} index={pendingAdvance.index} total={queue.length}
+          onNow={() => P().advanceNow()} onHold={() => P().cancelAdvance()} />}
       </div>
 
       {/* Próxima */}
@@ -428,10 +461,23 @@ export default function Performance() {
           )}
           {track?.bpm ? <Chip on={settings.precount} onClick={() => P().togglePrecount()} icon={Timer} label="Contar 4" /> : null}
           <Chip on={false} onClick={() => setMixer(true)} icon={SlidersHorizontal} label="Mixer" />
+          <FxChip on={settings.lights} onClick={() => settings.set({ lights: !settings.lights })} icon={Lightbulb} label="Luzes" />
+          <FxChip onClick={() => void playApplause()} icon={Hand} label="👏 Aplausos" />
+          <FxChip on={settings.applause} onClick={() => settings.set({ applause: !settings.applause })} icon={Hand} label={settings.applause ? 'Plateia: ligada' : 'Plateia (ensaio)'} />
           <Chip on={false} onClick={() => { if (pedidosOn && pedidosLink) setQr(true); else navigate('/app/pedidos') }} icon={QrCode} label="QR Pedidos" />
         </div>
       </div>
 
+      {intro && showTracks.length > 0 && !finale && (
+        <ShowIntro name={show.name} venue={show.venue} songs={showTracks.length} minutes={showMinutes} firstTrack={queue[queueIndex] || showTracks[0]}
+          onStart={() => { setIntro(false); void P().play() }} onSkip={() => setIntro(false)} />
+      )}
+      {finale && (
+        <ShowFinale songs={played.current.size} minutes={elapsed}
+          onExit={() => { setFinale(false); navigate(-1) }}
+          onRestart={() => { setFinale(false); played.current.clear(); firstPlayAt.current = null; void P().playQueueIndex(0, { autoplay: false }); setIntro(true) }} />
+      )}
+      {locked && <StageLock onUnlock={() => setLocked(false)} />}
       {qr && pedidosLink && <StageQR link={pedidosLink} artist={pedidosArtist} theme={usePedidosStore.getState().profile.theme} onClose={() => setQr(false)} />}
       <Sheet open={mixer} onClose={() => setMixer(false)} title="Mixer da música">
         <div className="p-3" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}><StemMixer /></div>
@@ -448,24 +494,5 @@ function Chip({ on, onClick, icon: Icon, label, busy }: { on: boolean; onClick: 
         on ? 'bg-[hsl(var(--primary))] text-black' : 'bg-white/[0.08] text-white/80')}>
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />} {label}
     </button>
-  )
-}
-
-function AdvanceOverlay({ at, title }: { at: number; title: string }) {
-  const [left, setLeft] = useState(Math.max(0, Math.ceil((at - Date.now()) / 1000)))
-  useEffect(() => { const id = setInterval(() => setLeft(Math.max(0, Math.ceil((at - Date.now()) / 1000))), 200); return () => clearInterval(id) }, [at])
-  const P = usePlayerStore.getState
-  return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/85 backdrop-blur-sm px-6">
-      <div className="text-center">
-        <p className="text-sm font-bold uppercase tracking-widest text-white/50">Próxima música</p>
-        <p className="mt-2 text-3xl font-black leading-tight">{title}</p>
-        <p className="mt-4 text-7xl font-black tabular-nums text-[hsl(var(--primary))]">{left}</p>
-        <div className="mt-6 flex gap-3 justify-center">
-          <button onClick={() => P().advanceNow()} className="h-14 px-6 rounded-full bg-[hsl(var(--primary))] text-black text-lg font-bold flex items-center gap-2"><Play className="h-5 w-5 fill-current" /> Tocar agora</button>
-          <button onClick={() => P().cancelAdvance()} className="h-14 px-6 rounded-full bg-white/15 text-lg font-semibold">Segurar</button>
-        </div>
-      </div>
-    </div>
   )
 }
