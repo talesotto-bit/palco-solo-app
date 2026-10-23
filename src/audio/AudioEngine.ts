@@ -370,15 +370,19 @@ class AudioEngine {
 
     if (mixP) {
       // a prévia baixa sozinha primeiro (com a internet toda); as pistas começam em seguida
-      const mixStem = await Promise.race([mixP, new Promise<null>(r => setTimeout(() => r(null), 8000))])
-      if (id !== this.loadId) return
-      if (mixStem) {
+      const useMix = (mixStem: LoadedStem) => {
         this.mix = mixStem
         if (mixStem.buffer.duration > this._duration) this._duration = mixStem.buffer.duration
         this.emit({ type: 'preview', active: true })
         this.updateNorm()
         becomeReady()
       }
+      const mixStem = await Promise.race([mixP, new Promise<null>(r => setTimeout(() => r(null), 8000))])
+      if (id !== this.loadId) return
+      if (mixStem) useMix(mixStem)
+      // internet lenta: a prévia continua baixando junto com as pistas e toca assim que chegar
+      // (antes o app desistia dela e esperava as pistas, que podem levar bem mais)
+      else void mixP.then(m => { if (m && id === this.loadId && !isReady) useMix(m) })
     }
 
     const all = pool(now, fetchConcurrency(), async (s) => {
