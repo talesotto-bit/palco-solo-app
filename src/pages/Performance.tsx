@@ -178,6 +178,7 @@ export default function Performance() {
   const queue = usePlayerStore(s => s.queue)
   const queueIndex = usePlayerStore(s => s.queueIndex)
   const loadProgress = usePlayerStore(s => s.loadProgress)
+  const bgProgress = usePlayerStore(s => s.bgProgress)
   const loadingStems = usePlayerStore(s => s.loadingStems)
   const pendingAdvance = usePlayerStore(s => s.pendingAdvance)
   const error = usePlayerStore(s => s.error)
@@ -276,7 +277,7 @@ export default function Performance() {
         <button onClick={() => navigate(-1)} aria-label="Sair do palco" className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center shrink-0"><X className="h-4 w-4" /></button>
         <div className="min-w-0 flex-1 text-[11px] text-white/50 leading-tight">
           <p className="truncate font-semibold text-white/70">{show.name}</p>
-          <p className="tabular-nums">{queueIndex >= 0 ? `Música ${queueIndex + 1} de ${queue.length}` : ''}{elapsed > 0 ? ` · ${elapsed} min de show` : ''}</p>
+          <p className="tabular-nums">{queueIndex >= 0 ? `Música ${queueIndex + 1} de ${queue.length}` : ''}{elapsed > 0 ? ` · ${elapsed} min de show` : ''}{bgProgress ? ` · pistas ${bgProgress.loaded}/${bgProgress.total}` : ''}</p>
         </div>
         {battery !== null && <span className={cn('flex items-center gap-0.5 text-[11px] tabular-nums', battery <= 20 ? 'text-red-400' : 'text-white/50')}><BatteryMedium className="h-4 w-4" />{battery}%</span>}
         <span className="text-base font-bold tabular-nums">{clock}</span>

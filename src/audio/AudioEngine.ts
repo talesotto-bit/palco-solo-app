@@ -13,6 +13,7 @@
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
 import { getOfflineAudio, putOfflineAudio } from '@/lib/offlineAudio'
+import { detectInstrument } from '@/lib/stemDetection'
 
 /**
  * Signalsmith Stretch (MIT) é servido como arquivo estático em /vendor: o código dele é enviado
@@ -53,6 +54,7 @@ export type AudioEngineEvent =
   | { type: 'error'; message: string }
   | { type: 'loaded' }
   | { type: 'loading'; loaded?: number; total?: number }
+  | { type: 'background'; loaded: number; total: number }
   | { type: 'warning'; message: string }
   | { type: 'stemLoading'; id: string; active: boolean }
   | { type: 'pitchProcessing'; active: boolean }
@@ -61,13 +63,34 @@ type EventCallback = (event: AudioEngineEvent) => void
 export type MediaHandlers = Partial<Record<'play' | 'pause' | 'next' | 'prev' | 'seek', (arg?: number) => void>>
 
 const SILENCE = 0.001 // -60 dB
-const FETCH_CONCURRENCY = 4
+/**
+ * Quantas pistas baixar ao mesmo tempo. Na internet lenta, poucas de cada vez (a base chega primeiro e o
+ * play libera antes); na rápida, mais em paralelo.
+ */
+function fetchConcurrency(): number {
+  const c = (navigator as any).connection
+  const down = c?.downlink as number | undefined
+  if (c?.saveData) return 2
+  if (down !== undefined) return down < 3 ? 2 : down < 10 ? 3 : 6
+  return 4
+}
 const FADE = 0.025
 
 /** Pistas que não fazem parte do som do show e só carregam sob demanda */
 export function isSupportStem(stem: Pick<Stem, 'id' | 'label'>): boolean {
   const s = `${stem.id} ${stem.label}`.toLowerCase()
   return /\b(click|clique|metronomo|metrônomo|contagem|count|cue)\b|click-|contagem-|-click|-contagem/.test(s)
+}
+
+/** Ordem de carregamento: base rítmica primeiro, pistas desligadas por último */
+function stemPriority(stem: Stem, states: Record<string, StemState>): number {
+  if (states[stem.id]?.muted) return 9
+  const inst = detectInstrument(`${stem.label} ${stem.id}`.replace(/-/g, ' '))
+  if (inst === 'drums' || inst === 'percussion') return 0
+  if (inst === 'bass') return 1
+  if (inst === 'keys' || inst === 'acoustic' || inst === 'guitar' || inst === 'main') return 2
+  if (inst === 'voice') return 3
+  return 4
 }
 
 async function pool<T>(items: T[], limit: number, fn: (item: T, i: number) => Promise<void>) {
@@ -238,6 +261,10 @@ class AudioEngine {
     return { id: stem.id, label: stem.label, buffer: opt.buffer, offset: opt.offset, gain, source: null }
   }
 
+  /**
+   * Carrega a música. Libera o play assim que a base estiver pronta (bateria/baixo e boa parte das pistas);
+   * o resto continua baixando e entra sozinho, no ponto certo, enquanto a música toca.
+   */
   async load(stems: Stem[], initialStates?: Record<string, StemState>): Promise<void> {
     const id = ++this.loadId
     this.disposeTrack()
@@ -253,29 +280,65 @@ class AudioEngine {
       else now.push(s)
     }
     if (now.length === 0 && stems.length > 0) { now.push(stems[0]); this.pending.delete(stems[0].id) }
+    // base primeiro: bateria, baixo, harmonia; o que está desligado por último
+    now.sort((a, b) => stemPriority(a, this.stemStates) - stemPriority(b, this.stemStates))
 
-    let done = 0, failed = 0
-    await pool(now, FETCH_CONCURRENCY, async (s) => {
+    const need = Math.min(now.length, Math.max(2, Math.ceil(now.length * 0.4)))
+    const foundation = now.filter(s => stemPriority(s, this.stemStates) <= 1).slice(0, 2).map(s => s.id)
+    let done = 0, failed = 0, ok = 0
+    let markReady!: () => void
+    const ready = new Promise<void>(r => { markReady = r })
+    let isReady = false
+
+    const becomeReady = () => {
+      if (isReady || id !== this.loadId) return
+      if (this.stems.size === 0) return
+      isReady = true
+      this._loaded = true
+      this.anchorPos = 0
+      this.emit({ type: 'loaded' })
+      this.emit({ type: 'timeupdate', currentTime: 0, duration: this._duration })
+      markReady()
+    }
+
+    const all = pool(now, fetchConcurrency(), async (s) => {
       try {
         const loaded = await this.loadStem(s, id)
-        if (loaded && id === this.loadId) this.stems.set(s.id, loaded)
+        if (loaded && id === this.loadId) {
+          this.stems.set(s.id, loaded)
+          ok++
+          // chegou com a música tocando: entra sincronizada
+          if (this._playing && this.ctx) {
+            const when = this.ctx.currentTime + 0.05
+            this.startStem(loaded, this.anchorPos + (when - this.anchorCtxTime) * this._speed, when, this.ctx)
+          }
+        }
       } catch (err) {
         if (id === this.loadId) { failed++; console.error(`[AudioEngine] pista ${s.id} falhou:`, err) }
       }
       done++
-      if (id === this.loadId) this.emit({ type: 'loading', loaded: done, total: now.length })
+      if (id !== this.loadId) return
+      this.emit({ type: isReady ? 'background' : 'loading', loaded: done, total: now.length })
+      const hasBase = foundation.every(f => this.stems.has(f) || failed > 0)
+      if (!isReady && ok >= need && hasBase) becomeReady()
     })
-    if (id !== this.loadId) return
 
-    if (this.stems.size === 0) {
-      this.emit({ type: 'error', message: 'Não foi possível carregar a música. Verifique sua conexão e tente de novo.' })
-      return
+    await Promise.race([ready, all])
+    if (id !== this.loadId) return
+    if (!isReady) {
+      await all
+      if (id !== this.loadId) return
+      if (this.stems.size === 0) {
+        this.emit({ type: 'error', message: 'Não foi possível carregar a música. Verifique sua conexão e tente de novo.' })
+        return
+      }
+      becomeReady()
     }
-    if (failed > 0) this.emit({ type: 'warning', message: `${failed} pista(s) não carregaram. A música toca com as demais.` })
-    this._loaded = true
-    this.anchorPos = 0
-    this.emit({ type: 'loaded' })
-    this.emit({ type: 'timeupdate', currentTime: 0, duration: this._duration })
+    void all.then(() => {
+      if (id !== this.loadId) return
+      if (failed > 0) this.emit({ type: 'warning', message: `${failed} pista(s) não carregaram. A música toca com as demais.` })
+      this.emit({ type: 'background', loaded: now.length, total: now.length })
+    })
   }
 
   /** Baixa (sem decodificar) as pistas de uma música para tocar sem espera e sem internet depois */

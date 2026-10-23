@@ -28,6 +28,7 @@ export default function PlayerPage() {
   const speed = usePlayerStore(s => s.speed)
   const playbackState = usePlayerStore(s => s.playbackState)
   const loadProgress = usePlayerStore(s => s.loadProgress)
+  const bgProgress = usePlayerStore(s => s.bgProgress)
   const error = usePlayerStore(s => s.error)
   const isExporting = usePlayerStore(s => s.isExporting)
   const toggleFav = useFavoritesStore(s => s.toggle)
@@ -146,6 +147,9 @@ export default function PlayerPage() {
                     <span>Preparando as pistas{loadProgress ? ` (${loadProgress.loaded}/${loadProgress.total})` : ''}...</span>
                     {loadProgress && <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-[hsl(var(--primary))] transition-all" style={{ width: `${(loadProgress.loaded / loadProgress.total) * 100}%` }} /></div>}
                   </div>
+                )}
+                {!isLoading && bgProgress && (
+                  <p className="flex items-center justify-center gap-1.5 text-[11px] text-[#9a9a9a]"><Loader2 className="h-3 w-3 animate-spin" /> Pistas chegando {bgProgress.loaded}/{bgProgress.total} (já pode tocar)</p>
                 )}
                 {/* Abas no celular */}
                 <div className="flex gap-1 lg:hidden pt-1">

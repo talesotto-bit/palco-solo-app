@@ -37,6 +37,8 @@ async function resolveTrackUrls(track: Track): Promise<Track> {
 
 interface PlayerStore extends PlayerState {
   loadProgress: { loaded: number; total: number } | null
+  /** pistas que ainda estão chegando depois do play liberado */
+  bgProgress: { loaded: number; total: number } | null
   loadingStems: string[]
   queue: Track[]
   queueIndex: number
@@ -105,6 +107,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       case 'loaded':
         set({ playbackState: 'paused', loadProgress: null })
         break
+      case 'background':
+        set({ bgProgress: event.loaded >= event.total ? null : { loaded: event.loaded, total: event.total } })
+        break
       case 'timeupdate':
         set({ currentTime: event.currentTime, duration: event.duration })
         break
@@ -157,6 +162,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     error: null,
     isPitchProcessing: false,
     loadProgress: null,
+    bgProgress: null,
     loadingStems: [],
     queue: [],
     queueIndex: -1,
@@ -176,7 +182,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const speed = saved?.speed ?? 1
       _pendingPlay = !!opts?.autoplay
 
-      set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, loadingStems: [] })
+      set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, bgProgress: null, loadingStems: [] })
       try { localStorage.setItem(LAST_TRACK_KEY, track.id) } catch {}
       usePrefsStore.getState().pushRecent(track.id)
       audioEngine.setMediaMetadata({ title: track.title, artist: track.artist, artwork: track.coverUrl })
