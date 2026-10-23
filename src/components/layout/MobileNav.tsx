@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { tap } from '@/lib/haptics'
 import { Library, Music2, Mic2, Settings, ListMusic } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/store/playerStore'
@@ -27,6 +28,7 @@ export function MobileNav() {
           <NavLink
             key={to}
             to={to}
+            onClick={() => tap()}
             className={({ isActive }) =>
               cn(
                 'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-w-0 transition-colors',
@@ -36,7 +38,7 @@ export function MobileNav() {
               )
             }
           >
-            <Icon className="h-5 w-5" />
+            <Icon className="h-5 w-5 transition-transform active:scale-90" />
             <span className="text-[10px] font-semibold leading-none">{label}</span>
           </NavLink>
         ))}

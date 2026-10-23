@@ -163,3 +163,17 @@
 @keyframes qr-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,.0), 0 0 40px 6px var(--glow, #22c55e) } 50% { box-shadow: 0 0 0 0 rgba(255,255,255,0), 0 0 80px 18px var(--glow, #22c55e) } }
 .animate-qr-glow { animation: qr-glow 2.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .animate-blob, .animate-qr-glow { animation: none } }
+
+/* ── Movimento da interface: entrada das seções, aceno, esqueleto de carregamento ── */
+@keyframes rise { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+.animate-rise { animation: rise .5s cubic-bezier(.2,.8,.2,1) both; }
+.stagger > * { animation: rise .5s cubic-bezier(.2,.8,.2,1) both; }
+.stagger > *:nth-child(2) { animation-delay: .06s } .stagger > *:nth-child(3) { animation-delay: .12s }
+.stagger > *:nth-child(4) { animation-delay: .18s } .stagger > *:nth-child(5) { animation-delay: .24s }
+.stagger > *:nth-child(6) { animation-delay: .3s } .stagger > *:nth-child(n+7) { animation-delay: .36s }
+@keyframes wave { 0%, 60%, 100% { transform: rotate(0) } 10%, 30% { transform: rotate(16deg) } 20%, 40% { transform: rotate(-8deg) } }
+.animate-wave { animation: wave 2.2s ease-in-out 0.4s 2 both; }
+@keyframes shimmer { 100% { transform: translateX(100%) } }
+.skeleton { position: relative; overflow: hidden; background: rgba(255,255,255,.06); }
+.skeleton::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.07), transparent); animation: shimmer 1.3s infinite; }
+@media (prefers-reduced-motion: reduce) { .animate-rise, .stagger > *, .animate-wave, .skeleton::after { animation: none } }

@@ -10,6 +10,7 @@ import type { Track } from '@/types/track'
 import type { PlayerState, StemState } from '@/types/player'
 import { clamp } from '@/lib/utils'
 import { AudioCache, isCacheUrl, urlToKey } from '@/lib/audioCache'
+import { usePracticeStore } from '@/store/practiceStore'
 import { useTrackSettingsStore } from './trackSettingsStore'
 import { useStageSettings } from './stageSettingsStore'
 import { usePrefsStore } from './prefsStore'
@@ -52,6 +53,10 @@ interface PlayerStore extends PlayerState {
   applyKeySuggestion: () => void
   loopTap: () => void
   clearLoop: () => void
+  /** treino progressivo: a cada volta do loop a velocidade sobe até 100% */
+  trainer: { orig: number; step: number } | null
+  startTrainer: (from?: number) => void
+  stopTrainer: () => void
   toggleNoVocals: () => void
   /** próxima música agendada (contagem regressiva entre músicas do show) */
   pendingAdvance: { index: number; at: number } | null
@@ -147,6 +152,18 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       case 'warning':
         toast.warning(event.message)
         break
+      case 'loopwrap': {
+        const { trainer, speed } = get()
+        if (!trainer) break
+        const next = Math.min(1, Math.round((speed + trainer.step) * 100) / 100)
+        get().setSpeed(next)
+        if (next >= 1) {
+          set({ trainer: null })
+          toast.success('Chegou a 100% da velocidade! Trecho dominado 🎉')
+          void import('@/lib/confetti').then(m => m.confetti())
+        }
+        break
+      }
       case 'stemLoading':
         set(s => ({ loadingStems: event.active ? [...s.loadingStems, event.id] : s.loadingStems.filter(x => x !== event.id) }))
         break
@@ -187,6 +204,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     queue: [],
     queueIndex: -1,
     loop: null,
+    trainer: null,
     keySuggestion: null,
     pendingAdvance: null,
 
@@ -194,7 +212,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     loadTrack: async (track, opts) => {
       const loadId = ++_trackLoadId
       audioEngine.setLoop(null)
-      if (get().loop) set({ loop: null })
+      if (get().loop || get().trainer) set({ loop: null, trainer: null })
       if (_advanceTimer) { clearTimeout(_advanceTimer); _advanceTimer = null }
       if (get().pendingAdvance) set({ pendingAdvance: null })
       const saved = useTrackSettingsStore.getState().get(track.id)
@@ -249,7 +267,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const countIn = precountEnabled && track.bpm > 0 && audioEngine.currentTime < 0.5
         ? { beats: precountBeats, bpm: track.bpm } : undefined
       await audioEngine.play({ countIn })
-      if (audioEngine.isPlaying) set({ playbackState: 'playing', error: null })
+      if (audioEngine.isPlaying) {
+        set({ playbackState: 'playing', error: null })
+        if (track) usePracticeStore.getState().record(track.id)
+      }
     },
 
     pause: () => { audioEngine.pause(); set({ playbackState: 'paused' }) },
@@ -391,7 +412,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       }
       get().clearLoop()
     },
-    clearLoop: () => { audioEngine.setLoop(null); set({ loop: null }) },
+    clearLoop: () => { get().stopTrainer(); audioEngine.setLoop(null); set({ loop: null }) },
+    startTrainer: (from = 0.7) => {
+      const { speed } = get()
+      set({ trainer: { orig: speed, step: 0.05 } })
+      get().setSpeed(Math.min(from, speed))
+      toast('Treino progressivo: a cada repetição o trecho fica 5% mais rápido, até 100%')
+    },
+    stopTrainer: () => {
+      const { trainer } = get()
+      if (!trainer) return
+      set({ trainer: null })
+      get().setSpeed(trainer.orig)
+    },
 
     /** Música inteira importada: alterna entre a original e a versão "sem voz" (beta) */
     toggleNoVocals: () => {

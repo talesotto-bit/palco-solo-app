@@ -63,6 +63,8 @@ export type AudioEngineEvent =
   | { type: 'warning'; message: string }
   | { type: 'stemLoading'; id: string; active: boolean }
   | { type: 'pitchProcessing'; active: boolean }
+  /** o loop A-B voltou ao início (treino progressivo) */
+  | { type: 'loopwrap' }
 
 type EventCallback = (event: AudioEngineEvent) => void
 export type MediaHandlers = Partial<Record<'play' | 'pause' | 'next' | 'prev' | 'seek', (arg?: number) => void>>
@@ -173,6 +175,9 @@ function optimizeBuffer(ctx: BaseAudioContext, buf: AudioBuffer): { buffer: Audi
   return { buffer: out, offset: start / buf.sampleRate, ms }
 }
 
+/** Celular com pouca memória (≤ 2 GB): áudio interno a 32 kHz ocupa ~27% menos e evita o app fechar */
+const LOW_MEMORY = typeof navigator !== 'undefined' && ((navigator as any).deviceMemory ?? 8) <= 2
+
 /** Nível alvo (soma da energia das pistas ligadas): a mediana do acervo, assim o volume médio não muda */
 const LOUDNESS_TARGET = 0.28
 /** A prévia mixada (sem voz guia, com limitador) mede ~0,73× a soma das pistas: compensa para não mudar o volume na troca */
@@ -229,7 +234,7 @@ class AudioEngine {
     try { const s = (navigator as any).audioSession; if (s) s.type = 'playback' } catch {}
     const Ctx = window.AudioContext || (window as any).webkitAudioContext
     // 44,1 kHz é a taxa das músicas: decodifica sem reamostrar (menos memória e processamento)
-    try { this.ctx = new Ctx({ latencyHint: 'playback', sampleRate: 44100 }) as AudioContext }
+    try { this.ctx = new Ctx({ latencyHint: 'playback', sampleRate: LOW_MEMORY ? 32000 : 44100 }) as AudioContext }
     catch { this.ctx = new Ctx({ latencyHint: 'playback' }) as AudioContext }
     this.master = this.ctx.createGain()
     this.master.gain.value = this._volume
@@ -339,7 +344,8 @@ class AudioEngine {
     for (const s of stems) {
       if (s.derive) continue
       const st = this.stemStates[s.id]
-      if (isSupportStem(s) && (!st || st.muted)) this.pending.set(s.id, s)
+      // desligada (apoio ou instrumento que o músico toca): só baixa quando ligar — economiza memória e internet
+      if ((isSupportStem(s) && !st) || st?.muted) this.pending.set(s.id, s)
       else now.push(s)
     }
     if (now.length === 0 && stems.length > 0) { now.push(stems[0]); this.pending.delete(stems[0].id) }
@@ -542,7 +548,7 @@ class AudioEngine {
   }
   private checkLoop(): boolean {
     if (!this.loop || !this._playing) return false
-    if (this.rawPosition() >= this.loop.b) { this.restartAt(this.loop.a); return true }
+    if (this.rawPosition() >= this.loop.b) { this.restartAt(this.loop.a); this.emit({ type: 'loopwrap' }); return true }
     return false
   }
 

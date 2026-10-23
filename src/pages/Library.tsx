@@ -211,9 +211,15 @@ export default function Library() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-4">
         {catalogLoading && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-white/40" />
-            <p className="text-sm text-[#808080]">Carregando catalogo...</p>
+          <div aria-label="Carregando músicas" className="pt-2">
+            <div className="skeleton h-[150px] rounded-3xl" />
+            <div className="mt-4 grid grid-cols-4 gap-2">{[0, 1, 2, 3].map(i => <div key={i} className="skeleton h-[68px] rounded-2xl" />)}</div>
+            {[0, 1].map(r => (
+              <div key={r} className="mt-6">
+                <div className="skeleton h-5 w-40 rounded-md" />
+                <div className="mt-3 flex gap-3 overflow-hidden">{[0, 1, 2].map(i => <div key={i} className="shrink-0 w-[148px]"><div className="skeleton aspect-square rounded-xl" /><div className="skeleton mt-2 h-3.5 w-28 rounded" /><div className="skeleton mt-1.5 h-3 w-20 rounded" /></div>)}</div>
+              </div>
+            ))}
           </div>
         )}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { audioEngine } from '@/audio/AudioEngine'
-import { FastForward, Loader2, Pause, Play, Repeat, Rewind, RotateCcw, SkipBack, SkipForward, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { FastForward, Loader2, Pause, Play, Repeat, Rewind, RotateCcw, SkipBack, SkipForward, Square, Volume2, VolumeX, X, Gauge } from 'lucide-react'
+import { tap } from '@/lib/haptics'
 import { usePlayerStore } from '@/store/playerStore'
 import { Slider } from '@/components/ui/slider'
 import { cn, formatTime } from '@/lib/utils'
@@ -68,7 +69,7 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
         <button
           disabled={!hasTrack}
           aria-label={isPlaying ? 'Pausar' : 'Tocar'}
-          onClick={() => { void audioEngine.unlock(); isPlaying ? pause() : play() }}
+          onClick={() => { tap(12); void audioEngine.unlock(); isPlaying ? pause() : play() }}
           className={cn(
             'mx-1 flex items-center justify-center rounded-full bg-white text-black',
             'hover:scale-105 active:scale-95 transition-transform disabled:opacity-50',
@@ -141,17 +142,25 @@ function LoopButton() {
   const tap = usePlayerStore(s => s.loopTap)
   const clear = usePlayerStore(s => s.clearLoop)
   const hasTrack = usePlayerStore(s => !!s.track)
+  const trainer = usePlayerStore(s => s.trainer)
+  const speed = usePlayerStore(s => s.speed)
   const label = !loop ? 'Repetir um trecho (A-B)' : loop.b === null ? `Início marcado em ${formatTime(loop.a)} · toque no fim` : `Repetindo ${formatTime(loop.a)}–${formatTime(loop.b)}`
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
       <button disabled={!hasTrack} onClick={tap}
-        className={cn('h-9 px-3.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-30',
+        className={cn('h-9 px-3.5 rounded-full text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-colors disabled:opacity-30',
           loop ? 'bg-amber-400 text-black' : 'bg-white/[0.07] text-[#d0d0d0]')}>
         <Repeat className="h-3.5 w-3.5" /> {!loop ? 'Loop A-B' : loop.b === null ? 'Marcar fim (B)' : 'Loop ligado'}
       </button>
       {loop && <button onClick={clear} aria-label="Desligar loop" className="h-9 w-9 rounded-full bg-white/[0.07] flex items-center justify-center"><X className="h-3.5 w-3.5" /></button>}
       <span className="sr-only">{label}</span>
-      {loop && <span className="text-[11px] text-amber-200/90 tabular-nums">{formatTime(loop.a)}{loop.b !== null ? `–${formatTime(loop.b)}` : ' → ?'}</span>}
+      {loop && <span className="text-[11px] text-amber-200/90 tabular-nums whitespace-nowrap">{formatTime(loop.a)}{loop.b !== null ? `–${formatTime(loop.b)}` : ' → ?'}</span>}
+      {loop && loop.b !== null && (
+        <button onClick={() => (trainer ? usePlayerStore.getState().stopTrainer() : usePlayerStore.getState().startTrainer())}
+          className={cn('h-9 px-3 rounded-full text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-colors', trainer ? 'bg-[hsl(var(--primary))] text-black animate-pulse-ring' : 'bg-white/[0.07] text-[#d0d0d0]')}>
+          <Gauge className="h-3.5 w-3.5" /> {trainer ? `Treino ${Math.round(speed * 100)}%` : 'Treino progressivo'}
+        </button>
+      )}
     </div>
   )
 }
