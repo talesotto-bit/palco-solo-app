@@ -171,6 +171,17 @@ export default function Library() {
                 <span className="text-[10px] opacity-60">{favIds.length}</span>
               )}
             </button>
+            {localTracks.length > 0 && (
+              <button
+                onClick={() => { setGenre(prev => prev === 'importado' ? 'all' : 'importado'); setShowFavs(false) }}
+                className={cn(
+                  'shrink-0 h-8 rounded-full px-4 text-xs font-semibold transition-colors',
+                  genre === 'importado' ? 'bg-purple-400 text-black' : 'bg-[#2a2a2a] text-[#b3b3b3] hover:bg-[#3a3a3a]'
+                )}
+              >
+                Minhas músicas <span className="ml-1 text-[10px] opacity-60">{localTracks.length}</span>
+              </button>
+            )}
             {catalogGenres.map(g => (
               <button
                 key={g.id}

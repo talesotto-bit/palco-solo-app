@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { audioEngine } from '@/audio/AudioEngine'
-import { FastForward, Loader2, Pause, Play, Rewind, RotateCcw, SkipBack, SkipForward, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { FastForward, Loader2, Pause, Play, Repeat, Rewind, RotateCcw, SkipBack, SkipForward, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { Slider } from '@/components/ui/slider'
-import { cn } from '@/lib/utils'
+import { cn, formatTime } from '@/lib/utils'
 
 interface PlayerControlsProps {
   size?: 'default' | 'large'
@@ -99,6 +99,9 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
         )}
       </div>
 
+      {/* Loop A-B: ensaiar um trecho */}
+      <LoopButton />
+
       {/* Volume */}
       <div className="flex items-center gap-2 w-full max-w-[180px]">
         <button
@@ -129,6 +132,26 @@ export function PlayerControls({ size = 'default' }: PlayerControlsProps) {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+function LoopButton() {
+  const loop = usePlayerStore(s => s.loop)
+  const tap = usePlayerStore(s => s.loopTap)
+  const clear = usePlayerStore(s => s.clearLoop)
+  const hasTrack = usePlayerStore(s => !!s.track)
+  const label = !loop ? 'Repetir um trecho (A-B)' : loop.b === null ? `Início marcado em ${formatTime(loop.a)} · toque no fim` : `Repetindo ${formatTime(loop.a)}–${formatTime(loop.b)}`
+  return (
+    <div className="flex items-center gap-1.5">
+      <button disabled={!hasTrack} onClick={tap}
+        className={cn('h-9 px-3.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-30',
+          loop ? 'bg-amber-400 text-black' : 'bg-white/[0.07] text-[#d0d0d0]')}>
+        <Repeat className="h-3.5 w-3.5" /> {!loop ? 'Loop A-B' : loop.b === null ? 'Marcar fim (B)' : 'Loop ligado'}
+      </button>
+      {loop && <button onClick={clear} aria-label="Desligar loop" className="h-9 w-9 rounded-full bg-white/[0.07] flex items-center justify-center"><X className="h-3.5 w-3.5" /></button>}
+      <span className="sr-only">{label}</span>
+      {loop && <span className="text-[11px] text-amber-200/90 tabular-nums">{formatTime(loop.a)}{loop.b !== null ? `–${formatTime(loop.b)}` : ' → ?'}</span>}
     </div>
   )
 }

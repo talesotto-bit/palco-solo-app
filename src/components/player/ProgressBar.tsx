@@ -65,6 +65,7 @@ export function ProgressBar() {
   }, [isDragging, seek, getRatioFromClientX])
 
   const displayProgress = isDragging ? dragProgress : 0
+  const loop = usePlayerStore(s => s.loop)
   const dur = durationRef.current || usePlayerStore.getState().duration
   const displayTime = isDragging ? (dragProgress / 100) * dur : 0
   const hoverTime = hoverX !== null && dur > 0 && !isDragging ? hoverX * dur : null
@@ -81,6 +82,11 @@ export function ProgressBar() {
         onPointerCancel={() => setIsDragging(false)}
         onMouseLeave={() => { if (!isDragging) setHoverX(null) }}
       >
+        {/* Trecho do loop A-B */}
+        {loop && dur > 0 && (
+          <div className="absolute inset-y-[-3px] rounded bg-amber-400/35 border-x-2 border-amber-400 pointer-events-none"
+            style={{ left: `${(loop.a / dur) * 100}%`, width: `${(((loop.b ?? loop.a + 0.3) - loop.a) / dur) * 100}%` }} />
+        )}
         {/* Progress fill */}
         <div
           ref={fillRef}

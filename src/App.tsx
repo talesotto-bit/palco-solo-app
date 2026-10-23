@@ -21,6 +21,7 @@ const Demo = lazy(() => import('@/pages/Demo'))
 const PublicRequest = lazy(() => import('@/pages/PublicRequest'))
 const Pedidos = lazy(() => import('@/pages/Pedidos'))
 const Activate = lazy(() => import('@/pages/Activate'))
+const Importar = lazy(() => import('@/pages/Importar'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,7 @@ export default function App() {
               <Route path="shows" element={<Shows />} />
               <Route path="shows/:id" element={<ShowEditor />} />
               <Route path="pedidos" element={<Suspense fallback={null}><Pedidos /></Suspense>} />
+              <Route path="importar" element={<Suspense fallback={null}><Importar /></Suspense>} />
               <Route path="separar" element={<Navigate to="/app/library" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="admin" element={<Suspense fallback={null}><Admin /></Suspense>} />

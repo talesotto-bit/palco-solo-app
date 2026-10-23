@@ -77,6 +77,8 @@ export interface Stem {
   label: string
   audioUrl: string
   isPrimary: boolean // true = mix estéreo principal
+  /** pista calculada no aparelho a partir de outra (ex.: música inteira sem a voz) */
+  derive?: 'karaoke'
 }
 
 export interface Track {

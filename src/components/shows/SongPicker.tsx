@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
-import { Search, Check, Plus, Heart, Layers, Music } from 'lucide-react'
+import { Search, Check, Plus, Heart, Layers, Music, Upload } from 'lucide-react'
 import { Sheet } from '@/components/ui/sheet'
 import { useAllTracks, isMedley } from '@/hooks/useAllTracks'
 import { useFavoritesStore } from '@/store/favoritesStore'
@@ -7,7 +7,7 @@ import { matchesSearch, cn } from '@/lib/utils'
 import { CoverImg } from './CoverImg'
 import type { Track } from '@/types/track'
 
-type Tab = 'todas' | 'favoritas' | 'blocos'
+type Tab = 'todas' | 'favoritas' | 'blocos' | 'minhas'
 
 interface Props {
   open: boolean
@@ -38,6 +38,7 @@ export function SongPicker({ open, onClose, existing, onAdd, title = 'Adicionar 
     let l = all
     if (tab === 'favoritas') { const f = new Set(favIds); l = l.filter(t => f.has(t.id)) }
     if (tab === 'blocos') l = l.filter(isMedley)
+    if (tab === 'minhas') l = l.filter(t => t.id.startsWith('local-'))
     if (q.trim()) l = l.filter(t => matchesSearch(q, [t.title, t.artist, t.genreLabel]))
     return l
   }, [all, tab, favIds, q])
@@ -60,8 +61,8 @@ export function SongPicker({ open, onClose, existing, onAdd, title = 'Adicionar 
           <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar música ou artista"
             className="w-full h-11 rounded-xl bg-white/[0.07] pl-10 pr-3 text-[15px] outline-none placeholder:text-[#7a7a7a] focus:ring-1 focus:ring-white/20" />
         </div>
-        <div className="flex gap-2">
-          {([['todas', 'Todas', Music], ['favoritas', 'Favoritas', Heart], ['blocos', 'Blocos prontos', Layers]] as const).map(([id, label, Icon]) => (
+        <div className="flex gap-2 overflow-x-auto no-scrollbar">
+          {([['todas', 'Todas', Music], ['minhas', 'Minhas', Upload], ['favoritas', 'Favoritas', Heart], ['blocos', 'Blocos', Layers]] as const).map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)}
               className={cn('h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5', tab === id ? 'bg-white text-black' : 'bg-white/[0.07] text-[#cfcfcf]')}>
               <Icon className="h-3.5 w-3.5" /> {label}

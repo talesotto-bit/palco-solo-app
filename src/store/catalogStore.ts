@@ -316,7 +316,7 @@ function hashCode(str: string): number {
   return Math.abs(h)
 }
 
-function generateCover(title: string, artist: string, index: number): string {
+export function generateCover(title: string, artist: string, index: number): string {
   const hash = hashCode(title + artist)
   const [c1, c2] = GRADIENT_PAIRS[hash % GRADIENT_PAIRS.length]
   const initial = (title || '?').charAt(0).toUpperCase()

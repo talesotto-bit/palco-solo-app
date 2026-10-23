@@ -85,6 +85,33 @@ export function isSupportStem(stem: Pick<Stem, 'id' | 'label'>): boolean {
   return /\b(click|clique|metronomo|metrônomo|contagem|count|cue)\b|click-|contagem-|-click|-contagem/.test(s)
 }
 
+/**
+ * "Sem voz" (beta) para música inteira: tira o que está no centro do estéreo (onde fica a voz)
+ * e devolve os graves do centro (baixo e bumbo). Funciona no aparelho, sem internet nem custo.
+ */
+async function karaokeBuffer(buf: AudioBuffer): Promise<AudioBuffer | null> {
+  if (buf.numberOfChannels < 2) return null
+  const Ctx = window.OfflineAudioContext || (window as any).webkitOfflineAudioContext
+  const ctx: OfflineAudioContext = new Ctx(2, buf.length, buf.sampleRate)
+  const src = ctx.createBufferSource(); src.buffer = buf
+  const split = ctx.createChannelSplitter(2); src.connect(split)
+  const g = (v: number) => { const n = ctx.createGain(); n.gain.value = v; return n }
+  const sideL = g(0.7), sideR = g(-0.7), side = g(1)
+  split.connect(sideL, 0); split.connect(sideR, 1); sideL.connect(side); sideR.connect(side)
+  const midL = g(0.5), midR = g(0.5), mid = g(1)
+  split.connect(midL, 0); split.connect(midR, 1); midL.connect(mid); midR.connect(mid)
+  const lp1 = ctx.createBiquadFilter(); lp1.type = 'lowpass'; lp1.frequency.value = 150
+  const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 150
+  mid.connect(lp1); lp1.connect(lp2)
+  const inv = g(-1); side.connect(inv)
+  const merger = ctx.createChannelMerger(2)
+  side.connect(merger, 0, 0); inv.connect(merger, 0, 1)
+  lp2.connect(merger, 0, 0); lp2.connect(merger, 0, 1)
+  merger.connect(ctx.destination)
+  src.start()
+  return ctx.startRendering()
+}
+
 /** Ordem de carregamento: base rítmica primeiro, pistas desligadas por último */
 function stemPriority(stem: Stem, states: Record<string, StemState>): number {
   if (states[stem.id]?.muted) return 9
@@ -279,7 +306,9 @@ class AudioEngine {
 
     // Pistas de apoio desligadas ficam para depois
     const now: Stem[] = []
+    const derived = stems.filter(s => s.derive)
     for (const s of stems) {
+      if (s.derive) continue
       const st = this.stemStates[s.id]
       if (isSupportStem(s) && (!st || st.muted)) this.pending.set(s.id, s)
       else now.push(s)
@@ -355,9 +384,10 @@ class AudioEngine {
       }
       becomeReady()
     }
-    void all.then(() => {
+    void all.then(async () => {
       if (id !== this.loadId) return
       if (this.mix) this.handoff()
+      for (const d of derived) await this.buildDerived(d, stems, id)
       if (failed > 0) this.emit({ type: 'warning', message: `${failed} pista(s) não carregaram. A música toca com as demais.` })
       this.emit({ type: 'background', loaded: now.length, total: now.length })
     })
@@ -439,6 +469,46 @@ class AudioEngine {
       if (st.source) { try { st.source.stop(when) } catch {} ; st.source = null }
     })
     if (this.mix?.source) { try { this.mix.source.stop(when) } catch {} ; this.mix.source = null }
+  }
+
+  /** Monta a pista calculada (ex.: "Sem voz") a partir da pista original já carregada */
+  private async buildDerived(d: Stem, all: Stem[], signalId: number) {
+    const srcStem = all.find(s => !s.derive && s.audioUrl === d.audioUrl)
+    const src = srcStem && this.stems.get(srcStem.id)
+    if (!src || signalId !== this.loadId) return
+    try {
+      const buf = await karaokeBuffer(src.buffer)
+      if (!buf || signalId !== this.loadId) {
+        if (!buf) this.emit({ type: 'warning', message: 'Esta música é mono: não dá para tirar a voz.' })
+        return
+      }
+      const gain = this.ctx!.createGain()
+      gain.gain.value = this.targetGain(d.id)
+      gain.connect(this.mixBus!)
+      const st: LoadedStem = { id: d.id, label: d.label, buffer: buf, offset: src.offset, gain, source: null }
+      this.stems.set(d.id, st)
+      if (this._playing && this.ctx && !this.mix) {
+        const when = this.ctx.currentTime + 0.05
+        this.startStem(st, this.anchorPos + (when - this.anchorCtxTime) * this._speed, when, this.ctx)
+      }
+    } catch (err) {
+      console.warn('[AudioEngine] sem voz falhou:', err)
+    }
+  }
+
+  // ─── Loop A-B (ensaiar um trecho) ────────────────────────────────────────
+  private loop: { a: number; b: number } | null = null
+  setLoop(loop: { a: number; b: number } | null) {
+    this.loop = loop && loop.b - loop.a >= 0.5 ? loop : null
+    if (this.loop && this._playing) {
+      const p = this.rawPosition()
+      if (p < this.loop.a || p > this.loop.b) this.restartAt(this.loop.a)
+    }
+  }
+  private checkLoop(): boolean {
+    if (!this.loop || !this._playing) return false
+    if (this.rawPosition() >= this.loop.b) { this.restartAt(this.loop.a); return true }
+    return false
   }
 
   /** Baixa e decodifica a prévia mixada (sem cortar silêncio: precisa da linha do tempo inteira) */
@@ -737,6 +807,7 @@ class AudioEngine {
       const now = performance.now()
       if (now - this.lastEmit > 60) {
         this.lastEmit = now
+        this.checkLoop()
         const ct = this.currentTime
         this.emit({ type: 'timeupdate', currentTime: ct, duration: this._duration })
         if (this._duration > 0 && this.rawPosition() >= this._duration) {

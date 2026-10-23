@@ -44,6 +44,11 @@ interface PlayerStore extends PlayerState {
   loadingStems: string[]
   queue: Track[]
   queueIndex: number
+  /** trecho repetido para ensaiar (segundos da música) */
+  loop: { a: number; b: number | null } | null
+  loopTap: () => void
+  clearLoop: () => void
+  toggleNoVocals: () => void
   /** próxima música agendada (contagem regressiva entre músicas do show) */
   pendingAdvance: { index: number; at: number } | null
   cancelAdvance: () => void
@@ -94,8 +99,9 @@ export function buildStemStates(track: Track): Record<string, StemState> {
   const plays = new Set<string>(usePrefsStore.getState().plays)
   const many = track.stems.length > 2
   track.stems.forEach(stem => {
-    const mine = many && plays.has(stemInstrument(stem))
-    states[stem.id] = { id: stem.id, muted: isSupportStem(stem) || mine, solo: false, volume: 1 }
+    const mine = many && !stem.derive && plays.has(stemInstrument(stem))
+    // "Sem voz" (beta) começa desligado: o músico liga e desliga a original
+    states[stem.id] = { id: stem.id, muted: isSupportStem(stem) || mine || !!stem.derive, solo: false, volume: 1 }
   })
   return states
 }
@@ -172,11 +178,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     loadingStems: [],
     queue: [],
     queueIndex: -1,
+    loop: null,
     pendingAdvance: null,
 
     // ─── Carregar música ────────────────────────────────────────────────────
     loadTrack: async (track, opts) => {
       const loadId = ++_trackLoadId
+      audioEngine.setLoop(null)
+      if (get().loop) set({ loop: null })
       if (_advanceTimer) { clearTimeout(_advanceTimer); _advanceTimer = null }
       if (get().pendingAdvance) set({ pendingAdvance: null })
       const saved = useTrackSettingsStore.getState().get(track.id)
@@ -346,6 +355,32 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       if (audioEngine.currentTime > 3 || queueIndex <= 0) { get().seek(0); return queueIndex > 0 }
       await get().playQueueIndex(queueIndex - 1, { autoplay: playbackState === 'playing' })
       return true
+    },
+
+    /** 1º toque marca o início (A), 2º marca o fim (B) e começa a repetir, 3º desliga */
+    loopTap: () => {
+      const { loop } = get()
+      const t = audioEngine.currentTime
+      if (!loop) { set({ loop: { a: t, b: null } }); return }
+      if (loop.b === null) {
+        if (t - loop.a < 0.5) return
+        const l = { a: loop.a, b: t }
+        set({ loop: l }); audioEngine.setLoop(l as { a: number; b: number })
+        return
+      }
+      get().clearLoop()
+    },
+    clearLoop: () => { audioEngine.setLoop(null); set({ loop: null }) },
+
+    /** Música inteira importada: alterna entre a original e a versão "sem voz" (beta) */
+    toggleNoVocals: () => {
+      const { track, stemStates } = get()
+      const nv = track?.stems.find(s => s.derive === 'karaoke')
+      const orig = track?.stems.find(s => !s.derive)
+      if (!nv || !orig) return
+      const on = !!stemStates[nv.id]?.muted
+      get().setStemMuted(nv.id, !on)
+      get().setStemMuted(orig.id, on)
     },
 
     cancelAdvance: () => {

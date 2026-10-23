@@ -2,13 +2,14 @@ import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import {
   Mic2, Layers, Music2, ArrowLeft, AlertCircle, Heart, Download, Loader2, ListPlus, RotateCcw,
-  AlignLeft, Guitar, Gauge, SlidersHorizontal,
+  AlignLeft, Guitar, Gauge, SlidersHorizontal, MicOff, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePlayerStore } from '@/store/playerStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
 import { useTrackSettingsStore } from '@/store/trackSettingsStore'
 import { useAddToShow } from '@/store/addToShowStore'
+import { useLocalTracksStore } from '@/store/localTracksStore'
 import { PlayerControls } from '@/components/player/PlayerControls'
 import { ProgressBar } from '@/components/player/ProgressBar'
 import { PitchControl } from '@/components/player/PitchControl'
@@ -37,6 +38,9 @@ export default function PlayerPage() {
   const hasSaved = useTrackSettingsStore(s => (track ? !!s.settings[track.id] : false))
   const removeSettings = useTrackSettingsStore(s => s.remove)
   const openAddToShow = useAddToShow(s => s.open)
+  const noVocalsStem = track?.stems.find(s => s.derive === 'karaoke')
+  const noVocalsOn = usePlayerStore(s => (noVocalsStem ? !s.stemStates[noVocalsStem.id]?.muted : false))
+  const isLocal = !!track?.id.startsWith('local-')
   const [tab, setTab] = useState<Tab>('letra')
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
@@ -115,6 +119,12 @@ export default function PlayerPage() {
                 <button onClick={() => openAddToShow(track)} className="flex items-center gap-1.5 h-9 rounded-full px-3.5 text-xs font-bold bg-white text-black shrink-0">
                   <ListPlus className="h-4 w-4" /> Adicionar ao show
                 </button>
+                {noVocalsStem && (
+                  <button onClick={() => usePlayerStore.getState().toggleNoVocals()}
+                    className={cn('flex items-center gap-1.5 h-9 rounded-full px-3.5 text-xs font-bold shrink-0', noVocalsOn ? 'bg-purple-400 text-black' : 'bg-purple-500/20 text-purple-200')}>
+                    <MicOff className="h-4 w-4" /> {noVocalsOn ? 'Voz removida (beta)' : 'Tirar a voz (beta)'}
+                  </button>
+                )}
                 <button onClick={() => toggleFav(track.id)} className="flex items-center gap-1.5 h-9 rounded-full px-3 text-xs font-semibold bg-white/[0.07] shrink-0">
                   <Heart className={cn('h-4 w-4', isFav ? 'fill-red-500 text-red-500' : 'text-[#b3b3b3]')} />
                   <span className={isFav ? 'text-red-400' : 'text-[#cfcfcf]'}>{isFav ? 'Favorita' : 'Favoritar'}</span>
@@ -122,6 +132,16 @@ export default function PlayerPage() {
                 {hasSaved && (
                   <button onClick={restoreOriginal} className="flex items-center gap-1.5 h-9 rounded-full px-3 text-xs font-semibold bg-white/[0.07] text-[#cfcfcf] shrink-0">
                     <RotateCcw className="h-4 w-4" /> Voltar ao original
+                  </button>
+                )}
+                {isLocal && (
+                  <button onClick={async () => {
+                    if (!confirm(`Apagar "${track.title}" deste aparelho?`)) return
+                    usePlayerStore.getState().stop()
+                    await useLocalTracksStore.getState().removeTrack(track.id)
+                    toast('Música apagada do aparelho'); navigate('/app/library')
+                  }} className="flex items-center gap-1.5 h-9 rounded-full px-3 text-xs font-semibold bg-white/[0.07] text-red-300 shrink-0">
+                    <Trash2 className="h-4 w-4" /> Apagar
                   </button>
                 )}
                 <button onClick={() => void usePlayerStore.getState().downloadMix()} disabled={isExporting || isLoading}

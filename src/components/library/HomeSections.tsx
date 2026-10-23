@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Play, Plus, ListMusic } from 'lucide-react'
+import { ChevronRight, Play, Plus, ListMusic, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { TrackCard } from './TrackCard'
 import { usePrefsStore } from '@/store/prefsStore'
 import { useShowsStore, songFromTrack } from '@/store/showsStore'
 import { useCatalogStore } from '@/store/catalogStore'
+import { useLocalTracksStore } from '@/store/localTracksStore'
 import { getArtistScore } from '@/lib/featuredArtists'
 import { loadRepertorios, type Repertorio } from '@/pages/Shows'
 import type { Track } from '@/types/track'
@@ -43,6 +44,7 @@ export function HomeSections({ tracks, byId, onSeeGenre, onSeeAll }: Props) {
   const createShow = useShowsStore(s => s.createShow)
   const setActive = useShowsStore(s => s.setActive)
   const genres = useCatalogStore(s => s.genres)
+  const localTracks = useLocalTracksStore(s => s.tracks)
   const [reps, setReps] = useState<Repertorio[]>([])
   useEffect(() => { void loadRepertorios().then(setReps) }, [])
 
@@ -76,6 +78,16 @@ export function HomeSections({ tracks, byId, onSeeGenre, onSeeAll }: Props) {
           {recentTracks.map(t => <Cell key={t.id}><TrackCard track={t} view="grid" /></Cell>)}
         </Row>
       )}
+
+      <Row title="Suas músicas" action={{ label: 'Adicionar', onClick: () => navigate('/app/importar') }}>
+        <Cell>
+          <button onClick={() => navigate('/app/importar')}
+            className="w-full aspect-square rounded-xl bg-gradient-to-br from-[#3a1f5a] to-[#161616] border border-white/10 flex flex-col items-center justify-center gap-2 p-3 text-center active:opacity-80">
+            <Upload className="h-7 w-7 text-purple-300" /><span className="text-sm font-bold leading-tight">Adicionar meus VS</span><span className="text-[11px] text-white/50 leading-tight">pistas, .zip ou música inteira</span>
+          </button>
+        </Cell>
+        {localTracks.slice(0, 12).map(t => <Cell key={t.id}><TrackCard track={t} view="grid" /></Cell>)}
+      </Row>
 
       <Row title="Seus shows" action={{ label: 'Ver todos', onClick: () => navigate('/app/shows') }}>
         <Cell>

@@ -72,7 +72,8 @@ export function MiniPlayer() {
         >
           <img
             src={coverUrl}
-            alt={track.title}
+            alt=""
+            onError={(e) => { if (track.coverUrl && e.currentTarget.src !== track.coverUrl) e.currentTarget.src = track.coverUrl }}
             className="h-10 w-10 md:h-14 md:w-14 rounded-md object-cover shrink-0 shadow-lg bg-[#2a2a2a]"
           />
           <div className="min-w-0 flex-1">

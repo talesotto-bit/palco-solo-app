@@ -51,6 +51,20 @@ export const AudioCache = {
     }
   },
 
+  /** Guarda um arquivo/Blob e avisa se não deu certo (ex.: sem espaço) */
+  async storeBlob(key: string, blob: Blob): Promise<void> {
+    try { await navigator.storage?.persist?.() } catch {}
+    const db = await openDB()
+    const buffer = await blob.arrayBuffer()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).put({ buffer, type: blob.type || 'audio/mpeg' }, key)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error || new Error('Sem espaço no aparelho'))
+      tx.onabort = () => reject(tx.error || new Error('Sem espaço no aparelho'))
+    })
+  },
+
   /** Recupera um blob URL temporário para uma chave armazenada */
   async getUrl(key: string): Promise<string | null> {
     // Return existing blob URL if still active (avoids leak)
