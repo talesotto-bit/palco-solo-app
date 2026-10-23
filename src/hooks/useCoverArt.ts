@@ -1,3 +1,4 @@
+import { isCustomCover } from '@/lib/image'
 import { useState, useEffect, useRef } from 'react'
 
 const CACHE_KEY = 'palco-covers'
@@ -48,6 +49,8 @@ function enqueue(fn: () => void) {
 }
 
 export function useCoverArt(artist: string, title: string, fallbackUrl: string): string {
+  // foto escolhida pelo músico tem prioridade sobre a capa da internet
+  const custom = isCustomCover(fallbackUrl)
   const key = cacheKey(artist, title)
   const cached = getCache()[key]
   const [url, setUrl] = useState<string>(cached || fallbackUrl)
@@ -61,6 +64,7 @@ export function useCoverArt(artist: string, title: string, fallbackUrl: string):
   }, [])
 
   useEffect(() => {
+    if (custom) return
     if (cached) {
       setUrl(cached)
       return
@@ -100,5 +104,5 @@ export function useCoverArt(artist: string, title: string, fallbackUrl: string):
     })
   }, [key, artist, title, cached])
 
-  return url
+  return custom ? fallbackUrl : url
 }

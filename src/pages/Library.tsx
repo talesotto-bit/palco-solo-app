@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { Search, X, Loader2, LayoutGrid, List, Heart, ChevronDown } from 'lucide-react'
+import { Search, X, Loader2, LayoutGrid, List, Heart, ChevronDown, Plus, Upload } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useLocalTracksStore } from '@/store/localTracksStore'
 import { useCatalogStore } from '@/store/catalogStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
@@ -11,6 +12,7 @@ import { HomeSections } from '@/components/library/HomeSections'
 const BATCH_SIZE = 60
 
 export default function Library() {
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [genre, setGenre] = useState<string>('all')
@@ -98,6 +100,10 @@ export default function Library() {
             </p>
           </div>
 
+          <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/app/importar')} className="h-9 rounded-full pl-3 pr-3.5 text-xs font-bold bg-purple-500/20 text-purple-100 flex items-center gap-1.5 active:scale-95 transition-transform">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Adicionar minha música</span><span className="sm:hidden">Minha música</span>
+          </button>
           {!catalogLoading && allTracks.length > 0 && !isHome && (
             <div className="flex items-center bg-[#2a2a2a] rounded-lg p-0.5">
               <button
@@ -120,6 +126,7 @@ export default function Library() {
               </button>
             </div>
           )}
+          </div>
         </div>
 
         {/* Search */}
@@ -230,7 +237,14 @@ export default function Library() {
             ) : (
               <>
                 <p className="text-base font-semibold text-white">Nenhum resultado</p>
-                <p className="text-sm text-[#808080]">Tente outro termo ou genero.</p>
+                <p className="text-sm text-[#808080]">Tente outro termo ou gênero.</p>
+                {debouncedSearch.trim() && (
+                  <button onClick={() => navigate('/app/importar')}
+                    className="mt-4 w-full max-w-sm rounded-2xl border border-purple-400/30 bg-purple-500/10 p-4 text-left active:scale-[0.99] transition-transform">
+                    <p className="flex items-center gap-2 font-bold text-white"><Upload className="h-4 w-4 text-purple-300" /> Tem essa música? Adicione a sua</p>
+                    <p className="mt-1 text-xs text-white/65">Coloque seu VS (pistas ou .zip) ou o MP3 e toque com mixer, tom, velocidade, letra, cifra e Modo Palco.</p>
+                  </button>
+                )}
               </>
             )}
             <button

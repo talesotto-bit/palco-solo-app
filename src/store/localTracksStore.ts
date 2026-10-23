@@ -16,6 +16,8 @@ interface LocalTracksStore {
   tracks: Track[]
   addTracks: (tracks: Track[]) => void
   removeTrack: (id: string) => Promise<void>
+  /** Edita uma música salva (nome, artista, tom, capa, pistas) */
+  updateTrack: (id: string, patch: Partial<Track>) => void
   clearAll: () => Promise<void>
   /** Resolve cache:// URLs de uma faixa para blob URLs reais antes de tocar */
   resolveTrackUrls: (track: Track) => Promise<Track>
@@ -37,6 +39,9 @@ export const useLocalTracksStore = create<LocalTracksStore>()(
         await AudioCache.removeTrack(id)
         set(s => ({ tracks: s.tracks.filter(t => t.id !== id) }))
       },
+
+      updateTrack: (id, patch) =>
+        set(s => ({ tracks: s.tracks.map(t => (t.id === id ? { ...t, ...patch, id } : t)) })),
 
       clearAll: async () => {
         await AudioCache.clearAll()

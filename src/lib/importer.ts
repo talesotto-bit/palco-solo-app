@@ -5,6 +5,8 @@
 import { unzip } from 'fflate'
 import { AudioCache, CACHE_PREFIX, cacheKey } from '@/lib/audioCache'
 import { detectInstrument, stemLabel, toTitleCase } from '@/lib/stemDetection'
+import { readAudioTags } from '@/lib/id3'
+import { toCoverDataUrl } from '@/lib/image'
 import type { Track, Stem, InstrumentId } from '@/types/track'
 
 const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|oga|flac|opus|aif|aiff|wma|caf)$/i
@@ -27,7 +29,16 @@ export interface ImportDraft {
   stems: DraftStem[]
   /** música inteira: oferece "tirar a voz" (beta) */
   single: boolean
+  /** capa (foto do músico ou a gravada no MP3) */
+  cover?: string
 }
+
+/** Arquivo com o caminho dentro da pasta escolhida/arrastada ("Show/Arranhão/Bateria.wav") */
+export type PickedFile = File & { relPath?: string }
+const relPathOf = (f: PickedFile) => f.relPath || (f as any).webkitRelativePath || ''
+
+/** Nome de arquivo sem informação: "AUD-20240101-WA0003", "PTT-…", "audio_123" */
+const NO_INFO = /^(aud|ptt|audio|rec|gravacao|voice|wa)[-_ ]?\d|^\d{6,}/i
 
 const ORDER: Record<string, number> = { drums: 1, percussion: 2, bass: 3, guitar: 4, acoustic: 5, keys: 6, synth: 7, brass: 8, strings: 9, choir: 10, voice: 11, click: 12, main: 13 }
 
@@ -83,9 +94,9 @@ function unzipAsync(data: Uint8Array): Promise<Record<string, Uint8Array>> {
  * - um arquivo de áudio → uma música inteira;
  * - .zip → um VS por pasta dentro do zip (ou o zip inteiro, se as pistas estiverem soltas).
  */
-export async function readSelection(files: File[], mode: 'multi' | 'single'): Promise<ImportDraft[]> {
+export async function readSelection(files: PickedFile[], mode: 'multi' | 'single'): Promise<ImportDraft[]> {
   const drafts: ImportDraft[] = []
-  const loose: File[] = []
+  const loose: PickedFile[] = []
   for (const f of files) {
     if (/\.zip$/i.test(f.name)) {
       const entries = await unzipAsync(new Uint8Array(await f.arrayBuffer()))
@@ -105,10 +116,37 @@ export async function readSelection(files: File[], mode: 'multi' | 'single'): Pr
     }
   }
   if (loose.length) {
-    if (mode === 'single') for (const f of loose) drafts.push(toDraft(f.name, [{ name: f.name, blob: f }]))
-    else drafts.push(toDraft(commonPrefix(loose.map(f => noExt(f.name))) || '', loose.map(f => ({ name: f.name, blob: f }))))
+    // pastas escolhidas/arrastadas: cada pasta com áudio vira uma música
+    const byFolder = new Map<string, PickedFile[]>()
+    for (const f of loose) {
+      const parts = relPathOf(f).split('/').filter(Boolean)
+      const folder = parts.length > 1 ? parts[parts.length - 2] : ''
+      byFolder.set(folder, [...(byFolder.get(folder) || []), f])
+    }
+    for (const [folder, list] of byFolder) {
+      if (mode === 'single' || (!folder && list.length === 1)) for (const f of list) drafts.push(toDraft(f.name, [{ name: f.name, blob: f }]))
+      else drafts.push(toDraft(folder || commonPrefix(list.map(f => noExt(f.name))) || '', list.map(f => ({ name: f.name, blob: f }))))
+    }
   }
+  await Promise.all(drafts.map(fillFromTags))
   return drafts
+}
+
+/** Música inteira: usa nome, artista e capa gravados no arquivo (quando o nome do arquivo não diz nada) */
+async function fillFromTags(d: ImportDraft) {
+  const first = d.stems[0]
+  if (!first) return
+  const noInfo = NO_INFO.test(noExt(first.name))
+  if (!d.single && !noInfo) return
+  const tags = await readAudioTags(first.blob)
+  if (tags.title && (d.single || noInfo)) { d.title = tags.title; if (tags.artist) d.artist = tags.artist }
+  else if (noInfo) d.title = ''
+  if (tags.picture) d.cover = (await toCoverDataUrl(tags.picture)) || undefined
+}
+
+/** Pede ao navegador para não apagar as músicas quando o aparelho estiver com pouco espaço */
+export async function keepFilesSafe(): Promise<boolean> {
+  try { return (await navigator.storage?.persisted?.()) || (await navigator.storage?.persist?.()) || false } catch { return false }
 }
 
 function mimeOf(name: string) {
@@ -128,6 +166,7 @@ export async function checkPlayable(blob: Blob): Promise<number | null> {
 
 /** Guarda os arquivos no aparelho e devolve a música pronta para a biblioteca */
 export async function saveDraft(d: ImportDraft, onProgress?: (done: number, total: number) => void): Promise<Track> {
+  void keepFilesSafe()
   const trackId = `local-${uid()}`
   const stems: Stem[] = []
   let i = 0
@@ -144,7 +183,7 @@ export async function saveDraft(d: ImportDraft, onProgress?: (done: number, tota
   const bpm = Number(d.bpm) || 0
   return {
     id: trackId, title: d.title.trim() || 'Minha música', artist: d.artist.trim(), genre: 'importado', genreLabel: 'Minhas músicas',
-    bpm, keyNote: d.keyNote.trim(), keyScale: 'major', durationSeconds: 0, coverUrl: '', previewUrl: stems[0]?.audioUrl || '',
+    bpm, keyNote: d.keyNote.trim(), keyScale: 'major', durationSeconds: 0, coverUrl: d.cover || '', previewUrl: stems[0]?.audioUrl || '',
     hasStems: stems.length > 1, stems, hasLyrics: false, tags: ['importado', d.single ? 'faixa' : 'multipista'], isNew: true,
   }
 }
@@ -152,4 +191,14 @@ export async function saveDraft(d: ImportDraft, onProgress?: (done: number, tota
 /** Espaço livre no aparelho (para avisar antes de importar algo grande) */
 export async function storageInfo(): Promise<{ usage: number; quota: number } | null> {
   try { const e = await navigator.storage?.estimate?.(); return e ? { usage: e.usage || 0, quota: e.quota || 0 } : null } catch { return null }
+}
+
+/** Monta uma pista nova (para acrescentar a uma música já salva) */
+export async function storeExtraStem(trackId: string, file: Blob, fileName: string, index: number): Promise<Stem> {
+  const raw = noExt(baseName(fileName))
+  const instrument = detectInstrument(raw)
+  const label = stemLabel(raw, instrument)
+  const stemId = `${label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'pista'}-${uid()}`
+  await AudioCache.storeBlob(cacheKey(trackId, stemId), file)
+  return { id: stemId, label, audioUrl: `${CACHE_PREFIX}${cacheKey(trackId, stemId)}`, isPrimary: index === 0 }
 }

@@ -2,8 +2,9 @@ import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import {
   Mic2, Layers, Music2, ArrowLeft, AlertCircle, Heart, Download, Loader2, ListPlus, RotateCcw,
-  AlignLeft, Guitar, Gauge, SlidersHorizontal, MicOff, Trash2,
+  AlignLeft, Guitar, Gauge, SlidersHorizontal, MicOff, Trash2, Pencil,
 } from 'lucide-react'
+import { EditTrackSheet } from '@/components/player/EditTrackSheet'
 import { toast } from 'sonner'
 import { usePlayerStore } from '@/store/playerStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
@@ -44,6 +45,7 @@ export default function PlayerPage() {
   const isLocal = !!track?.id.startsWith('local-')
   const keySuggestion = usePlayerStore(s => s.keySuggestion)
   const [tab, setTab] = useState<Tab>('letra')
+  const [editing, setEditing] = useState(false)
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
   if (!track) {
@@ -121,6 +123,11 @@ export default function PlayerPage() {
                 <button onClick={() => openAddToShow(track)} className="flex items-center gap-1.5 h-9 rounded-full px-3.5 text-xs font-bold bg-white text-black shrink-0">
                   <ListPlus className="h-4 w-4" /> Adicionar ao show
                 </button>
+                {isLocal && (
+                  <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 h-9 rounded-full px-3.5 text-xs font-bold bg-purple-500/20 text-purple-200 shrink-0">
+                    <Pencil className="h-4 w-4" /> Editar música
+                  </button>
+                )}
                 {noVocalsStem && (
                   <button onClick={() => usePlayerStore.getState().toggleNoVocals()}
                     className={cn('flex items-center gap-1.5 h-9 rounded-full px-3.5 text-xs font-bold shrink-0', noVocalsOn ? 'bg-purple-400 text-black' : 'bg-purple-500/20 text-purple-200')}>
@@ -239,6 +246,7 @@ export default function PlayerPage() {
           </div>
         </div>
       </div>
+      {isLocal && <EditTrackSheet track={track} open={editing} onClose={() => setEditing(false)} />}
     </div>
   )
 }

@@ -4,9 +4,10 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Layers, Music2, Upload, Trash2, CheckCircle2, AlertTriangle, Loader2, Play, Pause, Lock, ListPlus, Sparkles } from 'lucide-react'
+import { ArrowLeft, Layers, Music2, Upload, Trash2, CheckCircle2, AlertTriangle, Loader2, Play, Pause, Lock, ListPlus, Sparkles, FolderOpen, Camera } from 'lucide-react'
 import { toast } from 'sonner'
-import { readSelection, saveDraft, checkPlayable, storageInfo, type ImportDraft, isAudioName } from '@/lib/importer'
+import { readSelection, saveDraft, checkPlayable, storageInfo, type ImportDraft, type PickedFile, isAudioName } from '@/lib/importer'
+import { toCoverDataUrl } from '@/lib/image'
 import { useLocalTracksStore } from '@/store/localTracksStore'
 import { usePlayerStore } from '@/store/playerStore'
 import { useAddToShow } from '@/store/addToShowStore'
@@ -15,6 +16,30 @@ import { INSTRUMENT_ICONS } from '@/types/track'
 import { confetti } from '@/lib/confetti'
 import { cn } from '@/lib/utils'
 import type { Track } from '@/types/track'
+
+/** Lê pastas arrastadas (com subpastas): cada arquivo guarda o caminho para agrupar por música */
+async function filesFromDrop(dt: DataTransfer): Promise<PickedFile[]> {
+  const entries = [...dt.items].map(i => (i as any).webkitGetAsEntry?.()).filter(Boolean)
+  if (!entries.length) return [...dt.files]
+  const out: PickedFile[] = []
+  const walk = async (entry: any, path: string): Promise<void> => {
+    if (entry.isFile) {
+      const f: PickedFile = await new Promise((res, rej) => entry.file(res, rej))
+      f.relPath = path + f.name
+      out.push(f)
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader()
+      // readEntries devolve em lotes: lê até acabar
+      for (;;) {
+        const batch: any[] = await new Promise((res, rej) => reader.readEntries(res, rej))
+        if (!batch.length) break
+        for (const e of batch) await walk(e, `${path}${entry.name}/`)
+      }
+    }
+  }
+  for (const e of entries) await walk(e, '')
+  return out
+}
 
 const mb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.max(0.1, b / 1e6).toFixed(1)} MB`)
 const inputCls = 'w-full h-11 rounded-xl bg-white/[0.07] border border-white/10 px-3 text-[15px] outline-none placeholder:text-[#6f6f6f] focus:border-white/30'
@@ -36,11 +61,14 @@ export default function Importar() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const multiRef = useRef<HTMLInputElement>(null)
   const singleRef = useRef<HTMLInputElement>(null)
+  const folderRef = useRef<HTMLInputElement>(null)
+  const coverRef = useRef<HTMLInputElement>(null)
+  const coverFor = useRef<string | null>(null)
 
   useEffect(() => { void storageInfo().then(setSpace) }, [])
   useEffect(() => () => { audioRef.current?.pause() }, [])
 
-  const handle = async (files: File[], mode: 'multi' | 'single') => {
+  const handle = async (files: PickedFile[], mode: 'multi' | 'single') => {
     if (!files.length) return
     setPhase('reading')
     try {
@@ -58,8 +86,9 @@ export default function Importar() {
 
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault(); setDrag(false)
-    const files = [...e.dataTransfer.files]
+    const files = await filesFromDrop(e.dataTransfer)
     const audio = files.filter(f => isAudioName(f.name) || /\.zip$/i.test(f.name))
+    if (!audio.length) { toast.error('Não encontrei arquivos de áudio. Use MP3, WAV, M4A, pastas ou um .zip com as pistas.'); return }
     void handle(audio, audio.length === 1 && !/\.zip$/i.test(audio[0].name) ? 'single' : 'multi')
   }
 
@@ -87,7 +116,7 @@ export default function Importar() {
         const clean = { ...d, stems: d.stems.filter(s => playable[`${d.id}/${s.key}`] !== null) }
         if (!clean.stems.length) continue
         const t = await saveDraft(clean, () => { done++; setProgress({ done, total }) })
-        t.coverUrl = generateCover(t.title, t.artist, Math.floor(Math.random() * 100))
+        if (!t.coverUrl) t.coverUrl = generateCover(t.title, t.artist, Math.floor(Math.random() * 100))
         out.push(t)
       }
       addTracks(out); setSaved(out); setPhase('done'); confetti()
@@ -132,6 +161,11 @@ export default function Importar() {
             onChange={e => { void handle([...(e.target.files || [])], 'single'); e.target.value = '' }} />
 
           {phase === 'reading' && <p className="mt-4 flex items-center justify-center gap-2 text-sm text-white/70"><Loader2 className="h-4 w-4 animate-spin" /> Abrindo os arquivos...</p>}
+          <button onClick={() => folderRef.current?.click()} className="mt-3 hidden md:flex w-full h-12 items-center justify-center gap-2 rounded-2xl bg-white/[0.06] text-sm font-semibold active:bg-white/10">
+            <FolderOpen className="h-4 w-4" /> Escolher uma pasta com vários VS (cada subpasta vira uma música)
+          </button>
+          <input ref={folderRef} type="file" multiple className="hidden" {...({ webkitdirectory: '', directory: '' } as any)}
+            onChange={e => { void handle([...(e.target.files || [])], 'multi'); e.target.value = '' }} />
           <div className={cn('mt-4 hidden md:flex h-28 items-center justify-center rounded-3xl border-2 border-dashed text-sm transition-colors', drag ? 'border-[hsl(var(--primary))] text-white bg-[hsl(var(--primary))]/10' : 'border-white/15 text-white/50')}>
             ou arraste pastas, pistas ou o .zip para cá
           </div>
@@ -148,6 +182,10 @@ export default function Importar() {
             {drafts.map(d => (
               <section key={d.id} className="rounded-3xl bg-white/[0.04] border border-white/[0.08] p-4">
                 <div className="flex items-start gap-2">
+                  <button onClick={() => { coverFor.current = d.id; coverRef.current?.click() }} aria-label="Escolher capa"
+                    className="relative h-[100px] w-[100px] shrink-0 rounded-2xl overflow-hidden bg-white/[0.07] border border-white/10 flex flex-col items-center justify-center gap-1 text-[11px] text-white/60">
+                    {d.cover ? <img src={d.cover} alt="" className="absolute inset-0 h-full w-full object-cover" /> : <><Camera className="h-5 w-5" /> Capa</>}
+                  </button>
                   <div className="flex-1 grid gap-2">
                     <input value={d.title} onChange={e => update(d.id, { title: e.target.value })} placeholder="Nome da música" className={cn(inputCls, 'h-12 text-lg font-bold')} />
                     <input value={d.artist} onChange={e => update(d.id, { artist: e.target.value })} placeholder="Artista (ajuda a achar letra e cifra)" className={inputCls} />
@@ -182,6 +220,13 @@ export default function Importar() {
               </section>
             ))}
           </div>
+          <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={async e => {
+            const f = e.target.files?.[0]; e.target.value = ''
+            const id = coverFor.current
+            if (!f || !id) return
+            const url = await toCoverDataUrl(f)
+            if (url) update(id, { cover: url }); else toast.error('Não consegui abrir essa imagem.')
+          }} />
           {broken.length > 0 && <p className="mt-3 rounded-2xl bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{broken.length} arquivo(s) em formato que este aparelho não toca e ficarão de fora. Prefira MP3 ou WAV.</p>}
           {lowSpace && <p className="mt-3 rounded-2xl bg-red-500/10 px-3 py-2 text-xs text-red-200">Pouco espaço livre no aparelho para {mb(totalSize)}. Libere espaço antes de salvar.</p>}
           <div className="mt-5 flex gap-2">
@@ -210,6 +255,7 @@ export default function Importar() {
             {saved[0] && <button onClick={() => openAddToShow(saved[0])} className="h-12 rounded-full bg-white/10 font-semibold flex items-center justify-center gap-2"><ListPlus className="h-5 w-5" /> Adicionar a um show</button>}
             <button onClick={() => { setDrafts([]); setSaved([]); setPhase('pick') }} className="h-12 rounded-full bg-white/[0.05] font-semibold">Adicionar mais músicas</button>
           </div>
+          <p className="mt-5 text-xs text-white/50 max-w-sm mx-auto">Para trocar nome, capa ou acrescentar pistas depois, abra a música e toque em <b>Editar música</b>.</p>
         </div>
       )}
     </div>
