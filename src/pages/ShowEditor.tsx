@@ -11,6 +11,8 @@ import { Sheet } from '@/components/ui/sheet'
 import { SongPicker } from '@/components/shows/SongPicker'
 import { CoverImg } from '@/components/shows/CoverImg'
 import { formatTons } from '@/lib/musicTheory'
+import { prefetchLyrics } from '@/store/lyricsStore'
+import { prefetchCifra } from '@/store/cifraStore'
 import { formatDuration, isTrackOffline, trackAudioUrls } from '@/lib/showUtils'
 import { buildSharedShow, encodeShow, showAsText } from '@/lib/shareShow'
 import { cn } from '@/lib/utils'
@@ -90,14 +92,28 @@ export default function ShowEditor() {
   }
 
   const prepareOffline = async () => {
-    const list = tracks.filter((t): t is Track => !!t && !isTrackOffline(t))
-    if (!list.length) { toast.success('Este show já toca sem internet.'); return }
+    const all = tracks.filter((t): t is Track => !!t)
+    const list = all.filter(t => !isTrackOffline(t))
+    // letras e cifras também ficam no aparelho (no palco sem sinal o músico precisa delas)
+    const texts = (async () => {
+      let ok = 0
+      for (const t of all) {
+        const [a, b] = await Promise.all([
+          prefetchLyrics(t.artist, t.title, t.id, t.lrclibId),
+          t.genre === 'importado' ? Promise.resolve(true) : prefetchCifra(t.id, t.artist, t.title),
+        ])
+        if (a && b) ok++
+      }
+      return ok
+    })()
     const urls = list.flatMap(trackAudioUrls)
     setOffline({ done: 0, total: urls.length })
-    const ok = await audioEngine.prefetch(urls, (done, total) => setOffline({ done, total }))
+    const ok = urls.length ? await audioEngine.prefetch(urls, (done, total) => setOffline({ done, total })) : 0
+    const textOk = await texts
     setOffline(null); force(x => x + 1)
-    if (ok === urls.length) toast.success('Pronto! Este show toca mesmo sem internet.')
-    else toast.warning(`${urls.length - ok} arquivo(s) não baixaram. Tente de novo com uma conexão melhor.`)
+    if (ok === urls.length && textOk === all.length) toast.success('Pronto! Músicas, letras e cifras deste show funcionam sem internet.')
+    else if (ok < urls.length) toast.warning(`${urls.length - ok} arquivo(s) não baixaram. Tente de novo com uma conexão melhor.`)
+    else toast.warning('O som já está no aparelho, mas algumas letras/cifras não baixaram. Toque de novo com internet.')
   }
 
   const shareWithBand = async () => {

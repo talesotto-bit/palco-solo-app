@@ -5,15 +5,34 @@
  * - catálogo e ícones: usa o salvo e atualiza em segundo plano
  * O áudio das músicas é guardado pelo próprio app (src/lib/offlineAudio.ts).
  */
-const SHELL = 'shell-v1'
+const SHELL = 'shell-v2'
 const DATA = 'data-v1'
 const KEEP = [SHELL, DATA]
+
+const BASE = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/vendor/signalsmith-stretch-1.3.2.mjs']
+
+/** Guarda TODAS as telas do app (não só as já abertas) e apaga as de versões antigas */
+async function precacheAll() {
+  const cache = await caches.open(SHELL)
+  let files = []
+  try { files = await (await fetch('/sw-assets.json', { cache: 'no-store' })).json() } catch { return }
+  const have = new Set((await cache.keys()).map((r) => new URL(r.url).pathname))
+  await Promise.all(files.filter((f) => !have.has(f)).map((f) =>
+    fetch(f).then((res) => (res.ok ? cache.put(f, res) : null)).catch(() => null)))
+  const keep = new Set(files)
+  await Promise.all([...have].filter((p) => p.startsWith('/assets/') && !keep.has(p)).map((p) => cache.delete(p)))
+}
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
   event.waitUntil(
-    caches.open(SHELL).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icons/icon-192.png']))
+    caches.open(SHELL).then((c) => c.addAll(BASE)).then(precacheAll)
   )
+})
+
+// o app pede a cada abertura (com internet): mantém a versão nova guardada
+self.addEventListener('message', (event) => {
+  if (event.data === 'precache') event.waitUntil(precacheAll())
 })
 
 self.addEventListener('activate', (event) => {
@@ -63,7 +82,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirstPage(request))
   } else if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/vendor/')) {
     event.respondWith(cacheFirst(request))
-  } else if (/^\/(catalog\.json|demo-catalog\.json|icons\/|manifest\.webmanifest)/.test(url.pathname)) {
+  } else if (/^\/(catalog\.json|demo-catalog\.json|repertorios\.json|icons\/|manifest\.webmanifest)/.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request))
   }
 })

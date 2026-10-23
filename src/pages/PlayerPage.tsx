@@ -152,7 +152,7 @@ export default function PlayerPage() {
                 </button>
               </div>
 
-              <FirstTip id="player" title="Como usar o player" items={[
+              <FirstTip id="player" title="Como usar o player" dismissWhen={isPlaying} items={[
                 'Tom: sobe ou desce de ½ em ½ tom (letra e cifra acompanham)',
                 'Mixer: toque em M para tirar um instrumento',
                 'Loop A-B: repete um trecho para ensaiar',

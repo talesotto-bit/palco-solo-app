@@ -10,6 +10,8 @@ interface StageSettings {
   advanceGap: number
   precount: boolean
   lyricScale: number
+  /** volume igual entre as músicas (normalização) */
+  normalize: boolean
   view: StageView
   set: (patch: Partial<Omit<StageSettings, 'set'>>) => void
 }
@@ -21,6 +23,7 @@ export const useStageSettings = create<StageSettings>()(
       advanceGap: 5,
       precount: false,
       lyricScale: 1,
+      normalize: true,
       view: 'letra',
       set: (patch) => set(patch),
     }),

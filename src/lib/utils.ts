@@ -14,10 +14,14 @@ export function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-/** Clamp a value between min and max */
 /** Texto para busca: minúsculo e sem acento ("Arranhão" → "arranhao") */
 export function normalizeSearch(text: string): string {
-  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  // "Gusttavo" = "Gustavo", "&" = "e": o músico digita do jeito que fala
+  return stripAccents(text).toLowerCase().replace(/&/g, ' e ').replace(/([a-z])\1+/g, '$1')
+}
+
+function stripAccents(text: string): string {
+  return text.normalize('NFD').replace(/[̀-ͯ]/g, '')
 }
 
 /** Cada palavra da busca precisa aparecer em algum dos campos (em qualquer ordem) */
@@ -27,6 +31,7 @@ export function matchesSearch(query: string, fields: string[]): boolean {
   return words.every(w => hay.includes(w))
 }
 
+/** Clamp a value between min and max */
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Headphones, Repeat, Timer, HardDrive, Sparkles, Trash2, Info, Wallet, Download, UploadCloud, LifeBuoy, Mic2 } from 'lucide-react'
+import { Headphones, Repeat, Timer, HardDrive, Sparkles, Trash2, Info, Wallet, Download, UploadCloud, LifeBuoy, Mic2, Volume2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { InstallCard } from '@/components/InstallApp'
@@ -86,6 +86,9 @@ export default function Settings() {
               </div>
             </div>
           )}
+          <Row icon={Volume2} title="Volume igual entre as músicas" desc="O app equilibra cada música para nenhuma entrar mais alta que a outra no show">
+            <Switch checked={st.normalize} onCheckedChange={v => st.set({ normalize: v })} />
+          </Row>
           <Row icon={Timer} title="Contagem antes de começar" desc="4 bipes no andamento da música (quando o app sabe o BPM)">
             <Switch checked={st.precount} onCheckedChange={() => togglePrecount()} />
           </Row>

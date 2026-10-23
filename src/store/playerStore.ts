@@ -153,6 +153,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     }
   })
 
+  // Volume igual entre músicas: segue a preferência salva
+  audioEngine.setNormalize(useStageSettings.getState().normalize)
+  useStageSettings.subscribe(s => audioEngine.setNormalize(s.normalize))
+
   // Fones Bluetooth e tela bloqueada
   audioEngine.setMediaHandlers({
     play: () => { void get().play() },

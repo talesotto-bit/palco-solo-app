@@ -83,6 +83,31 @@ function parseLrc(lrc: string): LrcLine[] {
   return lines.sort((a, b) => a.time - b.time)
 }
 
+/** Guarda a letra no aparelho sem abrir a música (show sem internet). true = já está disponível */
+export async function prefetchLyrics(artist: string, title: string, trackId: string, lrclibId?: number): Promise<boolean> {
+  const own = useOwnLyrics.getState().items[trackId]
+  if (own && (own.plain || own.lrc)) return true
+  const key = cacheKeyFor(artist, cleanTitleForSearch(title))
+  if (getCache()[key]) return true
+  try {
+    if (lrclibId) {
+      const r = await fetch(`https://lrclib.net/api/get/${lrclibId}`)
+      if (r.ok) {
+        const d = await r.json()
+        if (d.plainLyrics || d.syncedLyrics) {
+          setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB' })
+          return true
+        }
+      }
+    }
+    const res = await fetch(`/api/lyrics?${new URLSearchParams({ artist, title: cleanTitleForSearch(title) })}`)
+    if (!res.ok) return res.status === 404
+    const data = await res.json()
+    setCache(key, { plainLyrics: data.plainLyrics || data.lyrics || '', syncedLyrics: data.syncedLyrics || null, source: data.source })
+    return true
+  } catch { return false }
+}
+
 export const useLyricsStore = create<LyricsState>((set, get) => ({
   plainLyrics: null,
   syncedLines: null,

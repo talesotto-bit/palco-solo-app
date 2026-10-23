@@ -35,6 +35,8 @@ import type { Track, Stem } from '@/types/track'
 
 // ─── utilidades ──────────────────────────────────────────────────────────────
 
+const IS_IOS = typeof navigator !== 'undefined' && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+
 function useWakeLock() {
   useEffect(() => {
     let lock: any = null
@@ -105,7 +107,7 @@ function StageLyrics({ scale }: { scale: number }) {
         </div>
       )}
       {syncedLines && (
-        <div className="py-[30vh]">
+        <div className="pt-4 pb-[45vh]">
           {syncedLines.map((l, i) => (
             <p key={i} ref={el => { if (el) lineRefs.current.set(i, el); else lineRefs.current.delete(i) }}
               onClick={() => { usePlayerStore.getState().seek(Math.max(0, l.time + sync.offset)); userUntil.current = 0 }}
@@ -119,7 +121,7 @@ function StageLyrics({ scale }: { scale: number }) {
       )}
       {!syncedLines && plainLyrics && <div className="py-6 whitespace-pre-wrap font-semibold text-white/90 leading-snug" style={{ fontSize: base * 0.85 }}>{plainLyrics}</div>}
     </div>
-      {syncedLines && playing && (
+      {syncedLines && playing && currentTime < 40 && (
         <button onClick={sync.markStart} className="absolute right-3 bottom-2 z-10 h-9 px-3 rounded-full bg-black/80 border border-white/15 text-[11px] font-bold text-white/70 active:bg-white/20">
           Letra fora do tempo? Toque quando começar a cantar
         </button>
@@ -299,11 +301,18 @@ export default function Performance() {
         {note && <p className="mt-1 flex items-center gap-1.5 rounded-lg bg-amber-400/15 px-2 py-1 text-[13px] font-semibold text-amber-200"><StickyNote className="h-4 w-4 shrink-0" />{note}</p>}
       </div>
 
-      <FirstTip id="palco" className="mx-4 mt-1" title="Modo Palco" items={[
+      <FirstTip id="palco" className="mx-4 mt-1" title="Modo Palco" dismissWhen={isPlaying} items={[
         'O show segue sozinho com uma contagem entre as músicas (dá para tocar já ou segurar)',
         'Botões de baixo: voz guia, click, tom e mixer sem sair da tela',
         'Pedal Bluetooth: espaço toca/pausa, setas passam de música',
       ]} />
+      {IS_IOS && (
+        <FirstTip id="palco-ios" className="mx-4 mt-2" dismissWhen={isPlaying} title="No iPhone, fique nesta tela" items={[
+          'O iPhone pausa o som se você trocar de app ou for para a tela inicial no meio da música',
+          'A tela não apaga sozinha enquanto o Modo Palco está aberto',
+          'Para ler mensagens, espere a música acabar',
+        ]} />
+      )}
 
       {/* Abas */}
       <div className="flex gap-1.5 px-4 py-2 shrink-0">

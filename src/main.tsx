@@ -8,9 +8,13 @@ setupInstallPrompt()
 
 // App abre sem internet depois do primeiro acesso
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {})
-  })
+  // o "load" pode já ter acontecido quando este código roda: registra na hora nesse caso
+  const register = () => navigator.serviceWorker.register('/sw.js')
+    .then(() => navigator.serviceWorker.ready)
+    .then(reg => reg.active?.postMessage('precache'))
+    .catch(() => {})
+  if (document.readyState === 'complete') register()
+  else window.addEventListener('load', register, { once: true })
 }
 
 createRoot(document.getElementById('root')!).render(

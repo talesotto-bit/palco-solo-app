@@ -41,6 +41,8 @@ type StretchNode = AudioWorkletNode & {
 interface LoadedStem {
   id: string
   label: string
+  /** energia média da pista (para igualar o volume entre músicas) */
+  ms?: number
   /** pista de apoio (click) ligada sob demanda: toca mesmo durante a prévia */
   lazyStarted?: boolean
   buffer: AudioBuffer
@@ -132,7 +134,17 @@ async function pool<T>(items: T[], limit: number, fn: (item: T, i: number) => Pr
 }
 
 /** Corta silêncio do começo/fim e junta canais idênticos em mono. Retorna null se a pista é muda. */
-function optimizeBuffer(ctx: BaseAudioContext, buf: AudioBuffer): { buffer: AudioBuffer; offset: number } | null {
+/** Energia média (para igualar o volume entre músicas). Amostra 1 a cada 8: rápido no celular */
+function meanSquare(buf: AudioBuffer, start = 0, end = buf.length, fullLength = buf.length): number {
+  let sq = 0
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c)
+    for (let i = start; i < end; i += 8) sq += d[i] * d[i]
+  }
+  return sq / (Math.ceil(fullLength / 8) * buf.numberOfChannels)
+}
+
+function optimizeBuffer(ctx: BaseAudioContext, buf: AudioBuffer): { buffer: AudioBuffer; offset: number; ms: number } | null {
   const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c))
   const len = buf.length
   let first = len, last = -1
@@ -153,16 +165,26 @@ function optimizeBuffer(ctx: BaseAudioContext, buf: AudioBuffer): { buffer: Audi
     mono = level === 0 || Math.sqrt(diff / (level / 2)) < 0.01
   }
   const outChannels = mono ? 1 : chans.length
+  const ms = meanSquare(buf, start, end, len)
   // Pista já enxuta: devolve a mesma, sem cópia
-  if (start === 0 && end === len && outChannels === chans.length) return { buffer: buf, offset: 0 }
+  if (start === 0 && end === len && outChannels === chans.length) return { buffer: buf, offset: 0, ms }
   const out = ctx.createBuffer(outChannels, end - start, buf.sampleRate)
   for (let c = 0; c < outChannels; c++) out.copyToChannel(chans[c].subarray(start, end), c)
-  return { buffer: out, offset: start / buf.sampleRate }
+  return { buffer: out, offset: start / buf.sampleRate, ms }
 }
+
+/** Nível alvo (soma da energia das pistas ligadas): a mediana do acervo, assim o volume médio não muda */
+const LOUDNESS_TARGET = 0.28
+/** A prévia mixada (sem voz guia, com limitador) mede ~0,73× a soma das pistas: compensa para não mudar o volume na troca */
+const MIX_TO_STEMS = 1.38
 
 class AudioEngine {
   private ctx: AudioContext | null = null
   private mixBus: GainNode | null = null
+  private norm: GainNode | null = null
+  private limiter: DynamicsCompressorNode | null = null
+  private normalizeOn = true
+  private normGain = 1
   private master: GainNode | null = null
   private stretch: StretchNode | null = null
   private stretchPromise: Promise<StretchNode | null> | null = null
@@ -211,7 +233,14 @@ class AudioEngine {
     catch { this.ctx = new Ctx({ latencyHint: 'playback' }) as AudioContext }
     this.master = this.ctx.createGain()
     this.master.gain.value = this._volume
-    this.master.connect(this.ctx.destination)
+    // volume igual entre músicas + limitador (não distorce a caixa)
+    this.norm = this.ctx.createGain()
+    this.limiter = this.ctx.createDynamicsCompressor()
+    this.limiter.threshold.value = -2; this.limiter.knee.value = 0; this.limiter.ratio.value = 20
+    this.limiter.attack.value = 0.002; this.limiter.release.value = 0.15
+    this.master.connect(this.norm)
+    this.norm.connect(this.limiter)
+    this.limiter.connect(this.ctx.destination)
     this.mixBus = this.ctx.createGain()
     this.mixBus.connect(this.master)
     return this.ctx
@@ -290,7 +319,7 @@ class AudioEngine {
     const gain = ctx.createGain()
     gain.gain.value = this.targetGain(stem.id)
     gain.connect(this.mixBus!)
-    return { id: stem.id, label: stem.label, buffer: opt.buffer, offset: opt.offset, gain, source: null }
+    return { id: stem.id, label: stem.label, buffer: opt.buffer, offset: opt.offset, gain, source: null, ms: opt.ms }
   }
 
   /**
@@ -347,6 +376,7 @@ class AudioEngine {
         this.mix = mixStem
         if (mixStem.buffer.duration > this._duration) this._duration = mixStem.buffer.duration
         this.emit({ type: 'preview', active: true })
+        this.updateNorm()
         becomeReady()
       }
     }
@@ -357,6 +387,7 @@ class AudioEngine {
         if (loaded && id === this.loadId) {
           this.stems.set(s.id, loaded)
           ok++
+          this.updateNorm()
           // chegou com a música tocando: entra sincronizada (durante a prévia, espera a troca)
           if (this._playing && this.ctx && !this.mix) {
             const when = this.ctx.currentTime + 0.05
@@ -485,7 +516,7 @@ class AudioEngine {
       const gain = this.ctx!.createGain()
       gain.gain.value = this.targetGain(d.id)
       gain.connect(this.mixBus!)
-      const st: LoadedStem = { id: d.id, label: d.label, buffer: buf, offset: src.offset, gain, source: null }
+      const st: LoadedStem = { id: d.id, label: d.label, buffer: buf, offset: src.offset, gain, source: null, ms: meanSquare(buf) }
       this.stems.set(d.id, st)
       if (this._playing && this.ctx && !this.mix) {
         const when = this.ctx.currentTime + 0.05
@@ -511,6 +542,25 @@ class AudioEngine {
     return false
   }
 
+  /** Liga/desliga o "volume igual entre as músicas" */
+  setNormalize(on: boolean) { this.normalizeOn = on; this.updateNorm() }
+
+  /** Ajusta o ganho para a música soar no mesmo volume das outras (considera as pistas ligadas) */
+  private updateNorm() {
+    if (!this.norm || !this.ctx) return
+    let g = 1
+    if (this.normalizeOn) {
+      let e = 0
+      if (this.mix?.ms) e = this.mix.ms * MIX_TO_STEMS * MIX_TO_STEMS
+      else this.stems.forEach(st => { if (st.ms) { const v = this.targetGain(st.id); e += st.ms * v * v } })
+      const rms = Math.sqrt(e)
+      if (rms > 1e-4) g = Math.min(2.8, Math.max(0.3, LOUDNESS_TARGET / rms))
+    }
+    if (Math.abs(g - this.normGain) < 0.02) return
+    this.normGain = g
+    this.norm.gain.setTargetAtTime(g, this.ctx.currentTime, this._playing ? 0.4 : 0.01)
+  }
+
   /** Baixa e decodifica a prévia mixada (sem cortar silêncio: precisa da linha do tempo inteira) */
   private async loadMix(url: string, signalId: number): Promise<LoadedStem | null> {
     const ctx = this.ensureContext()
@@ -520,7 +570,7 @@ class AudioEngine {
     const gain = ctx.createGain()
     gain.gain.value = 1
     gain.connect(this.mixBus!)
-    return { id: '__mix', label: 'Prévia', buffer, offset: 0, gain, source: null }
+    return { id: '__mix', label: 'Prévia', buffer, offset: 0, gain, source: null, ms: meanSquare(buffer) }
   }
 
   /** Troca a prévia pelas pistas separadas, com uma transição curta (sem corte, no ponto exato) */
@@ -529,6 +579,7 @@ class AudioEngine {
     if (!mix) return
     this.mix = null
     this.emit({ type: 'preview', active: false })
+    this.updateNorm()
     if (!this._playing || !this.ctx) { try { mix.gain.disconnect() } catch {} ; return }
     const ctx = this.ctx
     const XF = 0.35
@@ -727,6 +778,7 @@ class AudioEngine {
 
   setStemStates(stemStates: Record<string, StemState>): void {
     this.stemStates = { ...stemStates }
+    this.updateNorm()
     const t = this.ctx?.currentTime ?? 0
     this.stems.forEach(st => st.gain.gain.setTargetAtTime(this.targetGain(st.id), t, 0.015))
     // pista de apoio ligada pela primeira vez: baixa agora e entra no ponto certo
@@ -906,7 +958,7 @@ class AudioEngine {
     let bytes = 0, mono = 0
     this.stems.forEach(st => { bytes += st.buffer.length * st.buffer.numberOfChannels * 4; if (st.buffer.numberOfChannels === 1) mono++ })
     return {
-      stems: this.stems.size, pending: [...this.pending.keys()], mono, memoryMB: Math.round(bytes / 1e6), preview: !!this.mix,
+      stems: this.stems.size, pending: [...this.pending.keys()], mono, memoryMB: Math.round(bytes / 1e6), preview: !!this.mix, normGain: Math.round(this.normGain * 100) / 100,
       stretchActive: this.stretchActive, stretchLatency: this.stretchLatency, stretchFailed: this.stretchFailed,
       playing: this._playing, position: this.currentTime, duration: this._duration, speed: this._speed, pitch: this._pitch,
       ctxState: this.ctx?.state, sampleRate: this.ctx?.sampleRate,

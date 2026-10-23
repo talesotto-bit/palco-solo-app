@@ -79,6 +79,7 @@ async function cifraClubDirect(artist: string, title: string): Promise<CifraResu
       signal: AbortSignal.timeout(8000),
     })
 
+    trace.push(`cc-direto ${res.status}`)
     if (!res.ok) return null
     const html = await res.text()
     return parseCifraClubHtml(html, artist, title)
@@ -189,23 +190,38 @@ function ugStore(html: string): any | null {
   try { return JSON.parse(json) } catch { return null }
 }
 
+/** Passos da última busca (só aparece com ?debug=1) */
+const trace: string[] = []
+
 async function ultimateGuitar(artist: string, title: string): Promise<CifraResult | null> {
+  // "título + artista" às vezes não traz nada; só o título costuma achar
+  const queries = [...new Set([`${title} ${artist}`.trim(), title.trim()])].filter(Boolean)
+  for (const q of queries) {
+    const r = await ultimateGuitarQuery(artist, title, q.slice(0, 100))
+    if (r) return r
+  }
+  return null
+}
+
+async function ultimateGuitarQuery(artist: string, title: string, q: string): Promise<CifraResult | null> {
   try {
-    const q = `${title} ${artist}`.trim().slice(0, 100)
     const searchRes = await fetch(
       `https://www.ultimate-guitar.com/search.php?search_type=title&value=${encodeURIComponent(q)}`,
-      { headers: UG_HEADERS, signal: AbortSignal.timeout(8000) },
+      { headers: UG_HEADERS, signal: AbortSignal.timeout(7000) },
     )
+    trace.push(`ug-busca ${searchRes.status}`)
     if (!searchRes.ok) return null
     const results: any[] = ugStore(await searchRes.text())?.store?.page?.data?.results ?? []
+    trace.push(`ug-resultados ${results.length}`)
 
     const nt = norm(title)
     const na = norm(artist)
     const scored = results
       .filter(r => r?.type === 'Chords' && r.tab_url && r.song_name)
       .map(r => {
-        const song = norm(r.song_name)
-        const art = norm(r.artist_name || '')
+        // nomes vêm com acento codificado ("Arranh&atilde;o"): decodifica antes de comparar
+        const song = norm(decodeHtml(r.song_name))
+        const art = norm(decodeHtml(r.artist_name || ''))
         const songScore = song === nt ? 6 : song.includes(nt) || nt.includes(song) ? 3 : 0
         if (songScore === 0) return { r, score: 0 } // nunca aceita outra música do mesmo artista
         let score = songScore
@@ -218,30 +234,36 @@ async function ultimateGuitar(artist: string, title: string): Promise<CifraResul
       .sort((a, b) => b.score - a.score)
     if (!scored.length) return null
 
-    const best = scored[0].r
-    const tabRes = await fetch(best.tab_url, { headers: UG_HEADERS, signal: AbortSignal.timeout(8000) })
-    if (!tabRes.ok) return null
-    const data = ugStore(await tabRes.text())?.store?.page?.data
-    const raw: string | undefined = data?.tab_view?.wiki_tab?.content
-    if (!raw) return null
+    // tenta as 3 melhores versões: uma página pode vir sem a cifra
+    for (const { r: best } of scored.slice(0, 3)) {
+      const tabRes = await fetch(best.tab_url, { headers: UG_HEADERS, signal: AbortSignal.timeout(7000) })
+      trace.push(`ug-cifra ${tabRes.status}`)
+      if (!tabRes.ok) continue
+      const data = ugStore(await tabRes.text())?.store?.page?.data
+      const raw: string | undefined = data?.tab_view?.wiki_tab?.content
+      if (!raw) continue
 
-    const content = raw
-      .replace(/\[ch\]([^[]*)\[\/ch\]/g, '⟨$1⟩')
-      .replace(/\[\/?tab\]/g, '')
-      .replace(/\r\n/g, '\n')
-      .trim()
-    if (content.length < 20) return null
+      // o UG manda acentos como &ecirc;: decodifica para não aparecer "voc&ecirc;" na cifra
+      const content = decodeHtml(raw
+        .replace(/\[ch\]([^[]*)\[\/ch\]/g, '⟨$1⟩')
+        .replace(/\[\/?tab\]/g, '')
+        .replace(/\r\n/g, '\n'))
+        .trim()
+      if (content.length < 20) continue
 
-    const capo = data?.tab_view?.meta?.capo
-    const tonality = data?.tab?.tonality_name
-    return {
-      title: decodeHtml(best.song_name),
-      artist: best.artist_name ? decodeHtml(best.artist_name) : artist,
-      content,
-      capo: tonality ? String(tonality) : capo ? String(capo) : undefined,
-      source: 'Ultimate Guitar',
+      const capo = data?.tab_view?.meta?.capo
+      const tonality = data?.tab?.tonality_name
+      return {
+        title: decodeHtml(best.song_name),
+        artist: best.artist_name ? decodeHtml(best.artist_name) : artist,
+        content,
+        capo: tonality ? String(tonality) : capo ? String(capo) : undefined,
+        source: 'Ultimate Guitar',
+      }
     }
-  } catch {
+    return null
+  } catch (e: any) {
+    trace.push(`ug-erro ${e?.name || e}`)
     return null
   }
 }
@@ -259,6 +281,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Missing title' })
   }
 
+  trace.length = 0
+  const debug = req.query.debug === '1'
   const a = (typeof artist === 'string' ? artist : '').trim()
   const t = title.trim()
   const cleanedT = cleanTitle(t)
@@ -275,6 +299,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     result = await ultimateGuitar(a, cleanedT)
   }
 
+  if (debug) return res.status(result ? 200 : 404).json({ found: !!result, source: result?.source, trace })
   if (!result) {
     return res.status(404).json({ error: 'Cifra not found' })
   }

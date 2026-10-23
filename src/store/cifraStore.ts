@@ -57,10 +57,24 @@ export const useCifraStore = create<CifraState>()(
   )
 )
 
-/** "não encontrada" fica guardado só por 3 dias (a cifra pode aparecer depois) */
+/** Guarda a cifra no aparelho sem abrir a música (show sem internet). true = resolvida */
+export async function prefetchCifra(trackId: string, artist: string, title: string): Promise<boolean> {
+  if (useCifraStore.getState().own[trackId] || cachedCifra(trackId) !== undefined) return true
+  try {
+    const params = new URLSearchParams({ title })
+    if (artist) params.set('artist', artist)
+    const res = await fetch(`/api/cifra?${params}`)
+    if (res.status === 404) { useCifraStore.getState().setCached(trackId, null); return true }
+    if (!res.ok) return false
+    useCifraStore.getState().setCached(trackId, await res.json())
+    return true
+  } catch { return false }
+}
+
+/** "não encontrada" fica guardado só por 1 dia (a cifra pode aparecer depois) */
 export function cachedCifra(trackId: string): CifraData | null | undefined {
   const c = useCifraStore.getState().cache[trackId]
   if (!c) return undefined
-  if ('notFound' in c) return Date.now() - c.t < 3 * 86400000 ? null : undefined
+  if ('notFound' in c) return Date.now() - c.t < 86400000 ? null : undefined
   return c
 }
