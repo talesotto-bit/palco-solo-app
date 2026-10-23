@@ -99,6 +99,8 @@ export interface Track {
   lrclibId?: number
   /** versão do playback: Forró, Ao vivo, Versão 2... */
   version?: string
+  /** prévia mixada: toca na hora enquanto as pistas separadas chegam */
+  mixUrl?: string
   tags: string[]
   isNew?: boolean
   isFeatured?: boolean

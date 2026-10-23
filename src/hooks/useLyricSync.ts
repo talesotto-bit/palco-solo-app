@@ -13,6 +13,8 @@ import type { LrcLine } from '@/store/lyricsStore'
 export function useLyricSync(lines: LrcLine[] | null) {
   const trackId = usePlayerStore(s => s.track?.id)
   const loaded = usePlayerStore(s => s.playbackState !== 'loading' && s.playbackState !== 'idle')
+  // a voz guia pode chegar depois (prévia): recalcula quando todas as pistas estiverem prontas
+  const allStems = usePlayerStore(s => !s.bgProgress && !s.previewActive)
   const manual = useLyricsSyncStore(s => (trackId ? s.offsets[trackId] : undefined))
   const setOffset = useLyricsSyncStore(s => s.setOffset)
   const clearOffset = useLyricsSyncStore(s => s.clearOffset)
@@ -25,7 +27,7 @@ export function useLyricSync(lines: LrcLine[] | null) {
     if (vs === null) return
     const diff = vs - lines[0].time
     if (Math.abs(diff) >= 0.3 && Math.abs(diff) <= 40) setAuto(Math.round(diff * 100) / 100)
-  }, [trackId, lines, loaded])
+  }, [trackId, lines, loaded, allStems])
 
   const offset = manual ?? auto ?? 0
   return {

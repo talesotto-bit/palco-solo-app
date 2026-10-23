@@ -25,6 +25,7 @@ interface CatalogSongCompact {
   k?: string          // tom
   b?: number          // BPM
   m?: 1               // bloco/medley
+  x?: 1               // tem prévia mixada (mix/<g>/<s>.mp3)
 }
 
 /** Expanded format used internally */
@@ -34,7 +35,7 @@ interface CatalogSong {
   genreSlug: string
   stems: { name: string; slug: string; url: string }[]
   stemCount: number
-  meta: Pick<CatalogSongCompact, 't' | 'a' | 'd' | 'li' | 'v' | 'k' | 'b' | 'm'>
+  meta: Pick<CatalogSongCompact, 't' | 'a' | 'd' | 'li' | 'v' | 'k' | 'b' | 'm' | 'x'>
 }
 
 function stemFromEntry(c: CatalogSongCompact, e: string | [string, string]): { name: string; key: string } {
@@ -56,7 +57,7 @@ function expandCatalog(compact: CatalogSongCompact[]): CatalogSong[] {
     slug: c.s,
     genreSlug: c.g,
     stemCount: c.sc ?? c.st.length,
-    meta: { t: c.t, a: c.a, d: c.d, li: c.li, v: c.v, k: c.k, b: c.b, m: c.m },
+    meta: { t: c.t, a: c.a, d: c.d, li: c.li, v: c.v, k: c.k, b: c.b, m: c.m, x: c.x },
     stems: c.st.map(e => {
       const { name, key } = stemFromEntry(c, e)
       return {
@@ -435,6 +436,7 @@ function catalogToTrack(song: CatalogSong, index: number): Track {
     stems: finalStems,
     hasLyrics: !!meta.li,
     lrclibId: meta.li,
+    mixUrl: meta.x ? `${R2_PUBLIC_URL}/mix/${song.genreSlug}/${song.slug}.mp3` : undefined,
     version: meta.v,
     tags: meta.m ? [effectiveGenreSlug, 'bloco'] : [effectiveGenreSlug],
   }

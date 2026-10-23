@@ -12,7 +12,7 @@
  */
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
-import { getOfflineAudio, putOfflineAudio } from '@/lib/offlineAudio'
+import { getOfflineAudio, putOfflineAudio, isAvailableOffline } from '@/lib/offlineAudio'
 import { detectInstrument } from '@/lib/stemDetection'
 
 /**
@@ -41,6 +41,8 @@ type StretchNode = AudioWorkletNode & {
 interface LoadedStem {
   id: string
   label: string
+  /** pista de apoio (click) ligada sob demanda: toca mesmo durante a prévia */
+  lazyStarted?: boolean
   buffer: AudioBuffer
   /** segundos da música em que o buffer começa (silêncio inicial cortado) */
   offset: number
@@ -55,6 +57,7 @@ export type AudioEngineEvent =
   | { type: 'loaded' }
   | { type: 'loading'; loaded?: number; total?: number }
   | { type: 'background'; loaded: number; total: number }
+  | { type: 'preview'; active: boolean }
   | { type: 'warning'; message: string }
   | { type: 'stemLoading'; id: string; active: boolean }
   | { type: 'pitchProcessing'; active: boolean }
@@ -141,6 +144,8 @@ class AudioEngine {
   private stretchFailed = false
 
   private stems = new Map<string, LoadedStem>()
+  /** prévia mixada tocando enquanto as pistas chegam */
+  private mix: LoadedStem | null = null
   private pending = new Map<string, Stem>() // pistas de apoio ainda não baixadas
   private stemStates: Record<string, StemState> = {}
   private listeners = new Set<EventCallback>()
@@ -265,7 +270,7 @@ class AudioEngine {
    * Carrega a música. Libera o play assim que a base estiver pronta (bateria/baixo e boa parte das pistas);
    * o resto continua baixando e entra sozinho, no ponto certo, enquanto a música toca.
    */
-  async load(stems: Stem[], initialStates?: Record<string, StemState>): Promise<void> {
+  async load(stems: Stem[], initialStates?: Record<string, StemState>, opts?: { mixUrl?: string }): Promise<void> {
     const id = ++this.loadId
     this.disposeTrack()
     this.ensureContext()
@@ -283,6 +288,10 @@ class AudioEngine {
     // base primeiro: bateria, baixo, harmonia; o que está desligado por último
     now.sort((a, b) => stemPriority(a, this.stemStates) - stemPriority(b, this.stemStates))
 
+    // Prévia mixada: um arquivo leve que toca na hora. Só quando as pistas ainda não estão no aparelho.
+    const useMix = !!opts?.mixUrl && !isAvailableOffline(now.map(s => s.audioUrl))
+    const mixP = useMix ? this.loadMix(opts!.mixUrl!, id).catch(err => { console.warn('[AudioEngine] prévia falhou:', err); return null }) : null
+
     const need = Math.min(now.length, Math.max(2, Math.ceil(now.length * 0.4)))
     const foundation = now.filter(s => stemPriority(s, this.stemStates) <= 1).slice(0, 2).map(s => s.id)
     let done = 0, failed = 0, ok = 0
@@ -292,7 +301,7 @@ class AudioEngine {
 
     const becomeReady = () => {
       if (isReady || id !== this.loadId) return
-      if (this.stems.size === 0) return
+      if (this.stems.size === 0 && !this.mix) return
       isReady = true
       this._loaded = true
       this.anchorPos = 0
@@ -301,14 +310,26 @@ class AudioEngine {
       markReady()
     }
 
+    if (mixP) {
+      // a prévia baixa sozinha primeiro (com a internet toda); as pistas começam em seguida
+      const mixStem = await Promise.race([mixP, new Promise<null>(r => setTimeout(() => r(null), 8000))])
+      if (id !== this.loadId) return
+      if (mixStem) {
+        this.mix = mixStem
+        if (mixStem.buffer.duration > this._duration) this._duration = mixStem.buffer.duration
+        this.emit({ type: 'preview', active: true })
+        becomeReady()
+      }
+    }
+
     const all = pool(now, fetchConcurrency(), async (s) => {
       try {
         const loaded = await this.loadStem(s, id)
         if (loaded && id === this.loadId) {
           this.stems.set(s.id, loaded)
           ok++
-          // chegou com a música tocando: entra sincronizada
-          if (this._playing && this.ctx) {
+          // chegou com a música tocando: entra sincronizada (durante a prévia, espera a troca)
+          if (this._playing && this.ctx && !this.mix) {
             const when = this.ctx.currentTime + 0.05
             this.startStem(loaded, this.anchorPos + (when - this.anchorCtxTime) * this._speed, when, this.ctx)
           }
@@ -336,6 +357,7 @@ class AudioEngine {
     }
     void all.then(() => {
       if (id !== this.loadId) return
+      if (this.mix) this.handoff()
       if (failed > 0) this.emit({ type: 'warning', message: `${failed} pista(s) não carregaram. A música toca com as demais.` })
       this.emit({ type: 'background', loaded: now.length, total: now.length })
     })
@@ -388,7 +410,13 @@ class AudioEngine {
 
   private startSources(pos: number, when: number) {
     const ctx = this.ctx!
-    this.stems.forEach(st => this.startStem(st, pos, when, ctx))
+    if (this.mix) {
+      this.startStem(this.mix, pos, when, ctx)
+      // pistas de apoio ligadas durante a prévia (click) tocam junto
+      this.stems.forEach(st => { if (st.lazyStarted) this.startStem(st, pos, when, ctx) })
+    } else {
+      this.stems.forEach(st => this.startStem(st, pos, when, ctx))
+    }
     this.anchorCtxTime = when
     this.anchorPos = pos
   }
@@ -410,6 +438,42 @@ class AudioEngine {
     this.stems.forEach(st => {
       if (st.source) { try { st.source.stop(when) } catch {} ; st.source = null }
     })
+    if (this.mix?.source) { try { this.mix.source.stop(when) } catch {} ; this.mix.source = null }
+  }
+
+  /** Baixa e decodifica a prévia mixada (sem cortar silêncio: precisa da linha do tempo inteira) */
+  private async loadMix(url: string, signalId: number): Promise<LoadedStem | null> {
+    const ctx = this.ensureContext()
+    const bytes = await this.fetchBytes(url, signalId)
+    if (signalId !== this.loadId) return null
+    const buffer = await new Promise<AudioBuffer>((res, rej) => ctx.decodeAudioData(bytes, res, rej))
+    const gain = ctx.createGain()
+    gain.gain.value = 1
+    gain.connect(this.mixBus!)
+    return { id: '__mix', label: 'Prévia', buffer, offset: 0, gain, source: null }
+  }
+
+  /** Troca a prévia pelas pistas separadas, com uma transição curta (sem corte, no ponto exato) */
+  private handoff() {
+    const mix = this.mix
+    if (!mix) return
+    this.mix = null
+    this.emit({ type: 'preview', active: false })
+    if (!this._playing || !this.ctx) { try { mix.gain.disconnect() } catch {} ; return }
+    const ctx = this.ctx
+    const XF = 0.35
+    const when = ctx.currentTime + 0.1
+    const pos = this.anchorPos + (when - this.anchorCtxTime) * this._speed
+    this.stems.forEach(st => {
+      if (st.source) return // já tocando (ex.: click ligado durante a prévia)
+      const g = st.gain.gain
+      g.cancelScheduledValues(0); g.setValueAtTime(0, when); g.linearRampToValueAtTime(this.targetGain(st.id), when + XF)
+      this.startStem(st, pos, when, ctx)
+    })
+    mix.gain.gain.setValueAtTime(1, when)
+    mix.gain.gain.linearRampToValueAtTime(0, when + XF)
+    try { mix.source?.stop(when + XF + 0.05) } catch {}
+    setTimeout(() => { try { mix.gain.disconnect() } catch {} }, (XF + 0.6) * 1000)
   }
 
   private fadeTo(value: number, at: number, dur = FADE) {
@@ -607,6 +671,7 @@ class AudioEngine {
     try {
       const loaded = await this.loadStem(stem, id)
       if (!loaded || id !== this.loadId) return
+      loaded.lazyStarted = true
       this.stems.set(stem.id, loaded)
       if (this._playing && this.ctx) {
         const when = this.ctx.currentTime + 0.05
@@ -744,6 +809,7 @@ class AudioEngine {
     this._playing = false
     this.stems.forEach(st => { try { st.gain.disconnect() } catch {} })
     this.stems.clear()
+    if (this.mix) { try { this.mix.source?.stop() } catch {} ; try { this.mix.gain.disconnect() } catch {} ; this.mix = null }
     this.pending.clear()
     this._loaded = false
     this._duration = 0
@@ -769,7 +835,7 @@ class AudioEngine {
     let bytes = 0, mono = 0
     this.stems.forEach(st => { bytes += st.buffer.length * st.buffer.numberOfChannels * 4; if (st.buffer.numberOfChannels === 1) mono++ })
     return {
-      stems: this.stems.size, pending: [...this.pending.keys()], mono, memoryMB: Math.round(bytes / 1e6),
+      stems: this.stems.size, pending: [...this.pending.keys()], mono, memoryMB: Math.round(bytes / 1e6), preview: !!this.mix,
       stretchActive: this.stretchActive, stretchLatency: this.stretchLatency, stretchFailed: this.stretchFailed,
       playing: this._playing, position: this.currentTime, duration: this._duration, speed: this._speed, pitch: this._pitch,
       ctxState: this.ctx?.state, sampleRate: this.ctx?.sampleRate,

@@ -39,6 +39,8 @@ interface PlayerStore extends PlayerState {
   loadProgress: { loaded: number; total: number } | null
   /** pistas que ainda estão chegando depois do play liberado */
   bgProgress: { loaded: number; total: number } | null
+  /** tocando a prévia mixada (pistas ainda chegando) */
+  previewActive: boolean
   loadingStems: string[]
   queue: Track[]
   queueIndex: number
@@ -107,6 +109,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       case 'loaded':
         set({ playbackState: 'paused', loadProgress: null })
         break
+      case 'preview':
+        set({ previewActive: event.active })
+        break
       case 'background':
         set({ bgProgress: event.loaded >= event.total ? null : { loaded: event.loaded, total: event.total } })
         break
@@ -163,6 +168,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     isPitchProcessing: false,
     loadProgress: null,
     bgProgress: null,
+    previewActive: false,
     loadingStems: [],
     queue: [],
     queueIndex: -1,
@@ -182,7 +188,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const speed = saved?.speed ?? 1
       _pendingPlay = !!opts?.autoplay
 
-      set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, bgProgress: null, loadingStems: [] })
+      set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, bgProgress: null, previewActive: false, loadingStems: [] })
       try { localStorage.setItem(LAST_TRACK_KEY, track.id) } catch {}
       usePrefsStore.getState().pushRecent(track.id)
       audioEngine.setMediaMetadata({ title: track.title, artist: track.artist, artwork: track.coverUrl })
@@ -193,7 +199,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         if (loadId !== _trackLoadId) return
         audioEngine.setPitch(pitch)
         audioEngine.setSpeed(speed)
-        await audioEngine.load(resolved.stems, stemStates)
+        await audioEngine.load(resolved.stems, stemStates, { mixUrl: track.mixUrl })
         if (loadId !== _trackLoadId || !audioEngine.loaded) return
         set({ playbackState: 'paused', duration: audioEngine.duration })
         if (_pendingPlay) { _pendingPlay = false; await get().play() }

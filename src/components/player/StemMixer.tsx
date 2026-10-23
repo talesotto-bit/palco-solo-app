@@ -123,6 +123,17 @@ function QuickMixes() {
   )
 }
 
+function PreviewBanner() {
+  const preview = usePlayerStore(s => s.previewActive)
+  const bg = usePlayerStore(s => s.bgProgress)
+  if (!preview) return null
+  return (
+    <div className="mx-4 md:mx-5 mt-3 rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+      Tocando a prévia rápida enquanto as pistas chegam{bg ? ` (${bg.loaded}/${bg.total})` : ''}. O que você mudar aqui entra em instantes.
+    </div>
+  )
+}
+
 function MineBanner() {
   const track = usePlayerStore(s => s.track)
   const stemStates = usePlayerStore(s => s.stemStates)
@@ -177,6 +188,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
 
   return (
     <div className="rounded-lg bg-white/5 overflow-hidden">
+      <PreviewBanner />
       <MineBanner />
       {/* Header */}
       <div className="flex items-center justify-between px-4 md:px-5 py-3 md:py-4">
