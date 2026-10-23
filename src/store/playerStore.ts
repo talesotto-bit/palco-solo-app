@@ -14,6 +14,7 @@ import { useTrackSettingsStore } from './trackSettingsStore'
 import { useStageSettings } from './stageSettingsStore'
 import { usePrefsStore } from './prefsStore'
 import { detectInstrument } from '@/lib/stemDetection'
+import { suggestedShift } from '@/lib/artistVoice'
 
 const LAST_TRACK_KEY = 'player-last-track-v1'
 
@@ -46,6 +47,9 @@ interface PlayerStore extends PlayerState {
   queueIndex: number
   /** trecho repetido para ensaiar (segundos da música) */
   loop: { a: number; b: number | null } | null
+  /** sugestão de tom pela voz do músico (ex.: música de cantora para voz masculina) */
+  keySuggestion: { shift: number; applied: boolean } | null
+  applyKeySuggestion: () => void
   loopTap: () => void
   clearLoop: () => void
   toggleNoVocals: () => void
@@ -179,6 +183,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     queue: [],
     queueIndex: -1,
     loop: null,
+    keySuggestion: null,
     pendingAdvance: null,
 
     // ─── Carregar música ────────────────────────────────────────────────────
@@ -193,11 +198,16 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       // só aproveita do salvo as pistas que ainda existem
       const stemStates = { ...defaults }
       if (saved) for (const id of Object.keys(saved.stemStates)) if (stemStates[id]) stemStates[id] = { ...saved.stemStates[id], id }
-      const pitch = saved?.pitch ?? 0
+      // sem ajuste salvo: sugere (ou aplica) o tom pela voz do músico
+      const prefs = usePrefsStore.getState()
+      const shift = suggestedShift(prefs.voice, track.artist)
+      const auto = !saved && shift !== 0 && prefs.autoKey
+      const pitch = saved?.pitch ?? (auto ? shift : 0)
       const speed = saved?.speed ?? 1
+      const keySuggestion = shift !== 0 ? { shift, applied: auto || (saved ? Math.round(saved.pitch) === shift : false) } : null
       _pendingPlay = !!opts?.autoplay
 
-      set({ track, stemStates, pitch, speed, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, bgProgress: null, previewActive: false, loadingStems: [] })
+      set({ track, stemStates, pitch, speed, keySuggestion, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, bgProgress: null, previewActive: false, loadingStems: [] })
       try { localStorage.setItem(LAST_TRACK_KEY, track.id) } catch {}
       usePrefsStore.getState().pushRecent(track.id)
       audioEngine.setMediaMetadata({ title: track.title, artist: track.artist, artwork: track.coverUrl })
@@ -355,6 +365,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       if (audioEngine.currentTime > 3 || queueIndex <= 0) { get().seek(0); return queueIndex > 0 }
       await get().playQueueIndex(queueIndex - 1, { autoplay: playbackState === 'playing' })
       return true
+    },
+
+    applyKeySuggestion: () => {
+      const ks = get().keySuggestion
+      if (!ks) return
+      get().setPitch(ks.shift)
+      set({ keySuggestion: { ...ks, applied: true } })
     },
 
     /** 1º toque marca o início (A), 2º marca o fim (B) e começa a repetir, 3º desliga */

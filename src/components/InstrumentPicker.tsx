@@ -20,3 +20,20 @@ export function InstrumentPicker() {
     </div>
   )
 }
+
+/** "Você canta em voz…" (para o app sugerir o tom das músicas de outro gênero) */
+export function VoicePicker() {
+  const voice = usePrefsStore(s => s.voice)
+  const setVoice = usePrefsStore(s => s.setVoice)
+  const opts: [typeof voice, string][] = [['masc', '🎤 Masculina'], ['fem', '🎙️ Feminina'], [null, 'Não ajustar']]
+  return (
+    <div className="flex flex-wrap gap-2">
+      {opts.map(([v, label]) => (
+        <button key={label} onClick={() => setVoice(v)} aria-pressed={voice === v}
+          className={cn('h-11 px-4 rounded-full text-sm font-semibold transition-colors', voice === v ? 'bg-[hsl(var(--primary))] text-black' : 'bg-white/[0.08] text-white/85')}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}

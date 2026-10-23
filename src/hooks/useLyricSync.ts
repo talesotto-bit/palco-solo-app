@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useLyricsSyncStore } from '@/store/lyricsSyncStore'
 import { audioEngine } from '@/audio/AudioEngine'
-import type { LrcLine } from '@/store/lyricsStore'
+import { useLyricsStore, type LrcLine } from '@/store/lyricsStore'
 
 /**
  * Sincronia da letra com o playback:
@@ -19,15 +19,17 @@ export function useLyricSync(lines: LrcLine[] | null) {
   const setOffset = useLyricsSyncStore(s => s.setOffset)
   const clearOffset = useLyricsSyncStore(s => s.clearOffset)
   const [auto, setAuto] = useState<number | null>(null)
+  // letra sincronizada pelo próprio músico já está no tempo deste playback
+  const ownSynced = useLyricsStore(s => s.source === 'Sua letra sincronizada')
 
   useEffect(() => {
     setAuto(null)
-    if (!lines?.length || !loaded) return
+    if (!lines?.length || !loaded || ownSynced) return
     const vs = audioEngine.voiceStart()
     if (vs === null) return
     const diff = vs - lines[0].time
     if (Math.abs(diff) >= 0.3 && Math.abs(diff) <= 40) setAuto(Math.round(diff * 100) / 100)
-  }, [trackId, lines, loaded, allStems])
+  }, [trackId, lines, loaded, allStems, ownSynced])
 
   const offset = manual ?? auto ?? 0
   return {

@@ -22,6 +22,9 @@ const PublicRequest = lazy(() => import('@/pages/PublicRequest'))
 const Pedidos = lazy(() => import('@/pages/Pedidos'))
 const Activate = lazy(() => import('@/pages/Activate'))
 const Importar = lazy(() => import('@/pages/Importar'))
+const Ferramentas = lazy(() => import('@/pages/Ferramentas'))
+const Ajuda = lazy(() => import('@/pages/Ajuda'))
+const SharedShow = lazy(() => import('@/pages/SharedShow'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,6 +45,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/app/library" replace />} />
             {/* Página do público (QR de pedidos) e ativação de recursos comprados */}
             <Route path="/p" element={<Suspense fallback={null}><PublicRequest /></Suspense>} />
+            <Route path="/s" element={<Suspense fallback={null}><SharedShow /></Suspense>} />
             <Route path="/ativar/:code" element={<Suspense fallback={null}><Activate /></Suspense>} />
 
             {/* Performance — fullscreen, outside AppLayout */}
@@ -62,6 +66,8 @@ export default function App() {
               <Route path="shows/:id" element={<ShowEditor />} />
               <Route path="pedidos" element={<Suspense fallback={null}><Pedidos /></Suspense>} />
               <Route path="importar" element={<Suspense fallback={null}><Importar /></Suspense>} />
+              <Route path="ferramentas" element={<Suspense fallback={null}><Ferramentas /></Suspense>} />
+              <Route path="ajuda" element={<Suspense fallback={null}><Ajuda /></Suspense>} />
               <Route path="separar" element={<Navigate to="/app/library" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="admin" element={<Suspense fallback={null}><Admin /></Suspense>} />

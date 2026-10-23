@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Layers, Gauge, Mic2, ChevronRight, Guitar } from 'lucide-react'
-import { InstrumentPicker } from '@/components/InstrumentPicker'
+import { InstrumentPicker, VoicePicker } from '@/components/InstrumentPicker'
 import { cn } from '@/lib/utils'
 
 const KEY = 'onboarding-v1'
@@ -60,7 +60,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
         <h2 className="mt-4 text-2xl font-black leading-tight">{step.title}</h2>
         <p className="mt-2 text-[15px] text-white/75 leading-relaxed">{step.text}</p>
-        {'picker' in step && step.picker && <div className="mt-4"><InstrumentPicker /></div>}
+        {'picker' in step && step.picker && (
+          <div className="mt-4 space-y-4">
+            <InstrumentPicker />
+            <div><p className="text-sm font-semibold mb-2">Você canta em voz:</p><VoicePicker /></div>
+          </div>
+        )}
         <div className="mt-6 flex gap-2">
           {last ? (
             <>

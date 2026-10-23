@@ -18,6 +18,7 @@ import { StemMixer } from '@/components/player/StemMixer'
 import { LyricsPanel } from '@/components/player/LyricsPanel'
 import { CifrasPanel } from '@/components/player/CifrasPanel'
 import { useCoverArt } from '@/hooks/useCoverArt'
+import { FirstTip } from '@/components/FirstTip'
 import { semitonesToLabel, speedToLabel, cn } from '@/lib/utils'
 
 type Tab = 'letra' | 'cifra' | 'tom' | 'mixer'
@@ -41,6 +42,7 @@ export default function PlayerPage() {
   const noVocalsStem = track?.stems.find(s => s.derive === 'karaoke')
   const noVocalsOn = usePlayerStore(s => (noVocalsStem ? !s.stemStates[noVocalsStem.id]?.muted : false))
   const isLocal = !!track?.id.startsWith('local-')
+  const keySuggestion = usePlayerStore(s => s.keySuggestion)
   const [tab, setTab] = useState<Tab>('letra')
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
@@ -149,6 +151,29 @@ export default function PlayerPage() {
                   {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} {isExporting ? 'Gerando MP3...' : 'Baixar MP3'}
                 </button>
               </div>
+
+              <FirstTip id="player" title="Como usar o player" items={[
+                'Tom: sobe ou desce de ½ em ½ tom (letra e cifra acompanham)',
+                'Mixer: toque em M para tirar um instrumento',
+                'Loop A-B: repete um trecho para ensaiar',
+                'Tudo que você ajusta fica salvo nesta música',
+              ]} />
+
+              {keySuggestion && (
+                keySuggestion.applied && Math.round(pitch) === keySuggestion.shift ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-[hsl(var(--primary))]/10 px-3 py-2 text-xs">
+                    <span className="flex-1 text-[#d6d6d6]">Aberta {keySuggestion.shift < 0 ? '2 tons abaixo' : '2 tons acima'} para a sua voz {keySuggestion.shift < 0 ? 'masculina' : 'feminina'}.</span>
+                    <button onClick={() => usePlayerStore.getState().resetPitch()} className="h-7 px-2.5 rounded-full bg-white/10 font-bold shrink-0">Tom original</button>
+                  </div>
+                ) : Math.round(pitch) === 0 ? (
+                  <button onClick={() => usePlayerStore.getState().applyKeySuggestion()}
+                    className="w-full flex items-center gap-2 rounded-xl bg-amber-400/10 border border-amber-400/30 px-3 py-2.5 text-left text-xs">
+                    <span className="text-lg">{keySuggestion.shift < 0 ? '🎤' : '🎙️'}</span>
+                    <span className="flex-1 text-amber-100">{keySuggestion.shift < 0 ? 'Música de cantora.' : 'Música de cantor.'} Abrir {keySuggestion.shift < 0 ? '2 tons abaixo' : '2 tons acima'} para a sua voz?</span>
+                    <span className="h-7 px-2.5 rounded-full bg-amber-400 text-black font-bold flex items-center shrink-0">Ajustar</span>
+                  </button>
+                ) : null
+              )}
 
               {error && (
                 <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2.5">

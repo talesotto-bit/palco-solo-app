@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { Headphones, Repeat, Timer, HardDrive, Sparkles, Trash2, Info, Wallet } from 'lucide-react'
+import { Headphones, Repeat, Timer, HardDrive, Sparkles, Trash2, Info, Wallet, Download, UploadCloud, LifeBuoy, Mic2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { InstallCard } from '@/components/InstallApp'
 import { useStageSettings } from '@/store/stageSettingsStore'
-import { InstrumentPicker } from '@/components/InstrumentPicker'
+import { InstrumentPicker, VoicePicker } from '@/components/InstrumentPicker'
+import { usePrefsStore } from '@/store/prefsStore'
 import { usePlayerStore } from '@/store/playerStore'
 import { offlineStats, clearOffline } from '@/lib/offlineAudio'
+import { exportBackup, readBackup, restoreBackup, backupSummary, buildBackup } from '@/lib/backup'
 import { cn } from '@/lib/utils'
 
 const GAPS = [0, 3, 5, 10, 15]
@@ -28,6 +30,9 @@ function Row({ icon: Icon, title, desc, children }: { icon: any; title: string; 
 
 export default function Settings() {
   const st = useStageSettings()
+  const voice = usePrefsStore(s => s.voice)
+  const autoKey = usePrefsStore(s => s.autoKey)
+  const setAutoKey = usePrefsStore(s => s.setAutoKey)
   const togglePrecount = usePlayerStore(s => s.togglePrecount)
   const [stats, setStats] = useState(offlineStats)
   const mb = (b: number) => (b / 1e6 >= 1000 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`)
@@ -38,6 +43,20 @@ export default function Settings() {
         <h1 className="text-2xl font-bold">Configurações</h1>
         <p className="text-sm text-[#9a9a9a] mt-1">Tudo fica salvo neste aparelho.</p>
       </div>
+
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8a8a8a]">Sua voz</h2>
+        <div className="rounded-2xl bg-white/[0.05] p-4">
+          <p className="text-xs text-[#9a9a9a] mb-3">Quando a música for de cantor do outro gênero, o app sugere o tom certo para você (2 tons de diferença).</p>
+          <VoicePicker />
+          {voice && (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-sm">Ajustar sozinho, sem perguntar</span>
+              <Switch checked={autoKey} onCheckedChange={setAutoKey} />
+            </div>
+          )}
+        </div>
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8a8a8a]">O que você toca ao vivo</h2>
@@ -87,6 +106,31 @@ export default function Settings() {
       </section>
 
       <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8a8a8a]">Backup (trocar de celular)</h2>
+        <div className="rounded-2xl bg-white/[0.05] p-4">
+          <p className="text-xs text-[#9a9a9a]">Salva seus shows, ajustes de cada música, cifras, letras, favoritos e preferências num arquivo. Guarde no WhatsApp ou no Drive e restaure no celular novo. As músicas que você importou precisam ser adicionadas de novo.</p>
+          {(() => { const sm = backupSummary(buildBackup()); return <p className="mt-2 text-xs text-white/70">Agora: {sm.shows} shows · {sm.ajustes} músicas ajustadas · {sm.cifras} cifras · {sm.letras} letras · {sm.favoritas} favoritas</p> })()}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button onClick={() => void exportBackup()} className="h-11 rounded-xl bg-white text-black font-bold flex items-center justify-center gap-1.5"><Download className="h-4 w-4" /> Salvar backup</button>
+            <label className="h-11 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-1.5 cursor-pointer">
+              <UploadCloud className="h-4 w-4" /> Restaurar
+              <input type="file" accept="application/json,.json" className="hidden" onChange={async e => {
+                const f = e.target.files?.[0]; e.target.value = ''
+                if (!f) return
+                try {
+                  const b = await readBackup(f); const sm = backupSummary(b)
+                  if (confirm(`Restaurar o backup de ${new Date(b.date).toLocaleDateString('pt-BR')}?
+${sm.shows} shows, ${sm.ajustes} músicas ajustadas, ${sm.cifras} cifras, ${sm.letras} letras.
+
+O que está neste aparelho será substituído.`)) restoreBackup(b)
+                } catch (err: any) { toast.error(err?.message || 'Arquivo inválido.') }
+              }} />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8a8a8a]">Recursos extras</h2>
         <a href="/app/pedidos" className="block rounded-2xl bg-white/[0.05]">
           <Row icon={Wallet} title="Pedidos e Gorjeta via Pix" desc="QR code para o público pedir música e mandar gorjeta no seu Pix" />
@@ -101,6 +145,7 @@ export default function Settings() {
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8a8a8a]">Ajuda</h2>
         <div className="rounded-2xl bg-white/[0.05] divide-y divide-white/5">
+          <a href="/app/ajuda" className="block"><Row icon={LifeBuoy} title="Central de ajuda" desc="Respostas rápidas: tom, mixer, shows, sem internet, letra, backup" /></a>
           <button onClick={() => { try { localStorage.removeItem('onboarding-v1') } catch {} ; location.assign('/app/library') }} className="w-full text-left">
             <Row icon={Sparkles} title="Rever as boas-vindas" desc="O passo a passo de como usar o app" />
           </button>

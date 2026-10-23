@@ -70,8 +70,28 @@ export function HomeSections({ tracks, byId, onSeeGenre, onSeeAll }: Props) {
 
   return (
     <div className="pb-6">
-      <h1 className="text-2xl font-black mt-1">{greeting} 👋</h1>
-      <p className="text-[13px] text-[#9a9a9a]">O que vamos tocar hoje?</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-black mt-1">{greeting} 👋</h1>
+          <p className="text-[13px] text-[#9a9a9a]">O que vamos tocar hoje?</p>
+        </div>
+        <button onClick={() => navigate('/app/ajuda')} className="mt-1 h-9 px-3 rounded-full bg-white/[0.07] text-xs font-semibold text-white/80 shrink-0">Ajuda</button>
+      </div>
+
+      {/* Atalhos do dia a dia */}
+      <div className="mt-4 grid grid-cols-4 gap-2">
+        {([
+          ['Afinador', '🎸', '/app/ferramentas?t=afinador'],
+          ['Metrônomo', '⏱️', '/app/ferramentas?t=metronomo'],
+          ['Meus VS', '📥', '/app/importar'],
+          ['Pedidos Pix', '💸', '/app/pedidos'],
+        ] as const).map(([label, emoji, to]) => (
+          <button key={label} onClick={() => navigate(to)} className="rounded-2xl bg-white/[0.06] border border-white/[0.06] py-3 flex flex-col items-center gap-1 active:scale-95 transition-transform">
+            <span className="text-2xl leading-none">{emoji}</span>
+            <span className="text-[11px] font-semibold text-white/85">{label}</span>
+          </button>
+        ))}
+      </div>
 
       {recentTracks.length > 0 && (
         <Row title="Continue de onde parou">

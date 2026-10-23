@@ -5,6 +5,8 @@ import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { cn } from '@/lib/utils'
 import { useLyricsStore } from '@/store/lyricsStore'
 import { useLyricSync, findActiveLine } from '@/hooks/useLyricSync'
+import { useOwnLyrics } from '@/store/ownLyricsStore'
+import { LyricsEditor } from './LyricsEditor'
 
 const FONT_SIZES = [14, 16, 18, 20, 24]
 
@@ -22,6 +24,9 @@ export function LyricsPanel() {
   const searchManual = useLyricsStore(s => s.searchManual)
   const resetToSearch = useLyricsStore(s => s.resetToSearch)
   const [fontIdx, setFontIdx] = useState(2)
+  const [editor, setEditor] = useState<'edit' | 'sync' | null>(null)
+  const own = useOwnLyrics(s => (track ? s.items[track.id] : undefined))
+  const removeOwn = useOwnLyrics(s => s.remove)
   const [manualQuery, setManualQuery] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const lineRefs = useRef<Map<number, HTMLParagraphElement>>(new Map())
@@ -197,6 +202,9 @@ export function LyricsPanel() {
 
         {error === 'not_found' && (
           <div className="flex flex-col items-center gap-3 py-8">
+            <p className="text-sm font-semibold text-white">Ainda não temos a letra desta música</p>
+            <button onClick={() => setEditor('edit')} className="h-11 px-5 rounded-full bg-[hsl(var(--primary))] text-black text-sm font-bold">Colar a letra</button>
+            <p className="text-[11px] text-[#808080]">ou</p>
             <p className="text-xs text-[#808080] text-center">
               Busque pelo artista e titulo da musica
             </p>
@@ -287,6 +295,14 @@ export function LyricsPanel() {
         )}
 
         {hasLyrics && (
+          <div className="flex flex-wrap justify-center gap-2 pb-3">
+            <button onClick={() => setEditor('edit')} className="text-xs font-semibold text-[#d0d0d0] bg-white/5 px-3 py-2 rounded-lg">Editar letra</button>
+            {!syncedLines && <button onClick={() => setEditor('sync')} className="text-xs font-bold text-black bg-[hsl(var(--primary))] px-3 py-2 rounded-lg">Sincronizar tocando</button>}
+            {own && <button onClick={() => { removeOwn(track.id); useLyricsStore.getState().reload(track.artist, track.title, track.id, track.lrclibId) }} className="text-xs font-semibold text-red-300 bg-white/5 px-3 py-2 rounded-lg">Apagar minha letra</button>}
+          </div>
+        )}
+
+        {hasLyrics && !own && (
           <div className="flex justify-center pb-4">
             <button
               onClick={() => {
@@ -301,6 +317,7 @@ export function LyricsPanel() {
           </div>
         )}
       </div>
+      <LyricsEditor key={editor || 'x'} mode={editor} initial={own?.plain || plainLyrics || (syncedLines ? syncedLines.map(l => l.text).join('\n') : '')} onClose={() => setEditor(null)} />
     </div>
   )
 }

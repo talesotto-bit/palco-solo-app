@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -13,14 +13,24 @@ interface SheetProps {
   footer?: ReactNode
 }
 
+// "voltar" disparado pelo próprio fechamento de um painel não pode fechar o próximo que abrir logo em seguida
+let ignorePopUntil = 0
+
 /** Painel simples para celular: fecha no X, no fundo escuro ou no botão voltar do Android */
 export function Sheet({ open, onClose, title, children, variant = 'bottom', footer }: SheetProps) {
+  // a função de fechar pode mudar a cada renderização: guarda a mais recente sem reabrir o painel
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeRef.current() }
     // botão "voltar" do celular fecha o painel em vez de sair da tela
     history.pushState({ sheet: true }, '')
-    const onPop = () => onClose()
+    const onPop = () => {
+      if (Date.now() < ignorePopUntil) { ignorePopUntil = 0; return }
+      closeRef.current()
+    }
     window.addEventListener('keydown', onKey)
     window.addEventListener('popstate', onPop)
     const prev = document.body.style.overflow
@@ -29,9 +39,9 @@ export function Sheet({ open, onClose, title, children, variant = 'bottom', foot
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('popstate', onPop)
       document.body.style.overflow = prev
-      if (history.state?.sheet) history.back()
+      if (history.state?.sheet) { ignorePopUntil = Date.now() + 500; history.back() }
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return createPortal(

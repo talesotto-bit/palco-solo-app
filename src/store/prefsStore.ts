@@ -20,6 +20,12 @@ export const PLAYABLE: { id: PlayedInstrument; label: string; emoji: string }[] 
 ]
 
 interface PrefsState {
+  /** voz do músico, para sugerir o tom (masculina/feminina) */
+  voice: 'masc' | 'fem' | null
+  /** aplicar a sugestão de tom sozinho (senão só sugere) */
+  autoKey: boolean
+  setVoice: (v: 'masc' | 'fem' | null) => void
+  setAutoKey: (on: boolean) => void
   plays: PlayedInstrument[]
   recent: string[]
   askedInstruments: boolean
@@ -32,6 +38,10 @@ interface PrefsState {
 export const usePrefsStore = create<PrefsState>()(
   persist(
     (set) => ({
+      voice: null,
+      autoKey: false,
+      setVoice: (voice) => set({ voice }),
+      setAutoKey: (autoKey) => set({ autoKey }),
       plays: [],
       recent: [],
       askedInstruments: false,

@@ -1,3 +1,4 @@
+import { useOwnLyrics } from './ownLyricsStore'
 import { create } from 'zustand'
 
 export interface LrcLine {
@@ -15,6 +16,7 @@ interface LyricsState {
   fetchLyrics: (artist: string, title: string, trackId: string, lrclibId?: number) => Promise<void>
   searchManual: (query: string, trackId: string) => Promise<void>
   resetToSearch: () => void
+  reload: (artist: string, title: string, trackId: string, lrclibId?: number) => void
   clear: () => void
 }
 
@@ -90,6 +92,13 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   source: null,
 
   fetchLyrics: async (artist: string, title: string, trackId: string, lrclibId?: number) => {
+    // letra colada/sincronizada pelo músico tem prioridade
+    const own = useOwnLyrics.getState().items[trackId]
+    if (own && (own.plain || own.lrc)) {
+      const synced = own.lrc ? parseLrc(own.lrc) : null
+      set({ plainLyrics: own.plain || null, syncedLines: synced && synced.length ? synced : null, source: own.lrc ? 'Sua letra sincronizada' : 'Sua letra', trackId, isLoading: false, error: null })
+      return
+    }
     if (get().trackId === trackId && (get().plainLyrics || get().syncedLines)) return
 
     const cleanedTitle = cleanTitleForSearch(title)
@@ -234,6 +243,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     }
   },
 
+  reload: (artist: string, title: string, trackId: string, lrclibId?: number) => { set({ trackId: null, plainLyrics: null, syncedLines: null }); void get().fetchLyrics(artist, title, trackId, lrclibId) },
   resetToSearch: () => set({
     plainLyrics: null,
     syncedLines: null,

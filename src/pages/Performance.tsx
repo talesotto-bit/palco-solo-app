@@ -30,6 +30,7 @@ import { formatTime, cn } from '@/lib/utils'
 import { useUnlocks } from '@/lib/unlocks'
 import { usePedidosStore } from '@/store/pedidosStore'
 import { StageQR } from '@/components/StageQR'
+import { FirstTip } from '@/components/FirstTip'
 import type { Track, Stem } from '@/types/track'
 
 // ─── utilidades ──────────────────────────────────────────────────────────────
@@ -297,6 +298,12 @@ export default function Performance() {
         </div>
         {note && <p className="mt-1 flex items-center gap-1.5 rounded-lg bg-amber-400/15 px-2 py-1 text-[13px] font-semibold text-amber-200"><StickyNote className="h-4 w-4 shrink-0" />{note}</p>}
       </div>
+
+      <FirstTip id="palco" className="mx-4 mt-1" title="Modo Palco" items={[
+        'O show segue sozinho com uma contagem entre as músicas (dá para tocar já ou segurar)',
+        'Botões de baixo: voz guia, click, tom e mixer sem sair da tela',
+        'Pedal Bluetooth: espaço toca/pausa, setas passam de música',
+      ]} />
 
       {/* Abas */}
       <div className="flex gap-1.5 px-4 py-2 shrink-0">

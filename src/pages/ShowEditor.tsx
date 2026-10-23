@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, GripVertical, Plus, Play, Trash2, StickyNote, ArrowUp, ArrowDown, SlidersHorizontal, WifiOff, CheckCircle2, Loader2, CalendarDays, MapPin } from 'lucide-react'
+import { ArrowLeft, GripVertical, Plus, Play, Trash2, StickyNote, ArrowUp, ArrowDown, SlidersHorizontal, WifiOff, CheckCircle2, Loader2, CalendarDays, MapPin, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useShowsStore } from '@/store/showsStore'
 import { usePlayerStore } from '@/store/playerStore'
@@ -12,6 +12,7 @@ import { SongPicker } from '@/components/shows/SongPicker'
 import { CoverImg } from '@/components/shows/CoverImg'
 import { formatTons } from '@/lib/musicTheory'
 import { formatDuration, isTrackOffline, trackAudioUrls } from '@/lib/showUtils'
+import { buildSharedShow, encodeShow, showAsText } from '@/lib/shareShow'
 import { cn } from '@/lib/utils'
 import type { Track } from '@/types/track'
 
@@ -99,6 +100,18 @@ export default function ShowEditor() {
     else toast.warning(`${urls.length - ok} arquivo(s) não baixaram. Tente de novo com uma conexão melhor.`)
   }
 
+  const shareWithBand = async () => {
+    const data = buildSharedShow(show, byId, settings)
+    const url = `${window.location.origin}/s#${await encodeShow(data)}`
+    const text = `${showAsText(data)}
+
+Abra com tom e cifras: ${url}`
+    try {
+      if (navigator.share) { await navigator.share({ title: show.name, text: `🎤 Setlist "${show.name}" (${show.songs.length} músicas)`, url }); return }
+    } catch (e: any) { if (e?.name === 'AbortError') return }
+    try { await navigator.clipboard.writeText(text); toast.success('Setlist copiado! Cole no grupo da banda.') } catch { window.open(url, '_blank') }
+  }
+
   const menuSong = menu !== null ? show.songs[menu] : null
   const menuTrack = menuSong ? byId.get(menuSong.trackId) : undefined
 
@@ -123,6 +136,7 @@ export default function ShowEditor() {
         </div>
         <div className="mt-2 pl-12 text-xs text-[#9a9a9a] flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>{show.songs.length} música{show.songs.length === 1 ? '' : 's'}{totalDur ? ` · ${formatDuration(totalDur)}` : ''}</span>
+          {show.songs.length > 0 && <button onClick={() => void shareWithBand()} className="flex items-center gap-1 text-[hsl(var(--primary))] font-semibold"><Users className="h-3.5 w-3.5" /> Compartilhar com a banda</button>}
           {show.songs.length > 0 && (offlineCount === show.songs.length
             ? <span className="flex items-center gap-1 text-[hsl(var(--primary))]"><CheckCircle2 className="h-3.5 w-3.5" /> Toca sem internet</span>
             : offline
