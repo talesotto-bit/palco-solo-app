@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, QrCode, Share2, Copy, Maximize, ExternalLink, Check, Wallet, MessageCircle, ListMusic, Sparkles, Heart, Instagram, Image as ImageIcon, Printer, Smartphone, Loader2, BadgeCheck } from 'lucide-react'
 import { toast } from 'sonner'
-import { useUnlocks, CHECKOUT } from '@/lib/unlocks'
+import { useUnlocks, CHECKOUT, PRICE } from '@/lib/unlocks'
 import { usePedidosStore } from '@/store/pedidosStore'
 import { useShowsStore } from '@/store/showsStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
@@ -164,7 +164,7 @@ export default function Pedidos() {
               <p className="text-sm text-white/75 mt-0.5">5 gorjetas de R$ 10 por noite, 8 shows no mês = <b className="text-white">R$ 400 a mais por mês</b>. O recurso custa menos que uma gorjeta.</p>
             </div>
             <button onClick={() => { if (CHECKOUT.pedidos) window.open(CHECKOUT.pedidos, '_blank'); else toast('Disponível em breve. Fale com o suporte.') }}
-              className="mt-5 w-full h-14 rounded-full bg-gradient-to-r from-[#22c55e] to-[#14b8a6] text-black text-lg font-black shadow-[0_12px_40px_rgba(34,197,94,.35)] active:scale-[0.98] transition-transform">Quero ganhar gorjeta no Pix</button>
+              className="mt-5 w-full h-14 rounded-full bg-gradient-to-r from-[#22c55e] to-[#14b8a6] text-black text-lg font-black shadow-[0_12px_40px_rgba(34,197,94,.35)] active:scale-[0.98] transition-transform">Quero ganhar gorjeta no Pix · {PRICE.pedidos}</button>
             <form className="mt-4 rounded-2xl bg-white/[0.04] p-4" onSubmit={e => {
               e.preventDefault()
               const raw = code.trim().split('/').pop() || ''
