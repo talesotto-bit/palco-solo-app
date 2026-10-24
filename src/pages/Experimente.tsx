@@ -10,7 +10,8 @@ import { usePlayerStore } from '@/store/playerStore'
 import { audioEngine, isSupportStem } from '@/audio/AudioEngine'
 import { CoverImg } from '@/components/shows/CoverImg'
 import { formatTons } from '@/lib/musicTheory'
-import { formatTime, cn } from '@/lib/utils'
+import { formatTime, cn, normalizeSearch } from '@/lib/utils'
+import { detectInstrument } from '@/lib/stemDetection'
 import type { Stem } from '@/types/track'
 
 const isGuide = (s: Stem) => { const t = `${s.id} ${s.label}`.toLowerCase(); return /(voz|guia|vocal|voice)/.test(t) && !/(back|coro|choir|backing)/.test(t) }
@@ -35,9 +36,17 @@ export default function Experimente() {
 
   const guide = track?.stems.find(isGuide)
   const instruments = useMemo(() => {
-    const list = (track?.stems || []).filter(s => !s.derive && !isSupportStem(s) && s !== guide).slice(0, 6)
-    // nomes limpos: "Bumbu-mp3" → "Bumbo"; repetidos ganham número
-    const names = list.map(s => { const n = s.label.replace(/[-_ ]?(mp3|wav)$/i, '').replace(/^bumbu$/i, 'Bumbo').replace(/[-_]+/g, ' ').trim(); return n.charAt(0).toUpperCase() + n.slice(1) })
+    // instrumentos principais primeiro (bateria, baixo, violão, teclado...), coros e efeitos por último
+    const ORDER = ['drums', 'bass', 'acoustic', 'guitar', 'keys', 'percussion', 'brass', 'strings', 'synth', 'choir', 'voice', 'main']
+    const rank = (s: Stem) => { const i = ORDER.indexOf(detectInstrument(`${s.id} ${s.label}`)); return i < 0 ? 99 : i }
+    const list = (track?.stems || []).filter(s => !s.derive && !isSupportStem(s) && s !== guide).sort((a, b) => rank(a) - rank(b)).slice(0, 6)
+    // nomes limpos: tira o nome da música e o ".mp3" ("Banjo-deixa-alagar" → "Banjo"); repetidos ganham número
+    const songWords = new Set(normalizeSearch(`${track?.title || ''} ${track?.artist || ''}`).split(/\s+/).filter(w => w.length > 2))
+    const names = list.map(s => {
+      const words = s.label.replace(/\.(mp3|wav)$/i, '').replace(/[-_]+/g, ' ').split(/\s+/).filter(w => w && !/^(mp3|wav)$/i.test(w) && !songWords.has(normalizeSearch(w)))
+      const n = (words.join(' ') || s.label).replace(/^bumbu$/i, 'Bumbo')
+      return n.charAt(0).toUpperCase() + n.slice(1)
+    })
     const seen: Record<string, number> = {}
     return list.map((s, i) => { const n = names[i]; const dup = names.filter(x => x === n).length > 1; seen[n] = (seen[n] || 0) + 1; return { s, name: dup ? `${n} ${seen[n]}` : n } })
   }, [track, guide])
