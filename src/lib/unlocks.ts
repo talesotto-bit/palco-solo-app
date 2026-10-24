@@ -16,7 +16,7 @@ const CODES: Record<string, Feature> = {
 /** Página de compra de cada recurso (para quem ainda não tem) */
 export const CHECKOUT: Record<Feature, string> = {
   pedidos: 'https://pay.cakto.com.br/mjhxvqz_1239757', // Cakto: "Pedidos e Gorjeta via Pix"
-  multipistas: '', // preencher com o link da Cakto do produto "Pacote Multipistas"
+  multipistas: 'https://pay.cakto.com.br/e2y8utm_1239819', // Cakto: "Pacote Multipistas"
 }
 
 /** Preço mostrado dentro do app para quem ainda não tem o recurso */
