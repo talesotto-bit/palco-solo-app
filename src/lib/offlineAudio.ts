@@ -4,6 +4,8 @@
  * com limite de espaço: quando passa do limite, apaga as menos usadas.
  */
 
+import { audioCacheKey } from '@/lib/audioHost'
+
 const CACHE_NAME = 'audio-v1'
 const INDEX_KEY = 'offline-audio-index-v1'
 const MAX_BYTES = 1024 * 1024 * 1024 // 1 GB
@@ -33,7 +35,8 @@ function requestPersistence() {
   try { navigator.storage?.persist?.() } catch {}
 }
 
-export async function getOfflineAudio(url: string): Promise<ArrayBuffer | null> {
+export async function getOfflineAudio(rawUrl: string): Promise<ArrayBuffer | null> {
+  const url = audioCacheKey(rawUrl)
   if (!supported() || !cacheable(url)) return null
   try {
     const cache = await caches.open(CACHE_NAME)
@@ -47,7 +50,8 @@ export async function getOfflineAudio(url: string): Promise<ArrayBuffer | null> 
   }
 }
 
-export async function putOfflineAudio(url: string, data: ArrayBuffer): Promise<void> {
+export async function putOfflineAudio(rawUrl: string, data: ArrayBuffer): Promise<void> {
+  const url = audioCacheKey(rawUrl)
   if (!supported() || !cacheable(url)) return
   try {
     requestPersistence()
@@ -75,7 +79,7 @@ export async function putOfflineAudio(url: string, data: ArrayBuffer): Promise<v
 /** true se todas as pistas desta lista de URLs já estão salvas no aparelho */
 export function isAvailableOffline(urls: string[]): boolean {
   const idx = readIndex()
-  const remote = urls.filter(cacheable)
+  const remote = urls.filter(cacheable).map(audioCacheKey)
   return remote.length > 0 && remote.every(u => !!idx[u])
 }
 

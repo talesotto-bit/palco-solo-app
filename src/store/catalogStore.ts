@@ -3,7 +3,7 @@ import type { Track, Stem, Genre } from '@/types/track'
 import { cleanSongName, parseFolderName, detectInstrument, stemLabel, toTitleCase } from '@/lib/stemDetection'
 import { INSTRUMENT_LABELS } from '@/types/track'
 
-const R2_PUBLIC_URL = 'https://pub-81339f96e6c746e8ac25fbe60e95563c.r2.dev'
+import { AUDIO_BASE as R2_PUBLIC_URL } from '@/lib/audioHost'
 
 /**
  * Formato compacto do catálogo (chaves curtas para o arquivo ficar leve no celular).
