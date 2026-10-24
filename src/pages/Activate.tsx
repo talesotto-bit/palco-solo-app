@@ -5,6 +5,7 @@ import { useUnlocks } from '@/lib/unlocks'
 
 const DEST: Record<string, { path: string; label: string }> = {
   pedidos: { path: '/app/pedidos', label: 'Pedidos e Gorjeta via Pix' },
+  multipistas: { path: '/app/library', label: 'Pacote Multipistas' },
 }
 
 /** Link do e-mail de compra: app.powertom.com.br/ativar/<código> */

@@ -13,7 +13,7 @@
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
 import { getOfflineAudio, putOfflineAudio, isAvailableOffline } from '@/lib/offlineAudio'
-import { AUDIO_BASE, LEGACY_AUDIO_BASE } from '@/lib/audioHost'
+import { audioCandidates } from '@/lib/audioHost'
 
 /**
  * Curva do protetor de picos. A entrada chega pela metade (ganho 0,5), então a curva cobre ±2 do sinal real:
@@ -30,10 +30,6 @@ function softClipCurve(): Float32Array<ArrayBuffer> {
   return curve
 }
 
-/** Endereços para tentar: o principal e, se falhar, o antigo (DNS do cliente ainda sem o domínio novo, queda pontual) */
-function audioCandidates(url: string): string[] {
-  return AUDIO_BASE !== LEGACY_AUDIO_BASE && url.startsWith(AUDIO_BASE) ? [url, LEGACY_AUDIO_BASE + url.slice(AUDIO_BASE.length)] : [url]
-}
 import { detectInstrument } from '@/lib/stemDetection'
 
 /**

@@ -5,16 +5,24 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type Feature = 'pedidos'
+export type Feature = 'pedidos' | 'multipistas'
 
 /** Códigos de ativação de cada recurso (o mesmo vai no e-mail de entrega da Cakto) */
 const CODES: Record<string, Feature> = {
   'pedidos-pix-7q4m2k': 'pedidos',
+  'multipistas-k8r3vd': 'multipistas',
 }
 
 /** Página de compra de cada recurso (para quem ainda não tem) */
 export const CHECKOUT: Record<Feature, string> = {
   pedidos: '', // preencher com o link da Cakto do produto "Pedidos e Gorjeta via Pix"
+  multipistas: '', // preencher com o link da Cakto do produto "Pacote Multipistas"
+}
+
+/** Preço mostrado dentro do app para quem ainda não tem o recurso */
+export const PRICE: Record<Feature, string> = {
+  pedidos: 'R$ 27',
+  multipistas: 'R$ 67',
 }
 
 interface UnlockState {

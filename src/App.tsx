@@ -21,6 +21,7 @@ const Demo = lazy(() => import('@/pages/Demo'))
 const PublicRequest = lazy(() => import('@/pages/PublicRequest'))
 const Pedidos = lazy(() => import('@/pages/Pedidos'))
 const Activate = lazy(() => import('@/pages/Activate'))
+const Experimente = lazy(() => import('@/pages/Experimente'))
 const Importar = lazy(() => import('@/pages/Importar'))
 const Ferramentas = lazy(() => import('@/pages/Ferramentas'))
 const Ajuda = lazy(() => import('@/pages/Ajuda'))
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="/p" element={<Suspense fallback={null}><PublicRequest /></Suspense>} />
             <Route path="/s" element={<Suspense fallback={null}><SharedShow /></Suspense>} />
             <Route path="/ativar/:code" element={<Suspense fallback={null}><Activate /></Suspense>} />
+            <Route path="/experimente" element={<ErrorBoundary><Suspense fallback={null}><Experimente /></Suspense></ErrorBoundary>} />
 
             {/* Performance — fullscreen, outside AppLayout */}
             <Route

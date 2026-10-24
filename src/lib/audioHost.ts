@@ -10,6 +10,11 @@ export const AUDIO_BASE: string = 'https://audio.powertom.com.br'
  * As músicas guardadas para tocar sem internet foram salvas com o endereço antigo:
  * assim continuam valendo depois da troca.
  */
+/** Endereços para tentar: o principal e, se falhar, o antigo (DNS do cliente ainda sem o domínio novo, queda pontual) */
+export function audioCandidates(url: string): string[] {
+  return AUDIO_BASE !== LEGACY_AUDIO_BASE && url.startsWith(AUDIO_BASE) ? [url, LEGACY_AUDIO_BASE + url.slice(AUDIO_BASE.length)] : [url]
+}
+
 export function audioCacheKey(url: string): string {
   return AUDIO_BASE !== LEGACY_AUDIO_BASE && url.startsWith(AUDIO_BASE) ? LEGACY_AUDIO_BASE + url.slice(AUDIO_BASE.length) : url
 }

@@ -5,6 +5,7 @@ import {
   AlignLeft, Guitar, Gauge, SlidersHorizontal, MicOff, Trash2, Pencil,
 } from 'lucide-react'
 import { EditTrackSheet } from '@/components/player/EditTrackSheet'
+import { MultipistasButton } from '@/components/player/MultipistasButton'
 import { toast } from 'sonner'
 import { usePlayerStore } from '@/store/playerStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
@@ -157,6 +158,7 @@ export default function PlayerPage() {
                   className="flex items-center gap-1.5 h-9 rounded-full px-3 text-xs font-semibold bg-white/[0.07] text-[#cfcfcf] shrink-0 disabled:opacity-40">
                   {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} {isExporting ? 'Gerando MP3...' : 'Baixar MP3'}
                 </button>
+                <MultipistasButton track={track} />
               </div>
 
               <FirstTip id="player" title="Como usar o player" dismissWhen={isPlaying} items={[
