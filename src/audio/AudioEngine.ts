@@ -13,6 +13,12 @@
 import type { Stem } from '@/types/track'
 import type { StemState } from '@/types/player'
 import { getOfflineAudio, putOfflineAudio, isAvailableOffline } from '@/lib/offlineAudio'
+import { AUDIO_BASE, LEGACY_AUDIO_BASE } from '@/lib/audioHost'
+
+/** Endereços para tentar: o principal e, se falhar, o antigo (DNS do cliente ainda sem o domínio novo, queda pontual) */
+function audioCandidates(url: string): string[] {
+  return AUDIO_BASE !== LEGACY_AUDIO_BASE && url.startsWith(AUDIO_BASE) ? [url, LEGACY_AUDIO_BASE + url.slice(AUDIO_BASE.length)] : [url]
+}
 import { detectInstrument } from '@/lib/stemDetection'
 
 /**
@@ -298,19 +304,21 @@ class AudioEngine {
     const offline = await getOfflineAudio(url)
     if (offline) return offline
     let lastErr: unknown
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const urls = audioCandidates(url)
+    for (let attempt = 0; attempt < 4; attempt++) {
       if (signalId !== this.loadId) throw new Error('cancelado')
       const ctrl = new AbortController()
       const t = setTimeout(() => ctrl.abort(), 60000)
       try {
-        const resp = await fetch(url, { signal: ctrl.signal })
+        // alterna entre o endereço novo e o antigo: o cliente nunca fica sem a música
+        const resp = await fetch(urls[attempt % urls.length], { signal: ctrl.signal })
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
         const data = await resp.arrayBuffer()
         void putOfflineAudio(url, data.slice(0))
         return data
       } catch (err) {
         lastErr = err
-        await new Promise(r => setTimeout(r, 800 * (attempt + 1)))
+        if (attempt < 3) await new Promise(r => setTimeout(r, urls.length > 1 && attempt === 0 ? 150 : 800 * attempt))
       } finally { clearTimeout(t) }
     }
     throw lastErr
@@ -446,9 +454,15 @@ class AudioEngine {
     await pool(urls, 2, async (url) => {
       try {
         if (!(await getOfflineAudio(url))) {
-          const resp = await fetch(url)
-          if (resp.ok) await putOfflineAudio(url, await resp.arrayBuffer())
-          else throw new Error(String(resp.status))
+          let saved = false
+          for (const [i, u] of [...audioCandidates(url), ...audioCandidates(url)].entries()) {
+            try {
+              const resp = await fetch(u)
+              if (resp.ok) { await putOfflineAudio(url, await resp.arrayBuffer()); saved = true; break }
+            } catch { /* tenta o próximo */ }
+            await new Promise(r => setTimeout(r, 400 * (i + 1)))
+          }
+          if (!saved) throw new Error('falhou')
         }
         ok++
       } catch {}

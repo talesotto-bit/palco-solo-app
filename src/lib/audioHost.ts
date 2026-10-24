@@ -3,7 +3,7 @@
  * O endereço próprio (audio.powertom.com.br) passa pelo cache da Cloudflare e não tem o limite de acessos do r2.dev.
  */
 export const LEGACY_AUDIO_BASE: string = 'https://pub-81339f96e6c746e8ac25fbe60e95563c.r2.dev'
-export const AUDIO_BASE: string = LEGACY_AUDIO_BASE
+export const AUDIO_BASE: string = 'https://audio.powertom.com.br'
 
 /**
  * Chave única de um arquivo de áudio, seja qual for o endereço usado.
