@@ -15,6 +15,21 @@ import type { StemState } from '@/types/player'
 import { getOfflineAudio, putOfflineAudio, isAvailableOffline } from '@/lib/offlineAudio'
 import { AUDIO_BASE, LEGACY_AUDIO_BASE } from '@/lib/audioHost'
 
+/**
+ * Curva do protetor de picos. A entrada chega pela metade (ganho 0,5), então a curva cobre ±2 do sinal real:
+ * até 0,85 passa intacto; acima disso encosta suavemente em 0,99 (sem o "crack" de estouro digital).
+ */
+function softClipCurve(): Float32Array<ArrayBuffer> {
+  const n = 4096, curve = new Float32Array(n)
+  const knee = 0.85, room = 0.99 - knee
+  for (let i = 0; i < n; i++) {
+    const x = ((i / (n - 1)) * 2 - 1) * 2 // sinal real
+    const a = Math.abs(x)
+    curve[i] = Math.sign(x) * (a <= knee ? a : knee + room * Math.tanh((a - knee) / room))
+  }
+  return curve
+}
+
 /** Endereços para tentar: o principal e, se falhar, o antigo (DNS do cliente ainda sem o domínio novo, queda pontual) */
 function audioCandidates(url: string): string[] {
   return AUDIO_BASE !== LEGACY_AUDIO_BASE && url.startsWith(AUDIO_BASE) ? [url, LEGACY_AUDIO_BASE + url.slice(AUDIO_BASE.length)] : [url]
@@ -249,14 +264,19 @@ class AudioEngine {
     // volume igual entre músicas + limitador (não distorce a caixa)
     this.norm = this.ctx.createGain()
     this.limiter = this.ctx.createDynamicsCompressor()
-    this.limiter.threshold.value = -2; this.limiter.knee.value = 0; this.limiter.ratio.value = 20
-    this.limiter.attack.value = 0.002; this.limiter.release.value = 0.15
+    this.limiter.threshold.value = -3; this.limiter.knee.value = 0; this.limiter.ratio.value = 20
+    this.limiter.attack.value = 0.001; this.limiter.release.value = 0.12
     this.master.connect(this.norm)
     this.norm.connect(this.limiter)
     // medidor de nível (luzes do palco reagem ao som) — fica no caminho, não altera o áudio
     this.analyser = this.ctx.createAnalyser()
     this.analyser.fftSize = 1024
-    this.limiter.connect(this.analyser)
+    // protetor final: arredonda qualquer pico que escape do limitador (nunca estoura/distorce na caixa)
+    const pre = this.ctx.createGain(); pre.gain.value = 0.5
+    const clipper = this.ctx.createWaveShaper()
+    clipper.curve = softClipCurve(); clipper.oversample = '2x'
+    this.limiter.connect(pre); pre.connect(clipper)
+    clipper.connect(this.analyser)
     this.analyser.connect(this.ctx.destination)
     this.mixBus = this.ctx.createGain()
     this.mixBus.connect(this.master)
