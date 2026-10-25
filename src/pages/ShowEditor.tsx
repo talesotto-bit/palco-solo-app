@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, GripVertical, Plus, Play, Trash2, StickyNote, ArrowUp, ArrowDown, SlidersHorizontal, WifiOff, CheckCircle2, Loader2, CalendarDays, MapPin, Users } from 'lucide-react'
+import { ArrowLeft, GripVertical, Plus, Play, Trash2, StickyNote, ArrowUp, ArrowDown, SlidersHorizontal, WifiOff, CheckCircle2, Loader2, CalendarDays, MapPin, Users, Scissors } from 'lucide-react'
+import { useProgressStore, songStatus, STATUS_INFO } from '@/store/progressStore'
 import { toast } from 'sonner'
 import { useShowsStore } from '@/store/showsStore'
 import { usePlayerStore } from '@/store/playerStore'
@@ -15,17 +16,29 @@ import { prefetchLyrics } from '@/store/lyricsStore'
 import { prefetchCifra } from '@/store/cifraStore'
 import { formatDuration, isTrackOffline, trackAudioUrls } from '@/lib/showUtils'
 import { buildSharedShow, encodeShow, showAsText } from '@/lib/shareShow'
-import { cn } from '@/lib/utils'
+import { cn, formatTime } from '@/lib/utils'
 import type { Track } from '@/types/track'
 
 const ROW_H = 64
+
+/** "1:05" → 65 s; vazio → undefined */
+function parseTime(v: string): number | undefined {
+  const t = v.trim()
+  if (!t) return undefined
+  const m = t.match(/^(\d+)(?::(\d{1,2}))?$/)
+  if (!m) return undefined
+  return m[2] !== undefined ? Number(m[1]) * 60 + Number(m[2]) : Number(m[1])
+}
 
 export default function ShowEditor() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
   const show = useShowsStore(s => s.shows.find(x => x.id === id))
-  const { updateShow, addSongs, removeSong, moveSong, setNote, setActive } = useShowsStore.getState()
+  const { updateShow, addSongs, removeSong, moveSong, setNote, setRange, setActive } = useShowsStore.getState()
+  const progress = useProgressStore(s => s.songs)
+  const [rangeIdx, setRangeIdx] = useState<number | null>(null)
+  const [rangeDraft, setRangeDraft] = useState({ start: '', end: '' })
   const settings = useTrackSettingsStore(s => s.settings)
   const { byId, loading } = useAllTracks()
   const [picker, setPicker] = useState(false)
@@ -152,6 +165,10 @@ Abra com tom e cifras: ${url}`
         </div>
         <div className="mt-2 pl-12 text-xs text-[#9a9a9a] flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>{show.songs.length} música{show.songs.length === 1 ? '' : 's'}{totalDur ? ` · ${formatDuration(totalDur)}` : ''}</span>
+          {show.songs.length > 0 && (() => {
+            const ready = show.songs.filter(x => songStatus(progress[x.trackId]) === 'pronta').length
+            return <span className={cn('font-semibold', ready === show.songs.length ? 'text-[hsl(var(--primary))]' : 'text-amber-300')}>✅ {ready} de {show.songs.length} prontas</span>
+          })()}
           {show.songs.length > 0 && <button onClick={() => void shareWithBand()} className="flex items-center gap-1 text-[hsl(var(--primary))] font-semibold"><Users className="h-3.5 w-3.5" /> Compartilhar com a banda</button>}
           {show.songs.length > 0 && (offlineCount === show.songs.length
             ? <span className="flex items-center gap-1 text-[hsl(var(--primary))]"><CheckCircle2 className="h-3.5 w-3.5" /> Toca sem internet</span>
@@ -192,8 +209,14 @@ Abra com tom e cifras: ${url}`
                       {st && Math.round(st.pitch) !== 0 && <span className="text-[hsl(var(--primary))]"> · {formatTons(Math.round(st.pitch))}</span>}
                       {st && st.speed !== 1 && <span className="text-amber-400"> · {Math.round(st.speed * 100)}%</span>}
                       {!t && !loading && <span className="text-red-400"> · indisponível</span>}
+                      {(() => { const ss = songStatus(progress[s.trackId]); return ss ? <span title={STATUS_INFO[ss].label}> · {STATUS_INFO[ss].emoji}</span> : null })()}
                     </span>
-                    {s.note && <span className="block text-[11px] text-amber-300/90 truncate">📝 {s.note}</span>}
+                    {(s.note || s.start || s.end) && (
+                      <span className="block text-[11px] text-amber-300/90 truncate">
+                        {(s.start || s.end) && <span className="text-sky-300">✂️ {formatTime(s.start || 0)}–{s.end ? formatTime(s.end) : 'fim'}{s.note ? ' · ' : ''}</span>}
+                        {s.note && `📝 ${s.note}`}
+                      </span>
+                    )}
                   </span>
                 </button>
                 <button onClick={() => start(i)} aria-label={`Começar o show por ${s.title}`} disabled={!t}
@@ -230,6 +253,8 @@ Abra com tom e cifras: ${url}`
             {menuTrack && <MenuItem icon={Play} label="Começar o show por esta música" onClick={() => { setMenu(null); start(menu) }} />}
             {menuTrack && <MenuItem icon={SlidersHorizontal} label="Ajustar tom, velocidade e mixer" hint="Fica salvo e o palco usa do mesmo jeito" onClick={() => { setMenu(null); void openInPlayer(menuTrack) }} />}
             <MenuItem icon={StickyNote} label={menuSong.note ? 'Editar observação' : 'Adicionar observação'} hint='Ex.: “pedir palmas no refrão”' onClick={() => { setNoteDraft(menuSong.note || ''); setEditingNote(menu) }} />
+            <MenuItem icon={Scissors} label={menuSong.start || menuSong.end ? 'Editar trecho (medley)' : 'Tocar só um trecho (medley)'} hint="Começa e termina onde você quiser"
+              onClick={() => { setRangeDraft({ start: menuSong.start ? formatTime(menuSong.start) : '', end: menuSong.end ? formatTime(menuSong.end) : '' }); setRangeIdx(menu); setMenu(null) }} />
             <div className="flex">
               <MenuItem icon={ArrowUp} label="Subir" disabled={menu === 0} onClick={() => { moveSong(id, menu, menu - 1); setMenu(menu - 1) }} />
               <MenuItem icon={ArrowDown} label="Descer" disabled={menu === show.songs.length - 1} onClick={() => { moveSong(id, menu, menu + 1); setMenu(menu + 1) }} />
@@ -237,6 +262,37 @@ Abra com tom e cifras: ${url}`
             <MenuItem icon={Trash2} label="Tirar do show" danger onClick={() => { removeSong(id, menu); setMenu(null); toast('Música retirada do show') }} />
           </div>
         )}
+      </Sheet>
+
+      <Sheet open={rangeIdx !== null} onClose={() => setRangeIdx(null)} title="Trecho da música (medley)">
+        <form className="p-4 space-y-3" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))' }}
+          onSubmit={e => {
+            e.preventDefault()
+            if (rangeIdx === null) return
+            const start = parseTime(rangeDraft.start), end = parseTime(rangeDraft.end)
+            if ((rangeDraft.start.trim() && start === undefined) || (rangeDraft.end.trim() && end === undefined)) { toast.error('Use minutos:segundos, ex.: 1:05'); return }
+            if (start !== undefined && end !== undefined && end <= start + 5) { toast.error('O fim precisa ser pelo menos 5 s depois do começo'); return }
+            setRange(id, rangeIdx, { start, end })
+            toast.success(start || end ? 'Trecho salvo. No palco a música toca só essa parte.' : 'A música volta a tocar inteira.')
+            setRangeIdx(null)
+          }}>
+          <p className="text-sm text-[#b3b3b3]">No Modo Palco a música começa e termina nesses pontos. Com "Pausa 0s" e "Final: fade", vira um medley emendado.</p>
+          <div className="flex gap-3">
+            <label className="flex-1 text-xs text-[#9a9a9a]">Começar em
+              <input inputMode="numeric" value={rangeDraft.start} onChange={e => setRangeDraft(d => ({ ...d, start: e.target.value }))} placeholder="0:00 (início)"
+                className="mt-1 w-full h-12 rounded-xl bg-white/[0.07] px-3 text-base text-white outline-none placeholder:text-[#6a6a6a]" />
+            </label>
+            <label className="flex-1 text-xs text-[#9a9a9a]">Terminar em
+              <input inputMode="numeric" value={rangeDraft.end} onChange={e => setRangeDraft(d => ({ ...d, end: e.target.value }))} placeholder="fim da música"
+                className="mt-1 w-full h-12 rounded-xl bg-white/[0.07] px-3 text-base text-white outline-none placeholder:text-[#6a6a6a]" />
+            </label>
+          </div>
+          <p className="text-xs text-[#8a8a8a]">Dica: no player, as partes da música (intro, verso, refrão) mostram o tempo de cada uma.</p>
+          <div className="flex gap-2">
+            {(rangeDraft.start || rangeDraft.end) && <button type="button" onClick={() => setRangeDraft({ start: '', end: '' })} className="h-12 px-4 rounded-full bg-white/10 font-semibold">Música inteira</button>}
+            <button type="submit" className="flex-1 h-12 rounded-full bg-[hsl(var(--primary))] text-black font-bold">Salvar</button>
+          </div>
+        </form>
       </Sheet>
 
       <Sheet open={editingNote !== null} onClose={() => setEditingNote(null)} title="Observação">

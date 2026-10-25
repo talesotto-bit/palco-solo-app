@@ -7,14 +7,18 @@
  * - Tela sempre acesa, relógio, tempo de show e bateria.
  * - Clima de show: luzes que reagem ao som, abertura 3-2-1, troca de música, trava de tela,
  *   encerramento e plateia virtual (aplausos) para ensaio.
+ * - Sem silêncio entre as músicas: corta o silêncio do fim do arquivo ou faz fade no final, e a próxima
+ *   já fica carregada na memória. Trechos (medley): cada música pode começar e terminar onde o músico quiser.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, SkipBack, SkipForward, X, ListMusic, Mic, AlignLeft, Guitar, Minus, Plus,
   SlidersHorizontal, Timer, Repeat, Loader2, Maximize, BatteryMedium, AlertTriangle, StickyNote, QrCode,
-  Lock, Lightbulb, Hand,
+  Lock, Lightbulb, Hand, Scissors,
 } from 'lucide-react'
+import { useProgressStore } from '@/store/progressStore'
+import { colorOf, sectionAt } from '@/components/player/ProgressBar'
 import { StageLights, ShowProgress, ShowIntro, NextUp, StageLock, ShowFinale, playApplause, FxChip } from '@/components/stage/StageFx'
 import { usePlayerStore } from '@/store/playerStore'
 import { useShowsStore } from '@/store/showsStore'
@@ -189,6 +193,7 @@ export default function Performance() {
   const loadingStems = usePlayerStore(s => s.loadingStems)
   const pendingAdvance = usePlayerStore(s => s.pendingAdvance)
   const error = usePlayerStore(s => s.error)
+  const sections = usePlayerStore(s => s.analysis?.sections) ?? []
   const P = usePlayerStore.getState
 
   const settings = useStageSettings()
@@ -206,7 +211,9 @@ export default function Performance() {
   const prevState = useRef(playbackState)
 
   // monta a fila do show (sem reiniciar se o show já está tocando)
-  const showTracks = useMemo(() => (show?.songs || []).map(s => byId.get(s.trackId)).filter(Boolean) as Track[], [show?.songs, byId])
+  const showSongs = useMemo(() => (show?.songs || []).filter(s => byId.has(s.trackId)), [show?.songs, byId])
+  const showTracks = useMemo(() => showSongs.map(s => byId.get(s.trackId)!), [showSongs, byId])
+  const ranges = useMemo(() => showSongs.map(s => (s.start || s.end ? { start: s.start, end: s.end } : undefined)), [showSongs])
   const started = useRef(false)
   useEffect(() => {
     if (started.current || !show || !showTracks.length) return
@@ -215,7 +222,7 @@ export default function Performance() {
     const sameQueue = queue.length === showTracks.length && queue.every((t, i) => t.id === showTracks[i].id)
     if (sameQueue && track && (location.state as any)?.startIndex === undefined) return
     const st = showTracks.findIndex(t => t.id === show.songs[startIndex]?.trackId)
-    void P().setQueue(showTracks, Math.max(0, st))
+    void P().setQueue(showTracks, Math.max(0, st), { ranges })
   }, [show, showTracks]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // pedal Bluetooth / teclado
@@ -257,7 +264,11 @@ export default function Performance() {
     }
     if (prev === 'playing' && playbackState === 'stopped') {
       if (settings.applause) void playApplause()
-      if (queueIndex === queue.length - 1 && queue.length > 0) setFinale(true)
+      if (queueIndex === queue.length - 1 && queue.length > 0) {
+        setFinale(true)
+        // show completo (tocou pelo menos metade das músicas): conta para as conquistas
+        if (played.current.size >= Math.max(1, Math.ceil(queue.length / 2))) useProgressStore.getState().addShow()
+      }
     }
   }, [playbackState]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -335,6 +346,7 @@ export default function Performance() {
 
       <FirstTip id="palco" className="mx-4 mt-1" title="Modo Palco" dismissWhen={isPlaying} items={[
         'O show segue sozinho com uma contagem entre as músicas (dá para tocar já ou segurar)',
+        'Sem silêncio entre as músicas: "Pausa 0s" emenda direto; "Final" corta o silêncio do fim ou faz fade',
         'Botões de baixo: voz guia, click, tom e mixer sem sair da tela',
         'Pedal Bluetooth: espaço toca/pausa, setas passam de música',
       ]} />
@@ -426,11 +438,19 @@ export default function Performance() {
         <div ref={barRef} className="relative h-7 flex items-center touch-none"
           onPointerDown={e => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); seekAt(e.clientX) }}
           onPointerMove={e => { if (e.buttons) seekAt(e.clientX) }}>
-          <div className="h-2 w-full rounded-full bg-white/15 overflow-hidden"><div className="h-full bg-[hsl(var(--primary))]" style={{ width: `${progress}%` }} /></div>
+          <div className="relative h-2 w-full rounded-full bg-white/15 overflow-hidden">
+            {/* partes da música (intro, verso, refrão...) */}
+            {duration > 0 && sections.map((sec, i) => (
+              <div key={i} className="absolute inset-y-0 opacity-30" style={{ left: `${(sec.start / duration) * 100}%`, width: `${((sec.end - sec.start) / duration) * 100}%`, background: colorOf(sec.label) }} />
+            ))}
+            <div className="relative h-full bg-[hsl(var(--primary))]" style={{ width: `${progress}%` }} />
+          </div>
           <div className="absolute h-5 w-5 rounded-full bg-white shadow -translate-x-1/2" style={{ left: `${progress}%` }} />
         </div>
         <div className="flex justify-between text-[11px] text-white/45 tabular-nums -mt-1">
-          <span>{formatTime(currentTime)}</span><span>-{formatTime(Math.max(0, duration - currentTime))}</span>
+          <span>{formatTime(currentTime)}</span>
+          {(() => { const sec = sections[sectionAt(sections, currentTime)]; return sec ? <span className="font-bold" style={{ color: colorOf(sec.label) }}>{sec.label}</span> : null })()}
+          <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
         </div>
 
         <div className="flex items-center justify-center gap-5 py-1.5">
@@ -459,6 +479,9 @@ export default function Performance() {
             <button onClick={() => settings.set({ advanceGap: [0, 3, 5, 10, 15][([0, 3, 5, 10, 15].indexOf(settings.advanceGap) + 1) % 5] })}
               className="h-10 px-3 rounded-full bg-white/[0.08] text-xs font-bold shrink-0">Pausa: {settings.advanceGap}s</button>
           )}
+          <Chip on={settings.ending !== 'normal'} icon={Scissors}
+            onClick={() => settings.set({ ending: settings.ending === 'trim' ? 'fade' : settings.ending === 'fade' ? 'normal' : 'trim' })}
+            label={settings.ending === 'trim' ? 'Final: sem silêncio' : settings.ending === 'fade' ? `Final: fade ${settings.fadeSecs}s` : 'Final: completo'} />
           {track?.bpm ? <Chip on={settings.precount} onClick={() => P().togglePrecount()} icon={Timer} label="Contar 4" /> : null}
           <Chip on={false} onClick={() => setMixer(true)} icon={SlidersHorizontal} label="Mixer" />
           <FxChip on={settings.lights} onClick={() => settings.set({ lights: !settings.lights })} icon={Lightbulb} label="Luzes" />

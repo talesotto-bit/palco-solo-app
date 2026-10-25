@@ -21,6 +21,8 @@ import { LyricsPanel } from '@/components/player/LyricsPanel'
 import { CifrasPanel } from '@/components/player/CifrasPanel'
 import { useCoverArt } from '@/hooks/useCoverArt'
 import { FirstTip } from '@/components/FirstTip'
+import { SongStatusChip } from '@/components/progress/ProgressUI'
+import { RecordButton } from '@/components/player/RecordTake'
 import { semitonesToLabel, speedToLabel, cn } from '@/lib/utils'
 
 type Tab = 'letra' | 'cifra' | 'tom' | 'mixer'
@@ -111,6 +113,7 @@ export default function PlayerPage() {
                   <h1 className="text-xl md:text-3xl font-extrabold text-white leading-tight line-clamp-2">{track.title}</h1>
                   <p className="text-sm text-[#b3b3b3] mt-0.5 truncate">{track.artist}</p>
                   <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <SongStatusChip trackId={track.id} />
                     {track.hasStems && <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]"><Layers className="h-3 w-3" />{track.stems.length} pistas</span>}
                     {track.keyNote && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/10 text-white">Tom {track.keyNote}</span>}
                     {pitch !== 0 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">{semitonesToLabel(pitch)}</span>}
@@ -124,6 +127,7 @@ export default function PlayerPage() {
                 <button onClick={() => openAddToShow(track)} className="flex items-center gap-1.5 h-9 rounded-full px-3.5 text-xs font-bold bg-white text-black shrink-0">
                   <ListPlus className="h-4 w-4" /> Adicionar ao show
                 </button>
+                <RecordButton />
                 {isLocal && (
                   <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 h-9 rounded-full px-3.5 text-xs font-bold bg-purple-500/20 text-purple-200 shrink-0">
                     <Pencil className="h-4 w-4" /> Editar música
@@ -164,7 +168,8 @@ export default function PlayerPage() {
               <FirstTip id="player" title="Como usar o player" dismissWhen={isPlaying} items={[
                 'Tom: sobe ou desce de ½ em ½ tom (letra e cifra acompanham)',
                 'Mixer: toque em M para tirar um instrumento',
-                'Loop A-B: repete um trecho para ensaiar',
+                'Partes da música: toque em "Refrão" para ir direto; toque de novo para repetir só ela',
+                'Gravar: grave você tocando junto e mande no WhatsApp ou nos Stories',
                 'Tudo que você ajusta fica salvo nesta música',
               ]} />
 

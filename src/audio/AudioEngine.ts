@@ -34,6 +34,8 @@ function softClipCurve(): Float32Array<ArrayBuffer> {
 
 import { detectInstrument } from '@/lib/stemDetection'
 import { rhythmStemIds, followsPitch } from '@/lib/rhythmStems'
+import { findSections, type SectionTrack, type SongSection } from '@/lib/songSections'
+export type { SongSection }
 
 /**
  * Signalsmith Stretch (MIT) é servido como arquivo estático em /vendor: o código dele é enviado
@@ -72,6 +74,21 @@ interface LoadedStem {
   source: AudioBufferSourceNode | null
   /** ligada no barramento de ritmo (não muda de tom) */
   rhythm?: boolean
+  /** medidor de nível (criado quando o mixer pede) */
+  meter?: AnalyserNode
+  meterBuf?: Float32Array
+}
+
+/** Pista decodificada, ainda sem ligação no motor (pré-carregamento da próxima música do show) */
+interface DecodedStem { buffer: AudioBuffer; offset: number; ms: number; duration: number }
+
+/** Parte da música (intro, verso, refrão...) detectada pelo som das pistas */
+export interface SongAnalysis { peaks: number[]; sections: SongSection[] }
+
+const stemsKey = (stems: Stem[]) => stems.map(s => s.audioUrl).join('|')
+const isVoiceStem = (st: { id: string; label: string }) => {
+  const s = `${st.id} ${st.label}`.toLowerCase()
+  return /(voz|guia|vocal|voice|lead)/.test(s) && !/(back|coro|choir|bv|backing)/.test(s)
 }
 
 export type AudioEngineEvent =
@@ -238,6 +255,13 @@ class AudioEngine {
   private stretch2Promise: Promise<StretchNode | null> | null = null
   private rhythmTarget: 'master' | 'main' | 'delay' | 'second' = 'master'
   private rhythmIds = new Set<string>()
+  /** como a música termina no show: sem o silêncio do fim, com fade, ou num ponto escolhido (trecho/medley) */
+  private ending: { trim: boolean; fade: number; end?: number } = { trim: false, fade: 0 }
+  private fading = false
+  /** todas as pistas chegaram (o fim real da música já é conhecido) */
+  private allLoaded = false
+  private preloaded: { key: string; stems: Map<string, DecodedStem> } | null = null
+  private preloadId = 0
 
   private stems = new Map<string, LoadedStem>()
   /** prévia mixada tocando enquanto as pistas chegam */
@@ -364,13 +388,14 @@ class AudioEngine {
 
   // ─── Carregamento ────────────────────────────────────────────────────────
 
-  private async fetchBytes(url: string, signalId: number): Promise<ArrayBuffer> {
+  private async fetchBytes(url: string, signalId: number | (() => boolean)): Promise<ArrayBuffer> {
+    const stale = typeof signalId === 'function' ? signalId : () => signalId !== this.loadId
     const offline = await getOfflineAudio(url)
     if (offline) return offline
     let lastErr: unknown
     const urls = audioCandidates(url)
     for (let attempt = 0; attempt < 4; attempt++) {
-      if (signalId !== this.loadId) throw new Error('cancelado')
+      if (stale()) throw new Error('cancelado')
       const ctrl = new AbortController()
       const t = setTimeout(() => ctrl.abort(), 60000)
       try {
@@ -388,22 +413,51 @@ class AudioEngine {
     throw lastErr
   }
 
-  private async loadStem(stem: Stem, signalId: number): Promise<LoadedStem | null> {
+  private async decodeStem(stem: Stem, stale: () => boolean): Promise<DecodedStem | null> {
     const ctx = this.ensureContext()
-    const bytes = await this.fetchBytes(stem.audioUrl, signalId)
-    if (signalId !== this.loadId) return null
+    const bytes = await this.fetchBytes(stem.audioUrl, stale)
+    if (stale()) return null
     const decoded = await new Promise<AudioBuffer>((resolve, reject) => {
       // forma com callbacks: funciona também no Safari antigo
       ctx.decodeAudioData(bytes, resolve, reject)
     })
-    if (decoded.duration > this._duration) this._duration = decoded.duration
     const opt = optimizeBuffer(ctx, decoded)
-    if (!opt || signalId !== this.loadId) return null
-    const gain = ctx.createGain()
+    if (!opt || stale()) return null
+    return { ...opt, duration: decoded.duration }
+  }
+
+  /** Liga uma pista decodificada no motor (volume, barramento de tom ou de ritmo) */
+  private adoptStem(stem: Stem, d: DecodedStem): LoadedStem {
+    if (d.duration > this._duration) this._duration = d.duration
+    const gain = this.ctx!.createGain()
     gain.gain.value = this.targetGain(stem.id)
     const bus = this.busFor(stem.id)
     gain.connect(bus)
-    return { id: stem.id, label: stem.label, buffer: opt.buffer, offset: opt.offset, gain, source: null, ms: opt.ms, rhythm: bus === this.rhythmBus }
+    return { id: stem.id, label: stem.label, buffer: d.buffer, offset: d.offset, gain, source: null, ms: d.ms, rhythm: bus === this.rhythmBus }
+  }
+
+  private async loadStem(stem: Stem, signalId: number): Promise<LoadedStem | null> {
+    const d = await this.decodeStem(stem, () => signalId !== this.loadId)
+    return d && signalId === this.loadId ? this.adoptStem(stem, d) : null
+  }
+
+  /**
+   * Deixa a próxima música do show decodificada enquanto esta toca: ela entra sem espera.
+   * Fica de fora em celular com pouca memória (seriam duas músicas na memória ao mesmo tempo).
+   */
+  async preload(stems: Stem[], states: Record<string, StemState>): Promise<void> {
+    if (LOW_MEMORY || !stems.length) return
+    const key = stemsKey(stems)
+    if (this.preloaded?.key === key) return
+    const id = ++this.preloadId
+    const map = new Map<string, DecodedStem>()
+    this.preloaded = { key, stems: map }
+    const list = stems.filter(s => !s.derive && !((isSupportStem(s) && !states[s.id]) || states[s.id]?.muted))
+    const stale = () => id !== this.preloadId
+    await pool(list, 2, async (s) => {
+      if (stale()) return
+      try { const d = await this.decodeStem(s, stale); if (d && !stale()) map.set(s.id, d) } catch { /* carrega normal depois */ }
+    })
   }
 
   /**
@@ -414,6 +468,9 @@ class AudioEngine {
     const id = ++this.loadId
     this.disposeTrack()
     this.ensureContext()
+    const pre = this.preloaded?.key === stemsKey(stems) ? this.preloaded.stems : null
+    this.preloaded = null
+    this.preloadId++
     this.stemStates = initialStates ? { ...initialStates } : {}
     this.rhythmIds = rhythmStemIds(stems)
     this.emit({ type: 'loading', loaded: 0, total: stems.length })
@@ -433,7 +490,7 @@ class AudioEngine {
     now.sort((a, b) => stemPriority(a, this.stemStates) - stemPriority(b, this.stemStates))
 
     // Prévia mixada: um arquivo leve que toca na hora. Só quando as pistas ainda não estão no aparelho.
-    const useMix = !!opts?.mixUrl && !isAvailableOffline(now.map(s => s.audioUrl))
+    const useMix = !!opts?.mixUrl && !isAvailableOffline(now.map(s => s.audioUrl)) && !now.every(s => pre?.has(s.id))
     const mixP = useMix ? this.loadMix(opts!.mixUrl!, id).catch(err => { console.warn('[AudioEngine] prévia falhou:', err); return null }) : null
 
     const need = Math.min(now.length, Math.max(2, Math.ceil(now.length * 0.4)))
@@ -473,7 +530,8 @@ class AudioEngine {
 
     const all = pool(now, fetchConcurrency(), async (s) => {
       try {
-        const loaded = await this.loadStem(s, id)
+        const ready = pre?.get(s.id)
+        const loaded = ready ? this.adoptStem(s, ready) : await this.loadStem(s, id)
         if (loaded && id === this.loadId) {
           this.stems.set(s.id, loaded)
           ok++
@@ -507,6 +565,7 @@ class AudioEngine {
     }
     void all.then(async () => {
       if (id !== this.loadId) return
+      this.allLoaded = true
       if (this.mix) this.handoff()
       for (const d of derived) await this.buildDerived(d, stems, id)
       if (failed > 0) this.emit({ type: 'warning', message: `${failed} pista(s) não carregaram. A música toca com as demais.` })
@@ -560,6 +619,38 @@ class AudioEngine {
   }
 
   get duration(): number { return this._duration }
+
+  /** Onde o som de verdade acaba (sem o silêncio do fim do arquivo) */
+  get contentEnd(): number {
+    let e = 0
+    this.stems.forEach(st => { if (!isSupportStem(st)) e = Math.max(e, st.offset + st.buffer.duration) })
+    return e || this._duration
+  }
+
+  /**
+   * Como a música termina (usado no show): trim = sem o silêncio do fim; fade = segundos de fade no final;
+   * end = parar neste ponto (trecho de medley).
+   */
+  setEnding(e: { trim?: boolean; fade?: number; end?: number }) {
+    this.ending = { trim: !!e.trim, fade: e.fade || 0, end: e.end && e.end > 0 ? e.end : undefined }
+    this.fading = false
+  }
+
+  private endPos(): number {
+    let e = this._duration
+    if ((this.ending.trim || this.ending.fade) && this.allLoaded && !this.mix) e = Math.min(e, this.contentEnd)
+    if (this.ending.end) e = Math.min(e, this.ending.end)
+    return e
+  }
+
+  /** Instante (relógio de áudio) em que o som do play atual começa a sair na caixa (depois da contagem) */
+  get heardFromCtx(): number { return this.anchorCtxTime + this.outputDelay() }
+
+  /** Posição da música que estava saindo na caixa num instante do relógio de áudio (gravação) */
+  songPosAt(ctxTime: number): number {
+    if (!this._playing) return this.anchorPos
+    return this.anchorPos + (ctxTime - this.anchorCtxTime) * this._speed - this.outputDelay() * this._speed
+  }
   get isPlaying(): boolean { return this._playing }
   get loaded(): boolean { return this._loaded }
   get pitch(): number { return this._pitch }
@@ -649,6 +740,67 @@ class AudioEngine {
     return Math.sqrt(sq / (this.levelBuf.length / 2))
   }
 
+  /**
+   * Nível real de uma pista agora (0 a 1, em escala de dB), para os medidores do mixer.
+   * null quando a pista não está tocando (prévia, parada, ainda chegando).
+   */
+  getStemLevel(id: string): number | null {
+    const st = this.stems.get(id)
+    if (!st || !this.ctx || !this._playing || !st.source) return null
+    if (!st.meter) {
+      st.meter = this.ctx.createAnalyser()
+      st.meter.fftSize = 512
+      st.meterBuf = new Float32Array(512)
+      st.gain.connect(st.meter)
+    }
+    const buf = st.meterBuf as Float32Array<ArrayBuffer>
+    st.meter.getFloatTimeDomainData(buf)
+    let sq = 0
+    for (let i = 0; i < buf.length; i++) sq += buf[i] * buf[i]
+    const db = 20 * Math.log10(Math.sqrt(sq / buf.length) + 1e-6)
+    return Math.max(0, Math.min(1, (db + 48) / 45))
+  }
+
+  /**
+   * Forma de onda (para a barra de progresso) e partes da música (intro, verso, refrão, solo, final).
+   * Calculado pelo som das pistas separadas: a voz guia mostra onde se canta, a energia mostra o refrão.
+   */
+  analyze(): SongAnalysis | null {
+    const stems = [...this.stems.values()].filter(st => !isSupportStem(st))
+    const src = stems.length ? stems : this.mix ? [this.mix] : []
+    if (!src.length || !this._duration) return null
+    const HOP = 0.5
+    const n = Math.ceil(this._duration / HOP)
+    // nível de cada pista a cada meio segundo (1 amostra a cada 16: rápido no celular)
+    const tracks: SectionTrack[] = src.map(st => {
+      const rms = new Float32Array(n)
+      const sr = st.buffer.sampleRate, d = st.buffer.getChannelData(0), per = Math.round(HOP * sr)
+      for (let f = Math.max(0, Math.floor(st.offset / HOP)); f < n; f++) {
+        const a = Math.round((f * HOP - st.offset) * sr)
+        if (a >= d.length) break
+        let sq = 0, c = 0
+        for (let i = Math.max(0, a); i < Math.min(d.length, a + per); i += 16) { sq += d[i] * d[i]; c++ }
+        if (c) rms[f] = Math.sqrt(sq / c)
+      }
+      return { rms, voice: st !== this.mix && isVoiceStem(st) }
+    })
+    // forma de onda: 160 barras (energia somada)
+    const energy = new Float32Array(n)
+    for (const t of tracks) for (let f = 0; f < n; f++) energy[f] += t.rms[f] * t.rms[f]
+    const BINS = 160, peaks: number[] = []
+    let max = 0
+    for (let b = 0; b < BINS; b++) {
+      let m = 0
+      const from = Math.floor(b * n / BINS), to = Math.max(from + 1, Math.floor((b + 1) * n / BINS))
+      for (let f = from; f < to; f++) m = Math.max(m, Math.sqrt(energy[f] || 0))
+      peaks.push(m); max = Math.max(max, m)
+    }
+    return {
+      peaks: peaks.map(v => (max > 0 ? Math.pow(v / max, 0.75) : 0)),
+      sections: findSections(tracks, HOP),
+    }
+  }
+
   /** Contexto de áudio (para efeitos do palco, como os aplausos de ensaio) */
   get audioContext(): AudioContext | null { return this.ctx }
 
@@ -719,6 +871,7 @@ class AudioEngine {
   private restartAt(pos: number) {
     const ctx = this.ctx!
     const t = ctx.currentTime
+    this.fading = false
     this.fadeTo(0, t)
     this.stopSources(t + FADE)
     this.startSources(pos, t + FADE)
@@ -736,6 +889,7 @@ class AudioEngine {
     if (this.anchorPos >= this._duration - 0.2) this.anchorPos = 0
     this.master!.gain.cancelScheduledValues(ctx.currentTime)
     this.master!.gain.setValueAtTime(this._volume, ctx.currentTime)
+    this.fading = false
     this.startSources(this.anchorPos, when)
     this._playing = true
     this.startTimer()
@@ -928,7 +1082,7 @@ class AudioEngine {
       st.gain.gain.setTargetAtTime(this.targetGain(st.id), t, 0.015)
       // "acompanha o tom" mudou: troca de barramento (os dois caminhos têm o mesmo atraso, segue no tempo)
       const bus = this.busFor(st.id), rhythm = bus === this.rhythmBus
-      if (rhythm !== !!st.rhythm) { st.gain.disconnect(); st.gain.connect(bus); st.rhythm = rhythm }
+      if (rhythm !== !!st.rhythm) { st.gain.disconnect(); st.gain.connect(bus); if (st.meter) st.gain.connect(st.meter); st.rhythm = rhythm }
     })
     // pista de apoio ligada pela primeira vez: baixa agora e entra no ponto certo
     this.pending.forEach((stem, id) => {
@@ -1011,7 +1165,13 @@ class AudioEngine {
         this.checkLoop()
         const ct = this.currentTime
         this.emit({ type: 'timeupdate', currentTime: ct, duration: this._duration })
-        if (this._duration > 0 && this.rawPosition() >= this._duration) {
+        const end = this.endPos(), raw = this.rawPosition()
+        // fade no final (show): começa alguns segundos antes do fim
+        if (this.ending.fade > 0 && !this.fading && !this.loop && raw >= end - this.ending.fade * this._speed) {
+          this.fading = true
+          this.fadeTo(0, this.ctx!.currentTime, this.ending.fade)
+        }
+        if (this._duration > 0 && raw >= end) {
           this.stop()
           this.emit({ type: 'ended' })
           return
@@ -1022,7 +1182,7 @@ class AudioEngine {
     this.timer = requestAnimationFrame(tick)
     // rAF para com a tela apagada: um intervalo garante o fim da música e o avanço do setlist
     this.fallbackTimer = window.setInterval(() => {
-      if (this._playing && document.visibilityState !== 'visible' && this.rawPosition() >= this._duration) {
+      if (this._playing && document.visibilityState !== 'visible' && this.rawPosition() >= this.endPos()) {
         this.stop(); this.emit({ type: 'ended' })
       }
     }, 500)
@@ -1037,10 +1197,29 @@ class AudioEngine {
   // ─── Exportar a mixagem (com tom e velocidade) ───────────────────────────
 
   async exportMixdown(stemStates: Record<string, StemState>): Promise<Blob | null> {
-    if (!this._loaded || this.stems.size === 0) return null
     try {
+      const mixed = await this.renderMix(stemStates)
+      if (!mixed) return null
+      const { encodeMp3 } = await import('@/lib/mp3Encoder')
+      return encodeMp3(mixed)
+    } catch (err) {
+      console.error('[AudioEngine] exportar falhou:', err)
+      return null
+    }
+  }
+
+  /**
+   * Mixagem pronta (com tom e velocidade) da música inteira ou de um trecho [start, end] em segundos da música.
+   * Bateria/percussão saem no tom original, como no player.
+   */
+  async renderMix(stemStates: Record<string, StemState>, range?: { start: number; end: number }): Promise<AudioBuffer | null> {
+    if (!this._loaded || this.stems.size === 0) return null
+    {
       const sr = this.ctx!.sampleRate
-      const length = Math.ceil(this._duration * sr)
+      const from = range ? Math.max(0, range.start) : 0
+      const to = range ? Math.min(this._duration, range.end) : this._duration
+      if (to - from < 0.2) return null
+      const length = Math.ceil((to - from) * sr)
       const hasSolo = Object.values(stemStates).some(s => s.solo)
       const volOf = (id: string) => {
         const s = stemStates[id]
@@ -1054,7 +1233,9 @@ class AudioEngine {
         list.forEach(st => {
           const src = mixCtx.createBufferSource(); src.buffer = st.buffer
           const g = mixCtx.createGain(); g.gain.value = volOf(st.id) * this._volume
-          src.connect(g); g.connect(mixCtx.destination); src.start(st.offset)
+          src.connect(g); g.connect(mixCtx.destination)
+          if (st.offset >= from) src.start(st.offset - from)
+          else if (from - st.offset < st.buffer.duration) src.start(0, from - st.offset)
         })
         return mixCtx.startRendering()
       }
@@ -1075,11 +1256,7 @@ class AudioEngine {
           for (let i = 0, n = Math.min(out.length, add.length); i < n; i++) out[i] += add[i]
         }
       }
-      const { encodeMp3 } = await import('@/lib/mp3Encoder')
-      return encodeMp3(mixed)
-    } catch (err) {
-      console.error('[AudioEngine] exportar falhou:', err)
-      return null
+      return mixed
     }
   }
 
@@ -1093,6 +1270,8 @@ class AudioEngine {
     this.stems.clear()
     if (this.mix) { try { this.mix.source?.stop() } catch {} ; try { this.mix.gain.disconnect() } catch {} ; this.mix = null }
     this.pending.clear()
+    this.allLoaded = false
+    this.fading = false
     this._loaded = false
     this._duration = 0
     this.anchorPos = 0

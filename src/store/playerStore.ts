@@ -5,7 +5,8 @@
 
 import { create } from 'zustand'
 import { toast } from 'sonner'
-import { audioEngine, isSupportStem } from '@/audio/AudioEngine'
+import { audioEngine, isSupportStem, type SongAnalysis } from '@/audio/AudioEngine'
+import { useProgressStore } from './progressStore'
 import type { Track } from '@/types/track'
 import type { PlayerState, StemState } from '@/types/player'
 import { clamp } from '@/lib/utils'
@@ -22,6 +23,19 @@ const LAST_TRACK_KEY = 'player-last-track-v1'
 let _trackLoadId = 0
 let _pendingPlay = false
 let _advanceTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Tempo ouvido da música atual (vai para o progresso a cada ~10 s) e se já contou como tocada até o fim */
+const _listen = { trackId: '', last: -1, acc: 0, counted: false, preloadFor: '' }
+function flushListen() {
+  if (_listen.trackId && _listen.acc > 0) useProgressStore.getState().addListen(_listen.trackId, _listen.acc)
+  _listen.acc = 0
+}
+function resetListen(trackId: string) {
+  flushListen()
+  Object.assign(_listen, { trackId, last: -1, acc: 0, counted: false, preloadFor: '' })
+}
+
+export type QueueRange = { start?: number; end?: number } | undefined
 
 /** Resolve cache:// URLs (músicas importadas do aparelho) para blob URLs reais */
 async function resolveTrackUrls(track: Track): Promise<Track> {
@@ -58,11 +72,19 @@ interface PlayerStore extends PlayerState {
   startTrainer: (from?: number) => void
   stopTrainer: () => void
   toggleNoVocals: () => void
+  /** forma de onda e partes da música (intro, verso, refrão...) */
+  analysis: SongAnalysis | null
+  /** repete um trecho exato (ex.: uma parte da música) */
+  loopRange: (a: number, b: number) => void
+  /** trecho de cada música do show (medley): começa/termina em pontos escolhidos */
+  queueRanges: QueueRange[]
+  /** aplica no motor o jeito de terminar a música (show) */
+  applyEnding: () => void
   /** próxima música agendada (contagem regressiva entre músicas do show) */
   pendingAdvance: { index: number; at: number } | null
   cancelAdvance: () => void
   advanceNow: () => void
-  loadTrack: (track: Track, opts?: { autoplay?: boolean }) => Promise<void>
+  loadTrack: (track: Track, opts?: { autoplay?: boolean; startAt?: number }) => Promise<void>
   play: () => Promise<void>
   pause: () => void
   togglePlay: () => void
@@ -81,7 +103,7 @@ interface PlayerStore extends PlayerState {
   resetPitch: () => void
   resetSpeed: () => void
   saveTrackSettings: () => void
-  setQueue: (tracks: Track[], startIndex?: number, opts?: { autoplay?: boolean }) => Promise<void>
+  setQueue: (tracks: Track[], startIndex?: number, opts?: { autoplay?: boolean; ranges?: QueueRange[] }) => Promise<void>
   playQueueIndex: (index: number, opts?: { autoplay?: boolean }) => Promise<void>
   next: () => Promise<boolean>
   prev: () => Promise<boolean>
@@ -116,7 +138,19 @@ export function buildStemStates(track: Track): Record<string, StemState> {
   return states
 }
 
+/** Mixer de uma música ao abrir: o que o músico salvou, completando com o padrão */
+function initialStemStates(track: Track): Record<string, StemState> {
+  const saved = useTrackSettingsStore.getState().get(track.id)
+  const stemStates = buildStemStates(track)
+  if (saved) for (const id of Object.keys(saved.stemStates)) if (stemStates[id]) stemStates[id] = { ...saved.stemStates[id], id }
+  return stemStates
+}
+
 export const usePlayerStore = create<PlayerStore>((set, get) => {
+  const analyzeSoon = () => setTimeout(() => {
+    const a = audioEngine.analyze()
+    if (a) set({ analysis: a })
+  }, 30)
   audioEngine.on(event => {
     switch (event.type) {
       case 'loading':
@@ -124,18 +158,37 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         break
       case 'loaded':
         set({ playbackState: 'paused', loadProgress: null })
+        analyzeSoon()
         break
       case 'preview':
         set({ previewActive: event.active })
         break
       case 'background':
         set({ bgProgress: event.loaded >= event.total ? null : { loaded: event.loaded, total: event.total } })
+        if (event.loaded >= event.total) analyzeSoon()
         break
-      case 'timeupdate':
+      case 'timeupdate': {
         set({ currentTime: event.currentTime, duration: event.duration })
+        const { track, playbackState, queue, queueIndex, queueRanges } = get()
+        if (!track || playbackState !== 'playing' || _listen.trackId !== track.id) break
+        const t = event.currentTime, d = t - _listen.last
+        if (_listen.last >= 0 && d > 0 && d < 1.5) _listen.acc += d
+        _listen.last = t
+        if (_listen.acc >= 10) flushListen()
+        const inShow = queue[queueIndex]?.id === track.id
+        const end = (inShow && queueRanges[queueIndex]?.end) || event.duration
+        if (!_listen.counted && event.duration > 30 && t >= end * 0.85) { _listen.counted = true; flushListen(); useProgressStore.getState().addPlay(track.id) }
+        // show: a próxima música já fica pronta na memória nos últimos 45 s (entra sem espera)
+        const nextT = queue[queueIndex + 1]
+        if (nextT && inShow && useStageSettings.getState().autoAdvance && end - t < 45 && _listen.preloadFor !== nextT.id) {
+          _listen.preloadFor = nextT.id
+          void resolveTrackUrls(nextT).then(r => audioEngine.preload(r.stems, initialStemStates(nextT))).catch(() => {})
+        }
         break
+      }
       case 'ended': {
         set({ playbackState: 'stopped', currentTime: 0 })
+        flushListen()
         const { queue, queueIndex } = get()
         const { autoAdvance, advanceGap } = useStageSettings.getState()
         if (autoAdvance && queueIndex >= 0 && queueIndex < queue.length - 1) {
@@ -160,6 +213,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         get().setSpeed(next)
         if (next >= 1) {
           set({ trainer: null })
+          const tr = get().track
+          if (tr) useProgressStore.getState().addTrainer(tr.id)
           toast.success('Chegou a 100% da velocidade! Trecho dominado 🎉')
           void import('@/lib/confetti').then(m => m.confetti())
         }
@@ -167,6 +222,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       }
       case 'stemLoading':
         set(s => ({ loadingStems: event.active ? [...s.loadingStems, event.id] : s.loadingStems.filter(x => x !== event.id) }))
+        // a voz guia chegou depois: as partes da música ficam mais precisas
+        if (!event.active) analyzeSoon()
         break
     }
   })
@@ -174,6 +231,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
   // Volume igual entre músicas: segue a preferência salva
   audioEngine.setNormalize(useStageSettings.getState().normalize)
   useStageSettings.subscribe(s => audioEngine.setNormalize(s.normalize))
+  useStageSettings.subscribe((s, prev) => { if (s.ending !== prev.ending || s.fadeSecs !== prev.fadeSecs) get().applyEnding() })
 
   // Fones Bluetooth e tela bloqueada
   audioEngine.setMediaHandlers({
@@ -203,6 +261,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     previewActive: false,
     loadingStems: [],
     queue: [],
+    queueRanges: [],
+    analysis: null,
     queueIndex: -1,
     loop: null,
     trainer: null,
@@ -217,10 +277,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       if (_advanceTimer) { clearTimeout(_advanceTimer); _advanceTimer = null }
       if (get().pendingAdvance) set({ pendingAdvance: null })
       const saved = useTrackSettingsStore.getState().get(track.id)
-      const defaults = buildStemStates(track)
       // só aproveita do salvo as pistas que ainda existem
-      const stemStates = { ...defaults }
-      if (saved) for (const id of Object.keys(saved.stemStates)) if (stemStates[id]) stemStates[id] = { ...saved.stemStates[id], id }
+      const stemStates = initialStemStates(track)
+      resetListen(track.id)
       // sem ajuste salvo: sugere (ou aplica) o tom pela voz do músico
       const prefs = usePrefsStore.getState()
       const shift = suggestedShift(prefs.voice, track.artist)
@@ -230,7 +289,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const keySuggestion = shift !== 0 ? { shift, applied: auto || (saved ? Math.round(saved.pitch) === shift : false) } : null
       _pendingPlay = !!opts?.autoplay
 
-      set({ track, stemStates, pitch, speed, keySuggestion, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, bgProgress: null, previewActive: false, loadingStems: [] })
+      set({ track, stemStates, pitch, speed, keySuggestion, playbackState: 'loading', error: null, currentTime: 0, duration: 0, loadProgress: null, bgProgress: null, previewActive: false, loadingStems: [], analysis: null })
       try { localStorage.setItem(LAST_TRACK_KEY, track.id) } catch {}
       usePrefsStore.getState().pushRecent(track.id)
       audioEngine.setMediaMetadata({ title: track.title, artist: track.artist, artwork: track.coverUrl })
@@ -241,8 +300,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         if (loadId !== _trackLoadId) return
         audioEngine.setPitch(pitch)
         audioEngine.setSpeed(speed)
+        get().applyEnding()
         await audioEngine.load(resolved.stems, stemStates, { mixUrl: track.mixUrl })
         if (loadId !== _trackLoadId || !audioEngine.loaded) return
+        // trecho do show (medley): começa no ponto escolhido
+        if (opts?.startAt && opts.startAt > 0) { audioEngine.seek(opts.startAt); set({ currentTime: opts.startAt }) }
         set({ playbackState: 'paused', duration: audioEngine.duration })
         if (_pendingPlay) { _pendingPlay = false; await get().play() }
       } catch (err: any) {
@@ -274,7 +336,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       }
     },
 
-    pause: () => { audioEngine.pause(); set({ playbackState: 'paused' }) },
+    pause: () => { audioEngine.pause(); set({ playbackState: 'paused' }); flushListen() },
 
     togglePlay: () => {
       const st = get().playbackState
@@ -372,7 +434,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
     // ─── Fila (setlist em execução) ─────────────────────────────────────────
     setQueue: async (tracks, startIndex = 0, opts) => {
-      set({ queue: tracks, queueIndex: -1 })
+      set({ queue: tracks, queueIndex: -1, queueRanges: opts?.ranges ?? [] })
       if (tracks.length) await get().playQueueIndex(startIndex, opts)
     },
 
@@ -381,7 +443,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const t = queue[index]
       if (!t) return
       set({ queueIndex: index })
-      await get().loadTrack(t, opts)
+      await get().loadTrack(t, { ...opts, startAt: get().queueRanges[index]?.start })
       // deixa a próxima já baixada para entrar sem espera
       const nextTrack = queue[index + 1]
       if (nextTrack) void audioEngine.prefetch(nextTrack.stems.filter(s => !isSupportStem(s)).map(s => s.audioUrl).filter(u => /^https?:/.test(u)))
@@ -397,7 +459,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     prev: async () => {
       const { queueIndex, playbackState } = get()
       // como nos players de música: volta ao começo se já passou de 3 s
-      if (audioEngine.currentTime > 3 || queueIndex <= 0) { get().seek(0); return queueIndex > 0 }
+      if (audioEngine.currentTime > 3 || queueIndex <= 0) { get().seek(get().queueRanges[queueIndex]?.start ?? 0); return queueIndex > 0 }
       await get().playQueueIndex(queueIndex - 1, { autoplay: playbackState === 'playing' })
       return true
     },
@@ -423,6 +485,18 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       get().clearLoop()
     },
     clearLoop: () => { get().stopTrainer(); audioEngine.setLoop(null); set({ loop: null }) },
+    loopRange: (a, b) => {
+      const l = { a: Math.max(0, a), b }
+      set({ loop: l }); audioEngine.setLoop(l)
+      if (get().playbackState === 'playing') audioEngine.seek(l.a)
+    },
+    applyEnding: () => {
+      const { queue, queueIndex, queueRanges, track } = get()
+      // fora do show a música toca inteira, do jeito que veio
+      if (queueIndex < 0 || !track || queue[queueIndex]?.id !== track.id) { audioEngine.setEnding({}); return }
+      const { ending, fadeSecs } = useStageSettings.getState()
+      audioEngine.setEnding({ trim: ending !== 'normal', fade: ending === 'fade' ? fadeSecs : 0, end: queueRanges[queueIndex]?.end })
+    },
     startTrainer: (from = 0.7) => {
       const { speed } = get()
       set({ trainer: { orig: speed, step: 0.05 } })

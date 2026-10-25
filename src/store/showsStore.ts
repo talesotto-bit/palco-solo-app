@@ -12,6 +12,9 @@ export interface ShowSong {
   artist: string
   coverUrl: string
   note?: string
+  /** trecho (medley): começa e/ou termina nestes segundos da música */
+  start?: number
+  end?: number
 }
 
 export interface Show {
@@ -37,6 +40,7 @@ interface ShowsState {
   removeSong: (id: string, index: number) => void
   moveSong: (id: string, from: number, to: number) => void
   setNote: (id: string, index: number, note: string) => void
+  setRange: (id: string, index: number, range: { start?: number; end?: number }) => void
 }
 
 export function songFromTrack(t: Track): ShowSong {
@@ -129,6 +133,11 @@ export const useShowsStore = create<ShowsState>()(
       setNote: (id, index, note) => set(s => ({
         shows: s.shows.map(sh => sh.id === id
           ? { ...sh, songs: sh.songs.map((x, i) => i === index ? { ...x, note: note || undefined } : x), updatedAt: Date.now() }
+          : sh),
+      })),
+      setRange: (id, index, range) => set(s => ({
+        shows: s.shows.map(sh => sh.id === id
+          ? { ...sh, songs: sh.songs.map((x, i) => i === index ? { ...x, start: range.start || undefined, end: range.end || undefined } : x), updatedAt: Date.now() }
           : sh),
       })),
     }),

@@ -7,6 +7,7 @@ import { usePlayerStore } from '@/store/playerStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
 import { useCoverArt } from '@/hooks/useCoverArt'
 import { useNavigate } from 'react-router-dom'
+import { StatusBadge } from '@/components/progress/ProgressUI'
 
 interface TrackCardProps {
   track: Track
@@ -94,8 +95,9 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
           )}>
             {track.title}
           </p>
-          <p className="text-[11px] text-[#808080] truncate">
-            {track.artist}{track.version ? ` · ${track.version}` : ''}
+          <p className="text-[11px] text-[#808080] truncate flex items-center gap-1.5">
+            <StatusBadge trackId={track.id} />
+            <span className="truncate">{track.artist}{track.version ? ` · ${track.version}` : ''}</span>
           </p>
         </div>
 
@@ -184,6 +186,8 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             {track.stems.length}
           </div>
         )}
+
+        {!isPlaying && <StatusBadge trackId={track.id} className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-sm" />}
 
         {isPlaying && (
           <div className="absolute top-1.5 left-1.5 flex items-end gap-[2px] h-3">

@@ -2,9 +2,12 @@
  * Topo da tela inicial: saudação, sequência de ensaios 🔥 e um "Toque agora" com a música
  * para continuar (ou a música do dia) — um toque e já está tocando.
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Play, Pause, Flame, Music2 } from 'lucide-react'
+import { Play, Pause, Flame, Music2, Trophy, ChevronRight } from 'lucide-react'
+import { useShowsStore, type Show } from '@/store/showsStore'
+import { useProgressStore, songStatus, ACHIEVEMENTS } from '@/store/progressStore'
+import { AchievementsSheet } from '@/components/progress/ProgressUI'
 import { usePlayerStore } from '@/store/playerStore'
 import { usePrefsStore } from '@/store/prefsStore'
 import { usePracticeStore, practiceStats } from '@/store/practiceStore'
@@ -23,6 +26,24 @@ function songOfDay(tracks: Track[]): Track | undefined {
   return pool[(seed * 2654435761) % pool.length]
 }
 
+/** Próximo show: o de data mais próxima (hoje em diante); sem data, o ativo ou o último mexido */
+function pickNextShow(shows: Show[], activeId: string | null): Show | undefined {
+  const withSongs = shows.filter(s => s.songs.length)
+  const today = new Date().toISOString().slice(0, 10)
+  const dated = withSongs.filter(s => s.date && s.date >= today).sort((a, b) => a.date!.localeCompare(b.date!))
+  return dated[0] || withSongs.find(s => s.id === activeId) || [...withSongs].sort((a, b) => b.updatedAt - a.updatedAt)[0]
+}
+
+function whenLabel(date?: string): string {
+  if (!date) return ''
+  const d = new Date(date + 'T12:00:00'), t = new Date(); t.setHours(12, 0, 0, 0)
+  const days = Math.round((d.getTime() - t.getTime()) / 86400000)
+  if (days === 0) return 'hoje'
+  if (days === 1) return 'amanhã'
+  if (days > 1 && days < 7) return d.toLocaleDateString('pt-BR', { weekday: 'long' })
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+}
+
 export function HomeHero({ tracks, byId }: { tracks: Track[]; byId: Map<string, Track> }) {
   const navigate = useNavigate()
   const recent = usePrefsStore(s => s.recent)
@@ -30,6 +51,13 @@ export function HomeHero({ tracks, byId }: { tracks: Track[]; byId: Map<string, 
   const current = usePlayerStore(s => s.track)
   const isPlaying = usePlayerStore(s => s.playbackState === 'playing')
   const { streak, todayDone, week } = practiceStats(days)
+  const shows = useShowsStore(s => s.shows)
+  const activeShowId = useShowsStore(s => s.activeShowId)
+  const progress = useProgressStore(s => s.songs)
+  const achDone = useProgressStore(s => Object.keys(s.unlocked).length)
+  const [achOpen, setAchOpen] = useState(false)
+  const nextShow = pickNextShow(shows, activeShowId)
+  const ready = nextShow ? nextShow.songs.filter(x => songStatus(progress[x.trackId]) === 'pronta').length : 0
 
   const lastTrack = recent.map(id => byId.get(id)).find(Boolean)
   const featured = useMemo(() => lastTrack || songOfDay(tracks), [lastTrack, tracks])
@@ -75,7 +103,26 @@ export function HomeHero({ tracks, byId }: { tracks: Track[]; byId: Map<string, 
           </span>
         )}
         {week > 0 && <span className="rounded-full bg-white/[0.07] px-2.5 py-1 text-[12px] font-semibold text-white/70">{week} música{week === 1 ? '' : 's'} esta semana</span>}
+        <button onClick={() => setAchOpen(true)} className="flex items-center gap-1 rounded-full bg-amber-400/15 px-2.5 py-1 text-[12px] font-bold text-amber-200 active:scale-95 transition-transform">
+          <Trophy className="h-3.5 w-3.5 text-amber-400" /> {achDone}/{ACHIEVEMENTS.length} conquistas
+        </button>
       </div>
+
+      {/* prontidão do próximo show */}
+      {nextShow && (
+        <button onClick={() => navigate(`/app/shows/${nextShow.id}`)} className="relative mt-2.5 w-full rounded-2xl bg-white/[0.04] border border-white/[0.06] px-3 py-2.5 text-left active:scale-[0.99] transition-transform">
+          <span className="flex items-center gap-2 text-[12px]">
+            <span className="flex-1 min-w-0 truncate text-white/75">🎤 <b className="text-white">{nextShow.name}</b>{nextShow.date ? ` · ${whenLabel(nextShow.date)}` : ''}</span>
+            <span className={ready === nextShow.songs.length ? 'font-bold text-[hsl(var(--primary))]' : 'font-bold text-amber-300'}>{ready}/{nextShow.songs.length} prontas</span>
+            <ChevronRight className="h-4 w-4 text-white/40" />
+          </span>
+          <span className="mt-1.5 block h-1.5 rounded-full bg-white/10 overflow-hidden">
+            <span className="block h-full rounded-full bg-[hsl(var(--primary))] transition-all" style={{ width: `${(ready / nextShow.songs.length) * 100}%` }} />
+          </span>
+          {ready < nextShow.songs.length && <span className="mt-1 block text-[11px] text-white/45">Falta{nextShow.songs.length - ready === 1 ? "" : "m"} {nextShow.songs.length - ready} música{nextShow.songs.length - ready === 1 ? '' : 's'} ficar{nextShow.songs.length - ready === 1 ? '' : 'em'} pronta{nextShow.songs.length - ready === 1 ? '' : 's'}</span>}
+        </button>
+      )}
+      <AchievementsSheet open={achOpen} onClose={() => setAchOpen(false)} />
 
       {/* toque agora */}
       {featured && (

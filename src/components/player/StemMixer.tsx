@@ -1,7 +1,7 @@
 import { VolumeX, RotateCcw, Layers, Music } from 'lucide-react'
 import { usePlayerStore, stemInstrument } from '@/store/playerStore'
 import { usePrefsStore, PLAYABLE } from '@/store/prefsStore'
-import { isSupportStem } from '@/audio/AudioEngine'
+import { isSupportStem, audioEngine } from '@/audio/AudioEngine'
 import { Slider } from '@/components/ui/slider'
 import { INSTRUMENT_LABELS, INSTRUMENT_ICONS } from '@/types/track'
 import type { InstrumentId } from '@/types/track'
@@ -36,55 +36,39 @@ function keptNames(names: string[]): string {
   return `${names.length} pistas de ritmo ficam`
 }
 
-function VuMeter({ active, volume }: { active: boolean; volume: number }) {
+/**
+ * Medidor de verdade: lê o nível da pista no motor (sobe rápido, desce devagar) e marca o pico.
+ * Parado, na prévia ou com a pista desligada, fica zerado.
+ */
+function VuMeter({ stemId, active }: { stemId: string; active: boolean }) {
   const barRef = useRef<HTMLDivElement>(null)
-  const bar2Ref = useRef<HTMLDivElement>(null)
-  const frameRef = useRef<number>(0)
-  const prevRef = useRef(0)
-  const prev2Ref = useRef(0)
+  const peakRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!active) {
-      prevRef.current = 0
-      prev2Ref.current = 0
-      if (barRef.current) barRef.current.style.height = '0%'
-      if (bar2Ref.current) bar2Ref.current.style.height = '0%'
-      return () => {} // explicit no-op cleanup
-    }
-    let cancelled = false
-    const animate = () => {
-      if (cancelled) return
-      const target = volume * (0.4 + Math.random() * 0.6)
-      const target2 = volume * (0.3 + Math.random() * 0.5)
-      prevRef.current += (target - prevRef.current) * 0.3
-      prev2Ref.current += (target2 - prev2Ref.current) * 0.25
-      const pct = Math.round(prevRef.current * 100)
-      const pct2 = Math.round(prev2Ref.current * 100)
+    const paint = (lv: number, pk: number) => {
       if (barRef.current) {
-        barRef.current.style.height = `${Math.min(100, pct)}%`
-        barRef.current.style.backgroundColor = pct > 85 ? '#ef4444' : pct > 60 ? '#facc15' : 'hsl(var(--primary))'
+        barRef.current.style.height = `${Math.round(lv * 100)}%`
+        barRef.current.style.backgroundColor = lv > 0.9 ? '#ef4444' : lv > 0.72 ? '#facc15' : 'hsl(var(--primary))'
       }
-      if (bar2Ref.current) {
-        bar2Ref.current.style.height = `${Math.min(100, pct2)}%`
-        bar2Ref.current.style.backgroundColor = pct2 > 85 ? '#ef4444' : pct2 > 60 ? '#facc15' : 'hsl(var(--primary))'
-      }
-      frameRef.current = requestAnimationFrame(animate)
+      if (peakRef.current) { peakRef.current.style.bottom = `${Math.round(pk * 100)}%`; peakRef.current.style.opacity = pk > 0.02 ? '1' : '0' }
     }
-    frameRef.current = requestAnimationFrame(animate)
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(frameRef.current)
+    if (!active) { paint(0, 0); return () => {} }
+    let raf = 0, level = 0, peak = 0, peakAt = 0
+    const loop = (now: number) => {
+      const v = audioEngine.getStemLevel(stemId) ?? 0
+      level = v > level ? v : level * 0.9 + v * 0.1
+      if (level >= peak || now - peakAt > 900) { peak = level; peakAt = now }
+      paint(level, peak)
+      raf = requestAnimationFrame(loop)
     }
-  }, [active, volume])
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [active, stemId])
 
   return (
-    <div className="flex gap-[1px] h-full items-end w-3 shrink-0">
-      <div className="flex-1 h-full bg-white/5 rounded-sm overflow-hidden relative">
-        <div ref={barRef} className="absolute bottom-0 left-0 right-0 rounded-sm bg-[hsl(var(--primary))]" style={{ height: '0%' }} />
-      </div>
-      <div className="flex-1 h-full bg-white/5 rounded-sm overflow-hidden relative">
-        <div ref={bar2Ref} className="absolute bottom-0 left-0 right-0 rounded-sm bg-[hsl(var(--primary))]" style={{ height: '0%' }} />
-      </div>
+    <div className="relative h-full w-2 shrink-0 overflow-hidden rounded-sm bg-white/5">
+      <div ref={barRef} className="absolute bottom-0 left-0 right-0 rounded-sm" style={{ height: '0%' }} />
+      <div ref={peakRef} className="absolute left-0 right-0 h-[2px] bg-white/80 opacity-0" />
     </div>
   )
 }
@@ -267,8 +251,8 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
               )}
             >
               {/* VU meter */}
-              <div className="h-8 hidden sm:block">
-                <VuMeter active={stemActive} volume={state.volume} />
+              <div className="h-8 flex">
+                <VuMeter active={stemActive} stemId={stem.id} />
               </div>
 
               {/* Icon + label */}
