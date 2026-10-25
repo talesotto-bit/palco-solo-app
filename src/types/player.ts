@@ -7,6 +7,8 @@ export interface StemState {
   muted: boolean
   solo: boolean
   volume: number // 0..1
+  /** acompanha a mudança de tom? sem escolha: bateria, percussão e click não acompanham */
+  followPitch?: boolean
 }
 
 export interface PlayerState {

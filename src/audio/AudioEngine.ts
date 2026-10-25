@@ -4,6 +4,8 @@
  * - Cada pista (stem) vira um AudioBuffer tocado por um AudioBufferSourceNode; todas usam o mesmo relógio.
  * - Velocidade: playbackRate em todas as pistas. O tom que a velocidade altera é corrigido no Signalsmith Stretch.
  * - Tom: Signalsmith Stretch no barramento mestre. Só entra no caminho quando tom ≠ 0 ou velocidade ≠ 1.
+ * - Bateria, percussão e click não mudam de tom (soariam metálicos): vão por um barramento próprio, atrasado
+ *   igual ao processador para ficar no tempo. Com velocidade ≠ 1, um segundo processador só corrige a velocidade.
  * - Memória: pistas iguais nos dois canais viram mono, silêncio do começo e do fim é cortado e pistas
  *   totalmente mudas são descartadas. Assim músicas com muitas pistas cabem na memória do celular.
  * - Pistas de apoio (click, contagem) só são baixadas quando o músico liga.
@@ -31,6 +33,7 @@ function softClipCurve(): Float32Array<ArrayBuffer> {
 }
 
 import { detectInstrument } from '@/lib/stemDetection'
+import { rhythmStemIds, followsPitch } from '@/lib/rhythmStems'
 
 /**
  * Signalsmith Stretch (MIT) é servido como arquivo estático em /vendor: o código dele é enviado
@@ -67,6 +70,8 @@ interface LoadedStem {
   offset: number
   gain: GainNode
   source: AudioBufferSourceNode | null
+  /** ligada no barramento de ritmo (não muda de tom) */
+  rhythm?: boolean
 }
 
 export type AudioEngineEvent =
@@ -130,6 +135,16 @@ async function karaokeBuffer(buf: AudioBuffer): Promise<AudioBuffer | null> {
   lp2.connect(merger, 0, 0); lp2.connect(merger, 0, 1)
   merger.connect(ctx.destination)
   src.start()
+  return ctx.startRendering()
+}
+
+/** Muda velocidade e tom de uma mixagem pronta (exportação), fora do tempo real */
+async function stretchOffline(buf: AudioBuffer, outLen: number, rate: number, semitones: number): Promise<AudioBuffer> {
+  const ctx = new OfflineAudioContext(2, outLen, buf.sampleRate)
+  const node = await (await loadStretchFactory())(ctx, { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] })
+  await node.addBuffers([buf.getChannelData(0), buf.getChannelData(1)])
+  await node.schedule({ active: true, input: 0, output: 0, rate, semitones })
+  node.connect(ctx.destination)
   return ctx.startRendering()
 }
 
@@ -215,6 +230,14 @@ class AudioEngine {
   private stretchLatency = 0
   private stretchActive = false
   private stretchFailed = false
+  /** barramento das pistas que não mudam de tom (bateria, percussão, click) */
+  private rhythmBus: GainNode | null = null
+  private rhythmDelay: DelayNode | null = null
+  /** segundo processador: só corrige a velocidade das pistas de ritmo */
+  private stretch2: StretchNode | null = null
+  private stretch2Promise: Promise<StretchNode | null> | null = null
+  private rhythmTarget: 'master' | 'main' | 'delay' | 'second' = 'master'
+  private rhythmIds = new Set<string>()
 
   private stems = new Map<string, LoadedStem>()
   /** prévia mixada tocando enquanto as pistas chegam */
@@ -276,6 +299,10 @@ class AudioEngine {
     this.analyser.connect(this.ctx.destination)
     this.mixBus = this.ctx.createGain()
     this.mixBus.connect(this.master)
+    this.rhythmBus = this.ctx.createGain()
+    this.rhythmBus.connect(this.master)
+    this.rhythmDelay = this.ctx.createDelay(1)
+    this.rhythmDelay.connect(this.master)
     return this.ctx
   }
 
@@ -307,6 +334,27 @@ class AudioEngine {
         })
     }
     return this.stretchPromise!
+  }
+
+  private getStretch2(): Promise<StretchNode | null> {
+    if (this.stretch2) return Promise.resolve(this.stretch2)
+    if (!this.stretch2Promise) {
+      const ctx = this.ensureContext()
+      this.stretch2Promise = loadStretchFactory()
+        .then(factory => factory(ctx, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] }))
+        .then(node => { this.stretch2 = node; node.connect(this.master!); return node })
+        .catch((err: unknown) => {
+          console.warn('[AudioEngine] segundo processador indisponível:', err)
+          this.stretch2Promise = null
+          return null
+        })
+    }
+    return this.stretch2Promise
+  }
+
+  /** Barramento da pista: o do tom ou o de ritmo (escolha do músico ou bateria/percussão/click) */
+  private busFor(id: string): GainNode {
+    return followsPitch(id, this.rhythmIds, this.stemStates[id]?.followPitch) ? this.mixBus! : this.rhythmBus!
   }
 
   // ─── Eventos ─────────────────────────────────────────────────────────────
@@ -353,8 +401,9 @@ class AudioEngine {
     if (!opt || signalId !== this.loadId) return null
     const gain = ctx.createGain()
     gain.gain.value = this.targetGain(stem.id)
-    gain.connect(this.mixBus!)
-    return { id: stem.id, label: stem.label, buffer: opt.buffer, offset: opt.offset, gain, source: null, ms: opt.ms }
+    const bus = this.busFor(stem.id)
+    gain.connect(bus)
+    return { id: stem.id, label: stem.label, buffer: opt.buffer, offset: opt.offset, gain, source: null, ms: opt.ms, rhythm: bus === this.rhythmBus }
   }
 
   /**
@@ -366,6 +415,7 @@ class AudioEngine {
     this.disposeTrack()
     this.ensureContext()
     this.stemStates = initialStates ? { ...initialStates } : {}
+    this.rhythmIds = rhythmStemIds(stems)
     this.emit({ type: 'loading', loaded: 0, total: stems.length })
 
     // Pistas de apoio desligadas ficam para depois
@@ -561,8 +611,9 @@ class AudioEngine {
       }
       const gain = this.ctx!.createGain()
       gain.gain.value = this.targetGain(d.id)
-      gain.connect(this.mixBus!)
-      const st: LoadedStem = { id: d.id, label: d.label, buffer: buf, offset: src.offset, gain, source: null, ms: meanSquare(buf) }
+      const bus = this.busFor(d.id)
+      gain.connect(bus)
+      const st: LoadedStem = { id: d.id, label: d.label, buffer: buf, offset: src.offset, gain, source: null, ms: meanSquare(buf), rhythm: bus === this.rhythmBus }
       this.stems.set(d.id, st)
       if (this._playing && this.ctx && !this.mix) {
         const when = this.ctx.currentTime + 0.05
@@ -784,6 +835,37 @@ class AudioEngine {
       try { this.stretch.disconnect() } catch {}
       this.stretchActive = false
     }
+    await this.routeRhythm()
+  }
+
+  /**
+   * Caminho das pistas de ritmo:
+   * - sem processamento: direto;
+   * - só velocidade: pelo mesmo processador (ele só corrige a velocidade);
+   * - tom com velocidade normal: atraso igual ao do processador (som original, no tempo);
+   * - tom e velocidade: segundo processador, que só corrige a velocidade.
+   */
+  private async routeRhythm(): Promise<void> {
+    const bus = this.rhythmBus!, master = this.master!
+    let want: typeof this.rhythmTarget = !this.stretchActive ? 'master'
+      : Math.abs(this._pitch) <= 0.01 ? 'main'
+      : Math.abs(this._speed - 1) <= 0.001 ? 'delay' : 'second'
+    let second: StretchNode | null = null
+    if (want === 'second') {
+      second = await this.getStretch2()
+      if (!second) want = 'main'
+      else void second.schedule({ active: true, semitones: -12 * Math.log2(this._speed) })
+    }
+    if (want === 'delay') this.rhythmDelay!.delayTime.value = this.stretchLatency
+    if (want === this.rhythmTarget) return
+    bus.disconnect()
+    if (want === 'master') bus.connect(master)
+    else if (want === 'main') bus.connect(this.stretch!)
+    else if (want === 'delay') bus.connect(this.rhythmDelay!)
+    else bus.connect(second!)
+    // processador parado quando ninguém usa (não gasta bateria do celular)
+    if (want !== 'second' && this.stretch2) void this.stretch2.schedule({ active: false })
+    this.rhythmTarget = want
   }
 
   setPitch(semitones: number): void {
@@ -812,7 +894,10 @@ class AudioEngine {
       await this.applyRouting()
       if (this._playing) this.restartAt(pos)
     } else {
+      const rhythmWas = this.rhythmTarget
       await this.applyRouting()
+      // a bateria trocou de caminho (ex.: tom saiu do zero com velocidade alterada): reinicia sem estalo
+      if (this._playing && this.rhythmTarget !== rhythmWas) this.restartAt(this.rawPosition())
     }
   }
 
@@ -839,7 +924,12 @@ class AudioEngine {
     this.stemStates = { ...stemStates }
     this.updateNorm()
     const t = this.ctx?.currentTime ?? 0
-    this.stems.forEach(st => st.gain.gain.setTargetAtTime(this.targetGain(st.id), t, 0.015))
+    this.stems.forEach(st => {
+      st.gain.gain.setTargetAtTime(this.targetGain(st.id), t, 0.015)
+      // "acompanha o tom" mudou: troca de barramento (os dois caminhos têm o mesmo atraso, segue no tempo)
+      const bus = this.busFor(st.id), rhythm = bus === this.rhythmBus
+      if (rhythm !== !!st.rhythm) { st.gain.disconnect(); st.gain.connect(bus); st.rhythm = rhythm }
+    })
     // pista de apoio ligada pela primeira vez: baixa agora e entra no ponto certo
     this.pending.forEach((stem, id) => {
       if (this.targetGain(id) > 0) { this.pending.delete(id); void this.loadLazy(stem) }
@@ -952,28 +1042,38 @@ class AudioEngine {
       const sr = this.ctx!.sampleRate
       const length = Math.ceil(this._duration * sr)
       const hasSolo = Object.values(stemStates).some(s => s.solo)
-      const mixCtx = new OfflineAudioContext(2, length, sr)
-      let audible = 0
-      this.stems.forEach(st => {
-        const s = stemStates[st.id]
-        const vol = !s ? 1 : hasSolo ? (s.solo ? s.volume : 0) : (s.muted ? 0 : s.volume)
-        if (vol <= 0) return
-        audible++
-        const src = mixCtx.createBufferSource(); src.buffer = st.buffer
-        const g = mixCtx.createGain(); g.gain.value = vol * this._volume
-        src.connect(g); g.connect(mixCtx.destination); src.start(st.offset)
-      })
-      if (!audible) return null
-      let mixed = await mixCtx.startRendering()
-
-      if (this.needsStretch() && !this.stretchFailed) {
-        const outLen = Math.ceil(length / this._speed)
-        const stCtx = new OfflineAudioContext(2, outLen, sr)
-        const node = await (await loadStretchFactory())(stCtx, { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] })
-        await node.addBuffers([mixed.getChannelData(0), mixed.getChannelData(1)])
-        await node.schedule({ active: true, input: 0, output: 0, rate: this._speed, semitones: this._pitch })
-        node.connect(stCtx.destination)
-        mixed = await stCtx.startRendering()
+      const volOf = (id: string) => {
+        const s = stemStates[id]
+        return !s ? 1 : hasSolo ? (s.solo ? s.volume : 0) : (s.muted ? 0 : s.volume)
+      }
+      const audible = [...this.stems.values()].filter(st => volOf(st.id) > 0)
+      if (!audible.length) return null
+      const render = async (list: LoadedStem[]) => {
+        if (!list.length) return null
+        const mixCtx = new OfflineAudioContext(2, length, sr)
+        list.forEach(st => {
+          const src = mixCtx.createBufferSource(); src.buffer = st.buffer
+          const g = mixCtx.createGain(); g.gain.value = volOf(st.id) * this._volume
+          src.connect(g); g.connect(mixCtx.destination); src.start(st.offset)
+        })
+        return mixCtx.startRendering()
+      }
+      const stretchOn = this.needsStretch() && !this.stretchFailed
+      // como no player: com tom alterado, bateria/percussão saem no tom original (só a velocidade muda)
+      const split = stretchOn && Math.abs(this._pitch) > 0.01
+      const isRhythm = (st: LoadedStem) => split && !followsPitch(st.id, this.rhythmIds, stemStates[st.id]?.followPitch)
+      const pitched = await render(audible.filter(st => !isRhythm(st)))
+      const rhythm = await render(audible.filter(isRhythm))
+      const outLen = Math.ceil(length / this._speed)
+      const parts: AudioBuffer[] = []
+      if (pitched) parts.push(stretchOn ? await stretchOffline(pitched, outLen, this._speed, this._pitch) : pitched)
+      if (rhythm) parts.push(Math.abs(this._speed - 1) > 0.001 ? await stretchOffline(rhythm, outLen, this._speed, 0) : rhythm)
+      const mixed = parts[0]
+      for (const extra of parts.slice(1)) {
+        for (let c = 0; c < 2; c++) {
+          const out = mixed.getChannelData(c), add = extra.getChannelData(c)
+          for (let i = 0, n = Math.min(out.length, add.length); i < n; i++) out[i] += add[i]
+        }
       }
       const { encodeMp3 } = await import('@/lib/mp3Encoder')
       return encodeMp3(mixed)
@@ -1019,6 +1119,7 @@ class AudioEngine {
     return {
       stems: this.stems.size, pending: [...this.pending.keys()], mono, memoryMB: Math.round(bytes / 1e6), preview: !!this.mix, normGain: Math.round(this.normGain * 100) / 100,
       stretchActive: this.stretchActive, stretchLatency: this.stretchLatency, stretchFailed: this.stretchFailed,
+      rhythmTarget: this.rhythmTarget, rhythmStems: [...this.stems.values()].filter(st => st.rhythm).map(st => st.id),
       playing: this._playing, position: this.currentTime, duration: this._duration, speed: this._speed, pitch: this._pitch,
       ctxState: this.ctx?.state, sampleRate: this.ctx?.sampleRate,
       sources: [...this.stems.values()].filter(st => st.source).length,

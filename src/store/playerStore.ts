@@ -76,6 +76,7 @@ interface PlayerStore extends PlayerState {
   setStemMuted: (stemId: string, muted: boolean) => void
   setStemSolo: (stemId: string, solo: boolean) => void
   setStemVolume: (stemId: string, volume: number) => void
+  setStemFollowPitch: (stemId: string, follow: boolean) => void
   resetMix: () => void
   resetPitch: () => void
   resetSpeed: () => void
@@ -339,6 +340,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const stemStates = { ...get().stemStates }
       if (!stemStates[stemId]) return
       stemStates[stemId] = { ...stemStates[stemId], volume }
+      audioEngine.setStemStates(stemStates)
+      set({ stemStates })
+      get().saveTrackSettings()
+    },
+
+    setStemFollowPitch: (stemId, follow) => {
+      const stemStates = { ...get().stemStates }
+      if (!stemStates[stemId]) return
+      stemStates[stemId] = { ...stemStates[stemId], followPitch: follow }
       audioEngine.setStemStates(stemStates)
       set({ stemStates })
       get().saveTrackSettings()

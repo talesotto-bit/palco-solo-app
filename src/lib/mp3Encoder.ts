@@ -2,8 +2,11 @@
  * MP3 encoder — converts AudioBuffer to 192kbps stereo MP3 via lamejs
  */
 
-// @ts-expect-error lamejs has no type declarations
-import lamejs from 'lamejs'
+// O pacote "lamejs" quebra no build (as partes dele usam variáveis globais: "MPEGMode is not defined").
+// O arquivo único do próprio pacote funciona sozinho: roda como script e devolve o objeto lamejs.
+import lameSource from 'lamejs/lame.min.js?raw'
+const lamejs = new Function(`${lameSource}
+return lamejs`)() as { Mp3Encoder: new (channels: number, sampleRate: number, kbps: number) => any }
 
 const KBPS = 192
 const CHUNK = 1152 // MP3 frame size — must match LAME's internal frame size

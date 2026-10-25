@@ -1,4 +1,4 @@
-import { VolumeX, RotateCcw, Layers } from 'lucide-react'
+import { VolumeX, RotateCcw, Layers, Music } from 'lucide-react'
 import { usePlayerStore, stemInstrument } from '@/store/playerStore'
 import { usePrefsStore, PLAYABLE } from '@/store/prefsStore'
 import { isSupportStem } from '@/audio/AudioEngine'
@@ -6,7 +6,8 @@ import { Slider } from '@/components/ui/slider'
 import { INSTRUMENT_LABELS, INSTRUMENT_ICONS } from '@/types/track'
 import type { InstrumentId } from '@/types/track'
 import { cn } from '@/lib/utils'
-import { useEffect, useRef } from 'react'
+import { rhythmStemIds, followsPitch } from '@/lib/rhythmStems'
+import { useEffect, useMemo, useRef } from 'react'
 
 function stemIcon(stemId: string): string {
   if (stemId in INSTRUMENT_ICONS) return INSTRUMENT_ICONS[stemId as InstrumentId]
@@ -26,6 +27,13 @@ function stemIcon(stemId: string): string {
 function stemDisplayLabel(stemId: string, fallback: string): string {
   if (stemId in INSTRUMENT_LABELS) return INSTRUMENT_LABELS[stemId as InstrumentId]
   return fallback
+}
+
+/** "Bateria fica", "Bateria e Percussão ficam", "8 pistas de ritmo ficam" */
+function keptNames(names: string[]): string {
+  if (names.length === 1) return `${names[0]} fica`
+  if (names.length === 2) return `${names[0]} e ${names[1]} ficam`
+  return `${names.length} pistas de ritmo ficam`
 }
 
 function VuMeter({ active, volume }: { active: boolean; volume: number }) {
@@ -160,7 +168,10 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
   const setStemMuted = usePlayerStore(s => s.setStemMuted)
   const setStemSolo = usePlayerStore(s => s.setStemSolo)
   const setStemVolume = usePlayerStore(s => s.setStemVolume)
+  const setStemFollowPitch = usePlayerStore(s => s.setStemFollowPitch)
   const resetMix = usePlayerStore(s => s.resetMix)
+  const pitch = usePlayerStore(s => s.pitch)
+  const rhythm = useMemo(() => rhythmStemIds(track?.stems ?? []), [track])
 
   if (!track) return null
 
@@ -171,6 +182,9 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
   const hasSolo = Object.values(stemStates).some(s => s.solo)
   const anyModified = Object.values(stemStates).some(s => s.muted || s.solo || s.volume !== 1)
   const isPlaying = playbackState === 'playing'
+  // a escolha "acompanha o tom" só aparece com o tom alterado (é quando faz diferença)
+  const pitchOn = Math.abs(pitch) > 0.01
+  const keptOriginal = pitchOn ? stems.filter(s => !followsPitch(s.id, rhythm, stemStates[s.id]?.followPitch) && !stemStates[s.id]?.muted) : []
 
   if (!track.hasStems || stems.length <= 1) {
     return (
@@ -220,6 +234,15 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
 
       <QuickMixes />
 
+      {pitchOn && (
+        <div className="mx-4 md:mx-5 mb-3 rounded-lg bg-white/[0.05] px-3 py-2 text-xs text-[#c8c8c8]">
+          {keptOriginal.length
+            ? <>{keptNames(keptOriginal.map(s => stemDisplayLabel(s.id, s.label)))} no tom original: soa natural e no tempo. </>
+            : null}
+          Toque em <Music className="inline h-3 w-3 -mt-0.5" /> para escolher quais pistas acompanham o tom.
+        </div>
+      )}
+
       {/* Stem rows */}
       <div className="divide-y divide-white/5">
         {stems.map(stem => {
@@ -229,9 +252,10 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
           const isMuted = state.muted
           const isSolo = state.solo
           const isInactive = hasSolo && !isSolo
-          const icon = stemIcon(stem.id)
+          const icon = rhythm.has(stem.id) && !isSupportStem(stem) ? '🥁' : stemIcon(stem.id)
           const label = stemDisplayLabel(stem.id, stem.label)
           const stemActive = isPlaying && !isMuted && (!hasSolo || isSolo)
+          const follows = followsPitch(stem.id, rhythm, state.followPitch)
 
           return (
             <div
@@ -274,6 +298,24 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
                   {Math.round(state.volume * 100)}
                 </span>
               </div>
+
+              {/* Acompanha o tom */}
+              {pitchOn && (
+                <button
+                  aria-label={follows ? `${label} acompanha o tom. Tocar para deixar no tom original` : `${label} no tom original. Tocar para acompanhar o tom`}
+                  aria-pressed={follows}
+                  onClick={() => setStemFollowPitch(stem.id, !follows)}
+                  className={cn(
+                    'relative flex items-center justify-center h-10 w-10 md:h-8 md:w-8 rounded-full shrink-0 transition-colors',
+                    follows
+                      ? 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]'
+                      : 'bg-white/5 text-[#6a6a6a] hover:text-white hover:bg-white/10'
+                  )}
+                >
+                  <Music className="h-4 w-4 md:h-3.5 md:w-3.5" />
+                  {!follows && <span className="absolute h-[2px] w-5 md:w-4 rotate-45 rounded bg-current" />}
+                </button>
+              )}
 
               {/* Mute button */}
               <button
