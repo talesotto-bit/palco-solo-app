@@ -42,7 +42,8 @@ export default function App() {
             {/* Public routes */}
             <Route path="/login" element={<Navigate to="/app/library" replace />} />
             <Route path="/demo" element={<ErrorBoundary><Suspense fallback={null}><Demo /></Suspense></ErrorBoundary>} />
-            <Route path="/trial" element={<Navigate to="/app/library" replace />} />
+            {/* "teste grátis" dos botões da página de vendas: app completo em modo teste */}
+            <Route path="/trial" element={<Navigate to="/experimente" replace />} />
             <Route path="/" element={<Navigate to="/app/library" replace />} />
             {/* Página do público (QR de pedidos) e ativação de recursos comprados */}
             <Route path="/p" element={<Suspense fallback={null}><PublicRequest /></Suspense>} />
