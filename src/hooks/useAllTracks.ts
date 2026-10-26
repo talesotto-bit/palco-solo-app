@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useCatalogStore } from '@/store/catalogStore'
 import { useLocalTracksStore } from '@/store/localTracksStore'
 import type { Track } from '@/types/track'
+import { useInTrial, FULL_CATALOG, TRIAL_CATALOG } from '@/lib/trial'
 
 /** Todas as músicas (importadas + catálogo) e um mapa por id. Carrega o catálogo se precisar. */
 export function useAllTracks() {
@@ -10,7 +11,15 @@ export function useAllTracks() {
   const loadCatalog = useCatalogStore(s => s.loadCatalog)
   const local = useLocalTracksStore(s => s.tracks)
 
-  useEffect(() => { if (!catalog.length && !loading) void loadCatalog() }, [catalog.length, loading, loadCatalog])
+  // modo teste: só as 4 músicas; comprou (ativou), troca para a biblioteca inteira
+  const trial = useInTrial()
+  const loadedUrl = useCatalogStore(s => s._loadedUrl)
+  useEffect(() => {
+    if (loading) return
+    const want = trial ? TRIAL_CATALOG : FULL_CATALOG
+    const ours = !loadedUrl || loadedUrl === FULL_CATALOG || loadedUrl === TRIAL_CATALOG
+    if ((!catalog.length || loadedUrl !== want) && ours) void loadCatalog(want)
+  }, [catalog.length, loading, loadCatalog, trial, loadedUrl])
 
   const all = useMemo(() => [...local, ...catalog], [local, catalog])
   const byId = useMemo(() => {

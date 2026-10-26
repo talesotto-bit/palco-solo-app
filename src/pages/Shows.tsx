@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useShowsStore, songFromTrack, type Show } from '@/store/showsStore'
 import { useAllTracks } from '@/hooks/useAllTracks'
 import { Sheet } from '@/components/ui/sheet'
+import { useInTrial } from '@/lib/trial'
 import { formatDuration } from '@/lib/showUtils'
 
 export interface Repertorio { id: string; name: string; desc: string; style: string; icon: string; trackIds: string[]; moments?: string[] | null }
@@ -28,7 +29,9 @@ export default function Shows() {
   const [name, setName] = useState('')
   const [menuFor, setMenuFor] = useState<Show | null>(null)
 
-  useEffect(() => { void loadRepertorios().then(setReps) }, [])
+  const trial = useInTrial()
+  // no teste não mostra os repertórios prontos (são feitos com a biblioteca inteira)
+  useEffect(() => { if (!trial) void loadRepertorios().then(setReps); else setReps([]) }, [trial])
   const location = useLocation()
   useEffect(() => {
     if ((location.state as any)?.create) { setCreating(true); navigate(location.pathname, { replace: true, state: null }) }

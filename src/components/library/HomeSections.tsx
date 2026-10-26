@@ -11,6 +11,7 @@ import { getArtistScore } from '@/lib/featuredArtists'
 import { loadRepertorios, type Repertorio } from '@/pages/Shows'
 import type { Track } from '@/types/track'
 import { HomeHero } from './HomeHero'
+import { useInTrial } from '@/lib/trial'
 import { tap } from '@/lib/haptics'
 
 interface Props {
@@ -48,7 +49,9 @@ export function HomeSections({ tracks, byId, onSeeGenre, onSeeAll }: Props) {
   const genres = useCatalogStore(s => s.genres)
   const localTracks = useLocalTracksStore(s => s.tracks)
   const [reps, setReps] = useState<Repertorio[]>([])
-  useEffect(() => { void loadRepertorios().then(setReps) }, [])
+  const trial = useInTrial()
+  // no teste, só as 4 músicas: sem repertórios prontos nem prateleiras por estilo (que mostrariam a biblioteca)
+  useEffect(() => { if (!trial) void loadRepertorios().then(setReps); else setReps([]) }, [trial])
 
   const recentTracks = useMemo(() => recent.map(id => byId.get(id)).filter(Boolean).slice(0, 12) as Track[], [recent, byId])
   const rows = useMemo(() => {
@@ -149,15 +152,17 @@ export function HomeSections({ tracks, byId, onSeeGenre, onSeeAll }: Props) {
         </Row>
       )}
 
-      {rows.map(r => (
+      {!trial && rows.map(r => (
         <Row key={r.id} title={r.label} action={{ label: `Ver ${r.count}`, onClick: () => onSeeGenre(r.id) }}>
           {r.items.map(t => <Cell key={t.id}><TrackCard track={t} view="grid" /></Cell>)}
         </Row>
       ))}
 
-      <button onClick={onSeeAll} className="mt-8 w-full h-12 rounded-full bg-white/[0.07] font-semibold">
-        Ver toda a biblioteca ({tracks.length.toLocaleString('pt-BR')} músicas)
-      </button>
+      {!trial && (
+        <button onClick={onSeeAll} className="mt-8 w-full h-12 rounded-full bg-white/[0.07] font-semibold">
+          Ver toda a biblioteca ({tracks.length.toLocaleString('pt-BR')} músicas)
+        </button>
+      )}
     </div>
   )
 }

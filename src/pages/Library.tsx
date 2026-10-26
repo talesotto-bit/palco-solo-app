@@ -7,11 +7,13 @@ import { useFavoritesStore } from '@/store/favoritesStore'
 import { TrackCard } from '@/components/library/TrackCard'
 import { cn, matchesSearch } from '@/lib/utils'
 import { getArtistScore } from '@/lib/featuredArtists'
+import { useInTrial } from '@/lib/trial'
 import { HomeSections } from '@/components/library/HomeSections'
 
 const BATCH_SIZE = 60
 
 export default function Library() {
+  const trial = useInTrial()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -96,7 +98,7 @@ export default function Library() {
             <p className="text-[11px] md:text-xs text-[#808080] mt-0.5">
               {catalogLoading ? '' : genre !== 'all'
                 ? catalogGenres.find(g => g.id === genre)?.label || genre
-                : `${allTracks.length.toLocaleString('pt-BR')} músicas`}
+                : trial ? 'Teste grátis · 4 músicas liberadas' : `${allTracks.length.toLocaleString('pt-BR')} músicas`}
             </p>
           </div>
 
@@ -189,7 +191,7 @@ export default function Library() {
                 Minhas músicas <span className="ml-1 text-[10px] opacity-60">{localTracks.length}</span>
               </button>
             )}
-            {catalogGenres.map(g => (
+            {!trial && catalogGenres.map(g => (
               <button
                 key={g.id}
                 onClick={() => { setGenre(prev => prev === g.id ? 'all' : g.id); setShowFavs(false) }}

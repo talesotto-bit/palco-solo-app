@@ -41,6 +41,13 @@ export const useTrial = create<TrialState>()(
   )
 )
 
+/** No teste o app carrega só as 4 músicas: a biblioteca inteira aparece depois da compra */
+export const FULL_CATALOG = '/catalog.json'
+export const TRIAL_CATALOG = '/experimente.json'
+export function catalogUrl(): string {
+  return inTrial() ? TRIAL_CATALOG : FULL_CATALOG
+}
+
 /** Está testando (e ainda não comprou)? */
 export function inTrial(): boolean {
   return useTrial.getState().active && !useUnlocks.getState().has('app')

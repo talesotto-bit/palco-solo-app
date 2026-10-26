@@ -3,6 +3,7 @@ import type { Track, Stem, Genre } from '@/types/track'
 import { cleanSongName, parseFolderName, detectInstrument, stemLabel, toTitleCase } from '@/lib/stemDetection'
 import { INSTRUMENT_LABELS } from '@/types/track'
 
+import { catalogUrl } from '@/lib/trial'
 import { AUDIO_BASE as R2_PUBLIC_URL } from '@/lib/audioHost'
 
 /**
@@ -455,7 +456,7 @@ export const useCatalogStore = create<CatalogStateInternal>((set) => ({
   error: null,
   _loadedUrl: null,
 
-  loadCatalog: async (url = '/catalog.json') => {
+  loadCatalog: async (url = catalogUrl()) => {
     const state = useCatalogStore.getState()
     if (state.isLoading) return
     if (state.tracks.length > 0 && state._loadedUrl === url) return
