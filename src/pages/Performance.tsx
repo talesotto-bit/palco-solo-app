@@ -79,7 +79,7 @@ const isCount = (s: Stem) => isSupportStem(s) && /contagem|count|cue/.test(`${s.
 
 // ─── Letra de palco ─────────────────────────────────────────────────────────
 
-function StageLyrics({ scale }: { scale: number }) {
+export function StageLyrics({ scale, syncHint = true }: { scale: number; syncHint?: boolean }) {
   const track = usePlayerStore(s => s.track)
   const currentTime = usePlayerStore(s => s.currentTime)
   const playing = usePlayerStore(s => s.playbackState === 'playing')
@@ -129,7 +129,7 @@ function StageLyrics({ scale }: { scale: number }) {
       )}
       {!syncedLines && plainLyrics && <div className="py-6 whitespace-pre-wrap font-semibold text-white/90 leading-snug" style={{ fontSize: base * 0.85 }}>{plainLyrics}</div>}
     </div>
-      {syncedLines && playing && currentTime < 40 && (
+      {syncHint && syncedLines && playing && currentTime < 40 && (
         <button onClick={sync.markStart} className="absolute right-3 bottom-2 z-10 h-9 px-3 rounded-full bg-black/80 border border-white/15 text-[11px] font-bold text-white/70 active:bg-white/20">
           Letra fora do tempo? Toque quando começar a cantar
         </button>
