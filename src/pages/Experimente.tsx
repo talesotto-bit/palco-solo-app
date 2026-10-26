@@ -2,7 +2,8 @@
  * "Teste agora": o app de verdade, guiado. 4 músicas, com o player real (forma de onda, partes da música,
  * medidores, letra sincronizada) e 5 "missões" que fazem o músico sentir cada função em segundos:
  * tirar a voz, mudar o tom, tirar o próprio instrumento, ensaiar devagar e ver o Modo Palco.
- * Dentro da página de vendas (iframe) não mostra botão de compra; aberto sozinho (link do WhatsApp), mostra.
+ * Isso vale dentro da página de vendas (iframe). Aberto sozinho (link do WhatsApp, anúncio), o link leva para
+ * o app completo em modo teste: as 4 músicas liberadas com tudo, as outras com cadeado.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Play, Pause, Loader2, Minus, Plus, Mic, MicOff, Check, Sparkles, X, Lightbulb, AlignLeft, SlidersHorizontal, ShoppingBag } from 'lucide-react'
@@ -19,6 +20,9 @@ import { formatTons } from '@/lib/musicTheory'
 import { cn, normalizeSearch } from '@/lib/utils'
 import { detectInstrument } from '@/lib/stemDetection'
 import type { Stem } from '@/types/track'
+import { useNavigate } from 'react-router-dom'
+import { useTrial } from '@/lib/trial'
+import { useUnlocks } from '@/lib/unlocks'
 
 const CHECKOUT = 'https://pay.cakto.com.br/ygt9oqx_1225675'
 const EMBEDDED = typeof window !== 'undefined' && window.self !== window.top
@@ -35,6 +39,20 @@ const MISSIONS: { id: MissionId; title: string; hint: string }[] = [
 ]
 
 export default function Experimente() {
+  return EMBEDDED ? <GuidedDemo /> : <TrialRedirect />
+}
+
+/** Link de teste aberto sozinho: entra no app completo em modo teste */
+function TrialRedirect() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (!useUnlocks.getState().has('app')) useTrial.getState().start()
+    navigate('/app/library', { replace: true })
+  }, [navigate])
+  return <div className="min-h-dvh bg-[#0d0d0d] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--primary))]" /></div>
+}
+
+function GuidedDemo() {
   const loadCatalog = useCatalogStore(s => s.loadCatalog)
   const tracks = useCatalogStore(s => s.tracks)
   const track = usePlayerStore(s => s.track)

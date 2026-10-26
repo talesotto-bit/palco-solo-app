@@ -7,6 +7,7 @@ import { create } from 'zustand'
 import { toast } from 'sonner'
 import { audioEngine, isSupportStem, type SongAnalysis } from '@/audio/AudioEngine'
 import { useProgressStore } from './progressStore'
+import { isLocked, useTrial } from '@/lib/trial'
 import type { Track } from '@/types/track'
 import type { PlayerState, StemState } from '@/types/player'
 import { clamp } from '@/lib/utils'
@@ -271,6 +272,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
 
     // ─── Carregar música ────────────────────────────────────────────────────
     loadTrack: async (track, opts) => {
+      // modo teste: música fora das 4 liberadas abre a tela de compra
+      if (isLocked(track)) { useTrial.getState().openPaywall(track); return }
       const loadId = ++_trackLoadId
       audioEngine.setLoop(null)
       if (get().loop || get().trainer) set({ loop: null, trainer: null })
@@ -538,7 +541,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       let id: string | null = null
       try { id = localStorage.getItem(LAST_TRACK_KEY) } catch {}
       const t = id ? findTrack(id) : undefined
-      if (!t) return
+      if (!t || isLocked(t)) return
       // só mostra a música; o áudio é baixado quando o músico apertar play (economiza dados)
       const saved = useTrackSettingsStore.getState().get(t.id)
       const stemStates = buildStemStates(t)

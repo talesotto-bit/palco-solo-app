@@ -1,4 +1,5 @@
-import { Play, Pause, Layers, Heart, ListPlus, Loader2 } from 'lucide-react'
+import { Play, Pause, Layers, Heart, ListPlus, Loader2, Lock } from 'lucide-react'
+import { isLocked, useInTrial, useTrial } from '@/lib/trial'
 import { audioEngine } from '@/audio/AudioEngine'
 import { useAddToShow } from '@/store/addToShowStore'
 import type { Track } from '@/types/track'
@@ -29,12 +30,18 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
 
   const coverUrl = useCoverArt(track.artist, track.title, track.coverUrl)
 
+  // modo teste: fora das 4 músicas liberadas, abre a tela de compra
+  const trial = useInTrial()
+  const locked = trial && isLocked(track)
+  const openPaywall = useTrial(s => s.openPaywall)
+
   const isActive = currentTrack?.id === track.id
   const isPlaying = isActive && playbackState === 'playing'
   const isLoadingThis = isActive && playbackState === 'loading'
 
   const handlePlay = async (e: React.MouseEvent) => {
     e.stopPropagation()
+    if (locked) { openPaywall(track); return }
     // Unlock audio immediately within user gesture — iOS Safari requires this
     void audioEngine.unlock()
     if (isPlaying) {
@@ -48,6 +55,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
   }
 
   const handleNavigate = () => {
+    if (locked) { openPaywall(track); return }
     // abre o player na hora; o carregamento aparece lá dentro
     if (!isActive) void loadTrack(track)
     navigate('/app/player')
@@ -96,6 +104,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             {track.title}
           </p>
           <p className="text-[11px] text-[#808080] truncate flex items-center gap-1.5">
+            {locked && <Lock className="h-3 w-3 shrink-0 text-white/50" />}
             <StatusBadge trackId={track.id} />
             <span className="truncate">{track.artist}{track.version ? ` · ${track.version}` : ''}</span>
           </p>
@@ -135,7 +144,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             ? <Loader2 className="h-3.5 w-3.5 text-black animate-spin" />
             : isPlaying
               ? <Pause className="h-3.5 w-3.5 text-black fill-black" />
-              : <Play className="h-3.5 w-3.5 text-black fill-black ml-0.5" />
+              : locked ? <Lock className="h-3.5 w-3.5 text-black" /> : <Play className="h-3.5 w-3.5 text-black fill-black ml-0.5" />
           }
         </button>
       </div>
@@ -173,7 +182,7 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
             ? <Loader2 className="h-5 w-5 text-black animate-spin" />
             : isPlaying
               ? <Pause className="h-5 w-5 text-black fill-black" />
-              : <Play className="h-5 w-5 text-black fill-black ml-0.5" />
+              : locked ? <Lock className="h-4 w-4 text-black" /> : <Play className="h-5 w-5 text-black fill-black ml-0.5" />
           }
         </button>
 
@@ -187,7 +196,8 @@ export function TrackCard({ track, view = 'grid', index }: TrackCardProps) {
           </div>
         )}
 
-        {!isPlaying && <StatusBadge trackId={track.id} className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-sm" />}
+        {!isPlaying && !locked && <StatusBadge trackId={track.id} className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-sm" />}
+        {locked && <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white/85 backdrop-blur-sm"><Lock className="h-2.5 w-2.5" /> App completo</span>}
 
         {isPlaying && (
           <div className="absolute top-1.5 left-1.5 flex items-end gap-[2px] h-3">

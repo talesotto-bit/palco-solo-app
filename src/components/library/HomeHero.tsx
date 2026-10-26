@@ -8,6 +8,7 @@ import { Play, Pause, Flame, Music2, Trophy, ChevronRight } from 'lucide-react'
 import { useShowsStore, type Show } from '@/store/showsStore'
 import { useProgressStore, songStatus, ACHIEVEMENTS } from '@/store/progressStore'
 import { AchievementsSheet } from '@/components/progress/ProgressUI'
+import { useInTrial, DEMO_IDS, isLocked } from '@/lib/trial'
 import { usePlayerStore } from '@/store/playerStore'
 import { usePrefsStore } from '@/store/prefsStore'
 import { usePracticeStore, practiceStats } from '@/store/practiceStore'
@@ -59,8 +60,10 @@ export function HomeHero({ tracks, byId }: { tracks: Track[]; byId: Map<string, 
   const nextShow = pickNextShow(shows, activeShowId)
   const ready = nextShow ? nextShow.songs.filter(x => songStatus(progress[x.trackId]) === 'pronta').length : 0
 
-  const lastTrack = recent.map(id => byId.get(id)).find(Boolean)
-  const featured = useMemo(() => lastTrack || songOfDay(tracks), [lastTrack, tracks])
+  const trial = useInTrial()
+  const demo = useMemo(() => (trial ? [...DEMO_IDS].map(id => byId.get(id)).filter((t): t is Track => !!t) : []), [trial, byId])
+  const lastTrack = recent.map(id => byId.get(id)).find(t => !!t && !isLocked(t))
+  const featured = useMemo(() => lastTrack || demo[0] || songOfDay(tracks), [lastTrack, demo, tracks])
   const isContinue = !!lastTrack && featured === lastTrack
   const featuredPlaying = isPlaying && current?.id === featured?.id
 
@@ -123,6 +126,22 @@ export function HomeHero({ tracks, byId }: { tracks: Track[]; byId: Map<string, 
         </button>
       )}
       <AchievementsSheet open={achOpen} onClose={() => setAchOpen(false)} />
+
+      {/* modo teste: as 4 músicas liberadas, com tudo funcionando */}
+      {demo.length > 0 && (
+        <div className="relative mt-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--primary))]">Liberadas no seu teste · com cifra, letra e Modo Palco</p>
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            {demo.map(t => (
+              <button key={t.id} onClick={() => { tap(10); void audioEngine.unlock(); navigate('/app/player'); void usePlayerStore.getState().loadTrack(t, { autoplay: true }) }}
+                className="min-w-0 text-left active:scale-95 transition-transform">
+                <CoverImg track={t} className="aspect-square w-full rounded-xl object-cover" />
+                <span className="mt-1 block truncate text-[11px] font-bold">{t.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* toque agora */}
       {featured && (

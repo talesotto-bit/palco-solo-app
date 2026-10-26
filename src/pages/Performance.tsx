@@ -39,6 +39,7 @@ import { useUnlocks } from '@/lib/unlocks'
 import { usePedidosStore } from '@/store/pedidosStore'
 import { StageQR } from '@/components/StageQR'
 import { FirstTip } from '@/components/FirstTip'
+import { Paywall } from '@/components/TrialUI'
 import type { Track, Stem } from '@/types/track'
 
 // ─── utilidades ──────────────────────────────────────────────────────────────
@@ -506,6 +507,7 @@ export default function Performance() {
         <div className="p-3" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}><StemMixer /></div>
       </Sheet>
       {libLoading && !track && <div className="absolute inset-0 flex items-center justify-center bg-black/80"><Loader2 className="h-8 w-8 animate-spin" /></div>}
+      <Paywall />
     </div>
   )
 }

@@ -8,6 +8,10 @@ const DEST: Record<string, { path: string; label: string; how: string; cta: stri
     path: '/app/pedidos', label: 'Pedidos e Gorjeta via Pix', cta: 'Montar meu QR agora',
     how: 'Coloque sua chave Pix, escolha as músicas do repertório e gere o QR code para a mesa.',
   },
+  app: {
+    path: '/app/library', label: 'Power Tom', cta: 'Abrir a biblioteca completa',
+    how: 'Seu acesso vitalício está liberado: todas as músicas, cifra, Modo Palco, gravação e tudo mais.',
+  },
   multipistas: {
     path: '/app/library', label: 'Pacote Multipistas', cta: 'Escolher uma música',
     how: 'Abra qualquer música e toque em "Baixar pistas": vem um .zip com cada instrumento em um arquivo, pronto para a mesa, o notebook ou o app de playback.',

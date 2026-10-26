@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { InstallBanner } from '@/components/InstallApp'
 import { AddToShowSheet } from '@/components/shows/AddToShowSheet'
 import { useAddToShow } from '@/store/addToShowStore'
+import { TrialBanner, TrialSetup, Paywall } from '@/components/TrialUI'
 
 export function AppLayout() {
   const isPerformanceMode = usePlayerStore(s => s.isPerformanceMode)
@@ -26,6 +27,7 @@ export function AppLayout() {
 
   return (
     <div className="flex flex-col h-dvh overflow-hidden bg-black">
+      {!isPerformanceMode && <TrialBanner />}
       {!isPerformanceMode && <InstallBanner />}
 
       <div className="flex flex-1 overflow-hidden">
@@ -60,6 +62,8 @@ export function AppLayout() {
       </div>
       <AddToShowSheet track={addTrack} onClose={closeAdd} />
       {onboarding && <Onboarding onDone={() => setOnboarding(false)} />}
+      <TrialSetup />
+      <Paywall />
     </div>
   )
 }
