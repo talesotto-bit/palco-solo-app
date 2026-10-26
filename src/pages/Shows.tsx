@@ -78,7 +78,7 @@ export default function Shows() {
           <ListMusic className="h-8 w-8 text-[hsl(var(--primary))]" />
           <h2 className="mt-2 text-lg font-bold">Seu primeiro show em 1 minuto</h2>
           <ol className="mt-2 space-y-1 text-sm text-[#d0d0d0] list-decimal list-inside">
-            <li>Crie um show ou comece por um repertório pronto abaixo</li>
+            <li>{trial ? 'Crie um show e escolha as músicas' : 'Crie um show ou comece por um repertório pronto abaixo'}</li>
             <li>Ajuste tom e mixer de cada música (fica salvo)</li>
             <li>Toque <b>Iniciar show</b>: o app passa de uma música para a outra</li>
           </ol>

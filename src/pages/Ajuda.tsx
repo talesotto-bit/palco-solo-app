@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, Search, MessageCircle } from 'lucide-react'
 import { SUPPORT_WHATSAPP } from '@/lib/support'
+import { useInTrial } from '@/lib/trial'
 import { matchesSearch, cn } from '@/lib/utils'
 
 const FAQ: { q: string; a: string; link?: [string, string] }[] = [
@@ -27,10 +28,13 @@ const FAQ: { q: string; a: string; link?: [string, string] }[] = [
 ]
 
 export default function Ajuda() {
+  const trial = useInTrial()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [open, setOpen] = useState<number | null>(null)
-  const list = useMemo(() => FAQ.map((f, i) => ({ ...f, i })).filter(f => !q.trim() || matchesSearch(q, [f.q, f.a])), [q])
+  // no teste não existem repertórios prontos: tira a menção para não confundir
+  const list = useMemo(() => FAQ.map((f, i) => ({ ...f, i, a: trial ? f.a.replace(' (ou use um repertório pronto)', '') : f.a }))
+    .filter(f => !q.trim() || matchesSearch(q, [f.q, f.a])), [q, trial])
 
   return (
     <div className="max-w-xl mx-auto px-4 py-4 pb-16">

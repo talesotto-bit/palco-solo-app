@@ -40,6 +40,7 @@ import { usePedidosStore } from '@/store/pedidosStore'
 import { StageQR } from '@/components/StageQR'
 import { FirstTip } from '@/components/FirstTip'
 import { Paywall } from '@/components/TrialUI'
+import { useInTrial } from '@/lib/trial'
 import type { Track, Stem } from '@/types/track'
 
 // ─── utilidades ──────────────────────────────────────────────────────────────
@@ -169,6 +170,7 @@ function StageCifra({ scale }: { scale: number }) {
 // ─── Página ─────────────────────────────────────────────────────────────────
 
 export default function Performance() {
+  const trial = useInTrial()
   const navigate = useNavigate()
   const location = useLocation()
   useWakeLock()
@@ -308,7 +310,7 @@ export default function Performance() {
           <button onClick={() => navigate('/app/shows')} className="mt-4 w-full h-12 rounded-full bg-[hsl(var(--primary))] text-black font-bold">
             {shows.length ? 'Montar um show novo' : 'Montar meu primeiro show'}
           </button>
-          <p className="mt-3 text-center text-xs text-white/40">Dica: em "Shows" há repertórios prontos para tocar na hora.</p>
+          {!trial && <p className="mt-3 text-center text-xs text-white/40">Dica: em "Shows" há repertórios prontos para tocar na hora.</p>}
         </div>
       </div>
     )

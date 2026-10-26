@@ -112,7 +112,7 @@ export function HomeHero({ tracks, byId }: { tracks: Track[]; byId: Map<string, 
       </div>
 
       {/* prontidão do próximo show */}
-      {nextShow && (
+      {nextShow && !trial && (
         <button onClick={() => navigate(`/app/shows/${nextShow.id}`)} className="relative mt-2.5 w-full rounded-2xl bg-white/[0.04] border border-white/[0.06] px-3 py-2.5 text-left active:scale-[0.99] transition-transform">
           <span className="flex items-center gap-2 text-[12px]">
             <span className="flex-1 min-w-0 truncate text-white/75">🎤 <b className="text-white">{nextShow.name}</b>{nextShow.date ? ` · ${whenLabel(nextShow.date)}` : ''}</span>

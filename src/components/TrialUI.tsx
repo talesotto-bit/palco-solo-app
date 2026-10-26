@@ -4,8 +4,7 @@
 import { useEffect } from 'react'
 import { Lock, Check, ShieldCheck, X } from 'lucide-react'
 import { useTrial, useInTrial, APP_CHECKOUT, DEMO_IDS } from '@/lib/trial'
-import { useShowsStore, songFromTrack } from '@/store/showsStore'
-import { useAllTracks } from '@/hooks/useAllTracks'
+import { useShowsStore } from '@/store/showsStore'
 import { CoverImg } from '@/components/shows/CoverImg'
 
 const DEMO_SHOW = 'Show de teste'
@@ -23,17 +22,17 @@ export function TrialBanner() {
   )
 }
 
-/** Monta o "Show de teste" com as 4 músicas liberadas (para o Modo Palco funcionar de verdade no teste) */
+/**
+ * No teste não há show pronto: o músico monta o dele com as 4 músicas (um show pronto confundia).
+ * Apaga o "Show de teste" que versões anteriores criavam sozinhas.
+ */
 export function TrialSetup() {
   const trial = useInTrial()
-  const { byId } = useAllTracks()
   useEffect(() => {
-    if (!trial || !byId.size) return
+    if (!trial) return
     const st = useShowsStore.getState()
-    if (st.shows.some(s => s.name === DEMO_SHOW)) return
-    const songs = [...DEMO_IDS].map(id => byId.get(id)).filter(Boolean).map(t => songFromTrack(t!))
-    if (songs.length) st.createShow(DEMO_SHOW, songs)
-  }, [trial, byId])
+    st.shows.filter(s => s.name === DEMO_SHOW && s.songs.every(x => DEMO_IDS.has(x.trackId))).forEach(s => st.deleteShow(s.id))
+  }, [trial])
   return null
 }
 
