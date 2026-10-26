@@ -4,6 +4,7 @@ import { Plus, ListMusic, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet } from '@/components/ui/sheet'
 import { useShowsStore } from '@/store/showsStore'
+import { useInTrial, showFitsTrial } from '@/lib/trial'
 import type { Track } from '@/types/track'
 
 interface Props {
@@ -13,7 +14,9 @@ interface Props {
 
 /** "Adicionar ao show": escolhe um show existente ou cria um novo na hora */
 export function AddToShowSheet({ track, onClose }: Props) {
-  const shows = useShowsStore(s => s.shows)
+  const allShows = useShowsStore(s => s.shows)
+  const trial = useInTrial()
+  const shows = trial ? allShows.filter(showFitsTrial) : allShows
   const addSongs = useShowsStore(s => s.addSongs)
   const createShow = useShowsStore(s => s.createShow)
   const navigate = useNavigate()

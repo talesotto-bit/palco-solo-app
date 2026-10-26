@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { useShowsStore, songFromTrack, type Show } from '@/store/showsStore'
 import { useAllTracks } from '@/hooks/useAllTracks'
 import { Sheet } from '@/components/ui/sheet'
-import { useInTrial } from '@/lib/trial'
+import { useInTrial, showFitsTrial } from '@/lib/trial'
 import { formatDuration } from '@/lib/showUtils'
 
 export interface Repertorio { id: string; name: string; desc: string; style: string; icon: string; trackIds: string[]; moments?: string[] | null }
@@ -53,7 +53,7 @@ export default function Shows() {
     else { navigate(`/app/shows/${id}`); toast.success('Repertório copiado para os seus shows. Ajuste como quiser.') }
   }
 
-  const sorted = useMemo(() => [...shows].sort((a, b) => b.updatedAt - a.updatedAt), [shows])
+  const sorted = useMemo(() => [...shows].filter(s => !trial || showFitsTrial(s)).sort((a, b) => b.updatedAt - a.updatedAt), [shows, trial])
 
   return (
     <div className="px-4 md:px-8 py-5 max-w-3xl mx-auto">

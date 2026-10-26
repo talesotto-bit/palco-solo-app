@@ -40,7 +40,7 @@ import { usePedidosStore } from '@/store/pedidosStore'
 import { StageQR } from '@/components/StageQR'
 import { FirstTip } from '@/components/FirstTip'
 import { Paywall } from '@/components/TrialUI'
-import { useInTrial } from '@/lib/trial'
+import { useInTrial, showFitsTrial } from '@/lib/trial'
 import type { Track, Stem } from '@/types/track'
 
 // ─── utilidades ──────────────────────────────────────────────────────────────
@@ -177,7 +177,9 @@ export default function Performance() {
   const clock = useClock()
   const battery = useBattery()
 
-  const shows = useShowsStore(s => s.shows)
+  // no teste, só os shows feitos com as 4 músicas liberadas
+  const allShows = useShowsStore(s => s.shows)
+  const shows = useMemo(() => (trial ? allShows.filter(showFitsTrial) : allShows), [allShows, trial])
   const activeShowId = useShowsStore(s => s.activeShowId)
   const setActive = useShowsStore(s => s.setActive)
   const show = shows.find(s => s.id === activeShowId) || null

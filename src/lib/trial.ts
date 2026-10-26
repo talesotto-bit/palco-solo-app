@@ -58,6 +58,14 @@ export function isLocked(track: Pick<Track, 'id'>): boolean {
   return inTrial() && !DEMO_IDS.has(track.id) && !track.id.startsWith('local-')
 }
 
+/**
+ * Show que dá para tocar no teste: só com as 4 músicas liberadas (ou as do próprio músico).
+ * Shows antigos, montados com a biblioteca inteira, ficam guardados e voltam depois da compra.
+ */
+export function showFitsTrial(show: { songs: { trackId: string }[] }): boolean {
+  return show.songs.every(s => DEMO_IDS.has(s.trackId) || s.trackId.startsWith('local-'))
+}
+
 /** Hook para a interface reagir quando o teste começa ou o app é liberado */
 export function useInTrial(): boolean {
   const active = useTrial(s => s.active)

@@ -11,7 +11,7 @@ import { getArtistScore } from '@/lib/featuredArtists'
 import { loadRepertorios, type Repertorio } from '@/pages/Shows'
 import type { Track } from '@/types/track'
 import { HomeHero } from './HomeHero'
-import { useInTrial } from '@/lib/trial'
+import { useInTrial, showFitsTrial } from '@/lib/trial'
 import { tap } from '@/lib/haptics'
 
 interface Props {
@@ -43,13 +43,14 @@ const Cell = ({ children }: { children: React.ReactNode }) => <div className="w-
 export function HomeSections({ tracks, byId, onSeeGenre, onSeeAll }: Props) {
   const navigate = useNavigate()
   const recent = usePrefsStore(s => s.recent)
-  const shows = useShowsStore(s => s.shows)
+  const allShows = useShowsStore(s => s.shows)
   const createShow = useShowsStore(s => s.createShow)
   const setActive = useShowsStore(s => s.setActive)
   const genres = useCatalogStore(s => s.genres)
   const localTracks = useLocalTracksStore(s => s.tracks)
   const [reps, setReps] = useState<Repertorio[]>([])
   const trial = useInTrial()
+  const shows = useMemo(() => (trial ? allShows.filter(showFitsTrial) : allShows), [allShows, trial])
   // no teste, só as 4 músicas: sem repertórios prontos nem prateleiras por estilo (que mostrariam a biblioteca)
   useEffect(() => { if (!trial) void loadRepertorios().then(setReps); else setReps([]) }, [trial])
 

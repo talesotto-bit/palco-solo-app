@@ -5,6 +5,7 @@ import { useAllTracks, isMedley } from '@/hooks/useAllTracks'
 import { useFavoritesStore } from '@/store/favoritesStore'
 import { matchesSearch, cn } from '@/lib/utils'
 import { CoverImg } from './CoverImg'
+import { useInTrial } from '@/lib/trial'
 import type { Track } from '@/types/track'
 
 type Tab = 'todas' | 'favoritas' | 'blocos' | 'minhas'
@@ -23,6 +24,7 @@ const PAGE = 60
 /** Escolher várias músicas de uma vez para o show (busca, favoritas e blocos prontos) */
 export function SongPicker({ open, onClose, existing, onAdd, title = 'Adicionar músicas' }: Props) {
   const { all, loading } = useAllTracks()
+  const trial = useInTrial()
   const favIds = useFavoritesStore(s => s.ids)
   const [q, setQ] = useState('')
   const [tab, setTab] = useState<Tab>('todas')
@@ -62,7 +64,7 @@ export function SongPicker({ open, onClose, existing, onAdd, title = 'Adicionar 
             className="w-full h-11 rounded-xl bg-white/[0.07] pl-10 pr-3 text-[15px] outline-none placeholder:text-[#7a7a7a] focus:ring-1 focus:ring-white/20" />
         </div>
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
-          {([['todas', 'Todas', Music], ['minhas', 'Minhas', Upload], ['favoritas', 'Favoritas', Heart], ['blocos', 'Blocos', Layers]] as const).map(([id, label, Icon]) => (
+          {([['todas', 'Todas', Music], ['minhas', 'Minhas', Upload], ['favoritas', 'Favoritas', Heart], ['blocos', 'Blocos', Layers]] as const).filter(([id]) => !trial || id !== 'blocos').map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)}
               className={cn('h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5', tab === id ? 'bg-white text-black' : 'bg-white/[0.07] text-[#cfcfcf]')}>
               <Icon className="h-3.5 w-3.5" /> {label}
