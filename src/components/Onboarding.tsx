@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Layers, Gauge, Mic2, ChevronRight, Guitar } from 'lucide-react'
+import { Layers, Gauge, ChevronRight, Guitar } from 'lucide-react'
 import { InstrumentPicker, VoicePicker } from '@/components/InstrumentPicker'
 import { cn } from '@/lib/utils'
 
@@ -23,11 +22,6 @@ const STEPS = [
     text: 'Marque o que você toca ao vivo. Esses instrumentos já abrem desligados em todas as músicas (dá para ligar quando quiser).',
     picker: true,
   },
-  {
-    icon: Mic2,
-    title: 'Monte o show e suba no palco',
-    text: 'Em Shows, monte o repertório (ou use um pronto). No Palco, a letra fica grande e o app passa sozinho para a próxima música.',
-  },
 ]
 
 export function shouldShowOnboarding() {
@@ -36,11 +30,9 @@ export function shouldShowOnboarding() {
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [i, setI] = useState(0)
-  const navigate = useNavigate()
-  const finish = (goShows = false) => {
+  const finish = () => {
     try { localStorage.setItem(KEY, String(Date.now())) } catch {}
     onDone()
-    if (goShows) navigate('/app/shows')
   }
   const step = STEPS[i]
   const Icon = step.icon
@@ -68,10 +60,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         )}
         <div className="mt-6 flex gap-2">
           {last ? (
-            <>
-              <button onClick={() => finish(true)} className="flex-1 h-12 rounded-full bg-[hsl(var(--primary))] text-black font-bold">Montar meu show</button>
-              <button onClick={() => finish()} className="h-12 px-5 rounded-full bg-white/10 font-semibold">Explorar</button>
-            </>
+            <button onClick={() => finish()} className="flex-1 h-12 rounded-full bg-[hsl(var(--primary))] text-black font-bold">Começar a tocar</button>
           ) : (
             <button onClick={() => setI(i + 1)} className="flex-1 h-12 rounded-full bg-white text-black font-bold flex items-center justify-center gap-1">Próximo <ChevronRight className="h-5 w-5" /></button>
           )}
