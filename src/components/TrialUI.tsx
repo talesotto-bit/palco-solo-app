@@ -65,7 +65,7 @@ export function Paywall() {
           ))}
         </ul>
         <a href={APP_CHECKOUT} className="mt-5 flex h-14 items-center justify-center rounded-2xl bg-[hsl(var(--primary))] text-[17px] font-black text-black shadow-[0_10px_30px_rgba(34,197,94,.25)]">Liberar tudo · R$ 47 vitalício</a>
-        <p className="mt-2 flex items-center justify-center gap-1.5 text-[12px] text-white/55"><ShieldCheck className="h-4 w-4" /> Pagamento único · 7 dias de garantia</p>
+        <p className="mt-2 flex items-center justify-center gap-1.5 text-[12px] text-white/55"><ShieldCheck className="h-4 w-4" /> Pagamento único · 30 dias de garantia</p>
         <button onClick={close} className="mt-3 w-full h-11 rounded-full bg-white/[0.06] text-sm font-semibold text-white/80">Continuar testando</button>
         <p className="mt-3 text-center text-[11px] text-white/40">Já comprou? Abra o link de ativação que chegou no seu e-mail.</p>
       </div>
