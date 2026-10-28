@@ -26,7 +26,7 @@ import { useStageSettings, type StageView } from '@/store/stageSettingsStore'
 import { useLyricsStore } from '@/store/lyricsStore'
 import { useCifraStore } from '@/store/cifraStore'
 import { useAllTracks } from '@/hooks/useAllTracks'
-import { useLyricSync, findActiveLine } from '@/hooks/useLyricSync'
+import { useLyricSync, findActiveLine, usePlaybackLyrics } from '@/hooks/useLyricSync'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { audioEngine, isSupportStem } from '@/audio/AudioEngine'
 import { Sheet } from '@/components/ui/sheet'
@@ -85,7 +85,8 @@ export function StageLyrics({ scale, syncHint = true }: { scale: number; syncHin
   const track = usePlayerStore(s => s.track)
   const currentTime = usePlayerStore(s => s.currentTime)
   const playing = usePlayerStore(s => s.playbackState === 'playing')
-  const { plainLyrics, syncedLines, isLoading, trackId, fetchLyrics } = useLyricsStore()
+  const { isLoading, trackId, fetchLyrics } = useLyricsStore()
+  const { plainLyrics, syncedLines } = usePlaybackLyrics()
   const sync = useLyricSync(syncedLines)
   const box = useRef<HTMLDivElement>(null)
   const lineRefs = useRef(new Map<number, HTMLElement>())

@@ -4,7 +4,7 @@ import { usePlayerStore } from '@/store/playerStore'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { cn } from '@/lib/utils'
 import { useLyricsStore } from '@/store/lyricsStore'
-import { useLyricSync, findActiveLine } from '@/hooks/useLyricSync'
+import { useLyricSync, findActiveLine, usePlaybackLyrics } from '@/hooks/useLyricSync'
 import { useOwnLyrics } from '@/store/ownLyricsStore'
 import { LyricsEditor } from './LyricsEditor'
 
@@ -14,8 +14,7 @@ export function LyricsPanel() {
   const track = usePlayerStore(s => s.track)
   const currentTime = usePlayerStore(s => s.currentTime)
   const playbackState = usePlayerStore(s => s.playbackState)
-  const plainLyrics = useLyricsStore(s => s.plainLyrics)
-  const syncedLines = useLyricsStore(s => s.syncedLines)
+  const { plainLyrics, syncedLines } = usePlaybackLyrics()
   const isLoading = useLyricsStore(s => s.isLoading)
   const error = useLyricsStore(s => s.error)
   const source = useLyricsStore(s => s.source)
