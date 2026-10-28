@@ -44,3 +44,17 @@ export function cifraIsOtherSong(cifra: string, lyrics: string | null): boolean 
   const o = cifraLyricsOverlap(cifra, lyrics)
   return o !== null && o < 0.4
 }
+
+/** Artista para buscar letra/cifra. Música sem artista no catálogo mostra o gênero no lugar ("Forró"): na busca isso vira "sem artista" */
+export function songArtist(t: { artist: string; genreLabel?: string }): string {
+  return t.artist && t.artist !== t.genreLabel ? t.artist : ''
+}
+
+/** Título sem etiquetas de arranjo ("Versão Forró", "Ao Vivo", "Cabaré 02") para buscar */
+export function cleanSongTitle(raw: string): string {
+  return raw.trim()
+    .replace(/\s*[-–]?\s*vers[aã]o\s+\w+(\s+\w+)?$/i, '')
+    .replace(/\s*[-–]?\s*(ao\s+vivo|ac[uú]stico|eletr[io]co|cabar[eé]\s*\d*|bpm\s*\d*)$/i, '')
+    .replace(/\s+0?[1-3]$/, '')
+    .trim()
+}

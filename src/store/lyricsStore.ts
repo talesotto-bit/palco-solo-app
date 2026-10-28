@@ -16,6 +16,8 @@ interface LyricsState {
   fetchLyrics: (artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number) => Promise<void>
   searchManual: (query: string, trackId: string) => Promise<void>
   resetToSearch: () => void
+  /** o músico escolheu a letra certa numa lista do LRCLIB: carrega e lembra para esta música */
+  pickLyrics: (lrclibId: number, artist: string, title: string, trackId: string, trackSeconds?: number) => Promise<void>
   reload: (artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number) => void
   clear: () => void
 }
@@ -101,21 +103,67 @@ function parseLrc(lrc: string): LrcLine[] {
   return lines.sort((a, b) => a.time - b.time)
 }
 
+// ─── Escolha do músico ──────────────────────────────────────────────────────
+// Quando a busca automática não acha, o músico procura e escolhe a letra certa numa lista. A escolha fica
+// guardada por música (fora do cache de letras, que descarta as antigas) e vale nas próximas vezes.
+
+const PICKS_KEY = 'palco-lyrics-picks'
+
+function getPicks(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(PICKS_KEY) || '{}') } catch { return {} }
+}
+
+function setPick(trackId: string, id: number) {
+  try { localStorage.setItem(PICKS_KEY, JSON.stringify({ ...getPicks(), [trackId]: id })) } catch {}
+}
+
+export interface LrclibHit { id: number; trackName: string; artistName: string; duration: number; synced: boolean }
+
+/** Busca livre no LRCLIB para o músico escolher (ele confere o nome e o artista na lista) */
+export async function searchLyricsCandidates(query: string): Promise<LrclibHit[]> {
+  for (let k = 0; k < 3; k++) {
+    try {
+      const r = await fetch(`https://lrclib.net/api/search?${new URLSearchParams({ q: query })}`)
+      if (r.ok) {
+        const list: any[] = await r.json()
+        return list
+          .filter(d => !d.instrumental && (d.plainLyrics || d.syncedLyrics))
+          .slice(0, 12)
+          .map(d => ({ id: d.id, trackName: d.trackName, artistName: d.artistName, duration: Math.round(d.duration || 0), synced: !!d.syncedLyrics }))
+      }
+      if (r.status !== 503 && r.status !== 429) return []
+    } catch { /* tenta de novo */ }
+    await new Promise(res => setTimeout(res, 700 * (k + 1)))
+  }
+  throw new Error('busca indisponível')
+}
+
+/** Letra pelo id do LRCLIB; o LRCLIB às vezes responde "sobrecarregado" (503/429): tenta de novo antes de desistir */
+async function lrclibById(id: number): Promise<any | null> {
+  for (let k = 0; k < 3; k++) {
+    try {
+      const r = await fetch(`https://lrclib.net/api/get/${id}`)
+      if (r.ok) return await r.json()
+      if (r.status !== 503 && r.status !== 429) return null
+    } catch { /* rede instável: tenta de novo */ }
+    await new Promise(res => setTimeout(res, 700 * (k + 1)))
+  }
+  return null
+}
+
 /** Guarda a letra no aparelho sem abrir a música (show sem internet). true = já está disponível */
 export async function prefetchLyrics(artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number): Promise<boolean> {
   const own = useOwnLyrics.getState().items[trackId]
   if (own && (own.plain || own.lrc)) return true
   const key = cacheKeyFor(artist, cleanTitleForSearch(title))
   if (getCache()[key]) return true
+  lrclibId = lrclibId ?? getPicks()[trackId]
   try {
     if (lrclibId) {
-      const r = await fetch(`https://lrclib.net/api/get/${lrclibId}`)
-      if (r.ok) {
-        const d = await r.json()
-        if (d.plainLyrics || d.syncedLyrics) {
-          setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB', duration: d.duration || undefined })
-          return true
-        }
+      const d = await lrclibById(lrclibId)
+      if (d && (d.plainLyrics || d.syncedLyrics)) {
+        setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB', duration: d.duration || undefined })
+        return true
       }
     }
     const q = new URLSearchParams({ artist, title: cleanTitleForSearch(title) })
@@ -145,6 +193,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       return
     }
     if (get().trackId === trackId && (get().plainLyrics || get().syncedLines)) return
+    lrclibId = lrclibId ?? getPicks()[trackId]
 
     const cleanedTitle = cleanTitleForSearch(title)
     const key = cacheKeyFor(artist, cleanedTitle)
@@ -166,15 +215,12 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     // Letra exata pelo id do LRCLIB (identificada no catálogo): mais rápida e sempre a música certa
     if (lrclibId) {
       try {
-        const r = await fetch(`https://lrclib.net/api/get/${lrclibId}`)
-        if (r.ok) {
-          const d = await r.json()
-          if (d.plainLyrics || d.syncedLyrics) {
-            setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB', duration: d.duration || undefined })
-            if (get().trackId !== trackId) return
-            set({ plainLyrics: d.plainLyrics || null, syncedLines: syncedFor(d.syncedLyrics, d.duration, trackSeconds), source: 'LRCLIB', isLoading: false })
-            return
-          }
+        const d = await lrclibById(lrclibId)
+        if (d && (d.plainLyrics || d.syncedLyrics)) {
+          setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB', duration: d.duration || undefined })
+          if (get().trackId !== trackId) return
+          set({ plainLyrics: d.plainLyrics || null, syncedLines: syncedFor(d.syncedLyrics, d.duration, trackSeconds), source: 'LRCLIB', isLoading: false })
+          return
         }
       } catch { /* cai na busca normal */ }
       if (get().trackId !== trackId) return
@@ -288,6 +334,15 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   },
 
   reload: (artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number) => { set({ trackId: null, plainLyrics: null, syncedLines: null }); void get().fetchLyrics(artist, title, trackId, lrclibId, trackSeconds) },
+  pickLyrics: async (lrclibId, artist, title, trackId, trackSeconds) => {
+    set({ isLoading: true, error: null, trackId, plainLyrics: null, syncedLines: null, source: null })
+    const d = await lrclibById(lrclibId)
+    if (get().trackId !== trackId) return
+    if (!d || !(d.plainLyrics || d.syncedLyrics)) { set({ isLoading: false, error: 'not_found' }); return }
+    setPick(trackId, lrclibId)
+    setCache(cacheKeyFor(artist, cleanTitleForSearch(title)), { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB', duration: d.duration || undefined })
+    set({ plainLyrics: d.plainLyrics || null, syncedLines: syncedFor(d.syncedLyrics, d.duration, trackSeconds), source: 'LRCLIB', isLoading: false })
+  },
   resetToSearch: () => set({
     plainLyrics: null,
     syncedLines: null,

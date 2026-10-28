@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { songArtist } from '@/lib/lyricsMatch'
 import { Check, Undo2, Play, Pause, RotateCcw, Hand } from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet } from '@/components/ui/sheet'
@@ -25,7 +26,7 @@ export function LyricsEditor({ mode, initial, onClose }: Props) {
   const lines = useMemo(() => text.split(/\r?\n/).map(l => l.trim()).filter(Boolean), [text])
 
   if (!track || !mode) return null
-  const reload = () => useLyricsStore.getState().reload(track.artist, track.title, track.id, track.lrclibId, track.durationSeconds)
+  const reload = () => useLyricsStore.getState().reload(songArtist(track), track.title, track.id, track.lrclibId, track.durationSeconds)
 
   const saveText = () => {
     if (!text.trim()) { toast.error('Cole a letra antes de salvar.'); return }

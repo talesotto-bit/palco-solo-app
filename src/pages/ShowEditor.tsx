@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { songArtist } from '@/lib/lyricsMatch'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, GripVertical, Plus, Play, Trash2, StickyNote, ArrowUp, ArrowDown, SlidersHorizontal, WifiOff, CheckCircle2, Loader2, CalendarDays, MapPin, Users, Scissors } from 'lucide-react'
 import { useProgressStore, songStatus, STATUS_INFO } from '@/store/progressStore'
@@ -112,8 +113,8 @@ export default function ShowEditor() {
       let ok = 0
       for (const t of all) {
         const [a, b] = await Promise.all([
-          prefetchLyrics(t.artist, t.title, t.id, t.lrclibId, t.durationSeconds),
-          t.genre === 'importado' ? Promise.resolve(true) : prefetchCifra(t.id, t.artist, t.title),
+          prefetchLyrics(songArtist(t), t.title, t.id, t.lrclibId, t.durationSeconds),
+          t.genre === 'importado' ? Promise.resolve(true) : prefetchCifra(t.id, songArtist(t), t.title),
         ])
         if (a && b) ok++
       }

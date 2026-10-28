@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { songArtist, cleanSongTitle } from '@/lib/lyricsMatch'
 import { Loader2, AlertCircle, Search, RotateCcw, ArrowDownToLine, Minus, Plus, Hand } from 'lucide-react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
@@ -7,6 +8,7 @@ import { useLyricsStore } from '@/store/lyricsStore'
 import { useLyricSync, findActiveLine, usePlaybackLyrics } from '@/hooks/useLyricSync'
 import { useOwnLyrics } from '@/store/ownLyricsStore'
 import { LyricsEditor } from './LyricsEditor'
+import { LyricsFinder } from './LyricsFinder'
 
 const FONT_SIZES = [14, 16, 18, 20, 24]
 
@@ -37,7 +39,7 @@ export function LyricsPanel() {
   useEffect(() => {
     if (!track) return
     if (trackId === track.id) return
-    fetchLyrics(track.artist, track.title, track.id, track.lrclibId, track.durationSeconds)
+    fetchLyrics(songArtist(track), track.title, track.id, track.lrclibId, track.durationSeconds)
   }, [track?.id, trackId, fetchLyrics])
 
   const sync = useLyricSync(syncedLines)
@@ -201,37 +203,10 @@ export function LyricsPanel() {
 
         {error === 'not_found' && (
           <div className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm font-semibold text-white">Ainda não temos a letra desta música</p>
-            <button onClick={() => setEditor('edit')} className="h-11 px-5 rounded-full bg-[hsl(var(--primary))] text-black text-sm font-bold">Colar a letra</button>
-            <p className="text-[11px] text-[#808080]">ou</p>
-            <p className="text-xs text-[#808080] text-center">
-              Busque pelo artista e titulo da musica
-            </p>
-            <form
-              className="w-full max-w-xs"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (manualQuery.trim()) searchManual(manualQuery.trim(), track.id)
-              }}
-            >
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#808080]" />
-                <input
-                  type="text"
-                  value={manualQuery}
-                  onChange={(e) => setManualQuery(e.target.value)}
-                  placeholder="Ex: Roberto Carlos - Detalhes"
-                  className="w-full h-9 rounded-lg bg-[#2a2a2a] pl-9 pr-3 text-xs text-white placeholder:text-[#606060] border-0 outline-none focus:ring-1 focus:ring-white/20 transition"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={!manualQuery.trim()}
-                className="mt-2 w-full h-8 rounded-full text-xs font-semibold bg-white text-black hover:bg-white/90 disabled:opacity-30 disabled:cursor-default transition-colors"
-              >
-                Buscar letra
-              </button>
-            </form>
+            <p className="text-sm font-semibold text-white">Escolha a letra desta música</p>
+            <LyricsFinder track={track} initialQuery={[songArtist(track), cleanSongTitle(track.title)].filter(Boolean).join(' ')} titleQuery={cleanSongTitle(track.title)} />
+            <p className="text-[11px] text-[#808080] mt-1">não achou?</p>
+            <button onClick={() => setEditor('edit')} className="h-10 px-5 rounded-full bg-white/10 text-white text-sm font-bold">Colar a letra</button>
           </div>
         )}
 
@@ -240,7 +215,7 @@ export function LyricsPanel() {
             <AlertCircle className="h-8 w-8 text-[#535353]" />
             <p className="text-sm font-medium text-white">Erro ao buscar letra</p>
             <button
-              onClick={() => fetchLyrics(track.artist, track.title, track.id, undefined, track.durationSeconds)}
+              onClick={() => fetchLyrics(songArtist(track), track.title, track.id, undefined, track.durationSeconds)}
               className="mt-1 h-8 rounded-full px-5 text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-colors"
             >
               Tentar novamente
@@ -297,7 +272,7 @@ export function LyricsPanel() {
           <div className="flex flex-wrap justify-center gap-2 pb-3">
             <button onClick={() => setEditor('edit')} className="text-xs font-semibold text-[#d0d0d0] bg-white/5 px-3 py-2 rounded-lg">Editar letra</button>
             {!syncedLines && <button onClick={() => setEditor('sync')} className="text-xs font-bold text-black bg-[hsl(var(--primary))] px-3 py-2 rounded-lg">Sincronizar tocando</button>}
-            {own && <button onClick={() => { removeOwn(track.id); useLyricsStore.getState().reload(track.artist, track.title, track.id, track.lrclibId, track.durationSeconds) }} className="text-xs font-semibold text-red-300 bg-white/5 px-3 py-2 rounded-lg">Apagar minha letra</button>}
+            {own && <button onClick={() => { removeOwn(track.id); useLyricsStore.getState().reload(songArtist(track), track.title, track.id, track.lrclibId, track.durationSeconds) }} className="text-xs font-semibold text-red-300 bg-white/5 px-3 py-2 rounded-lg">Apagar minha letra</button>}
           </div>
         )}
 

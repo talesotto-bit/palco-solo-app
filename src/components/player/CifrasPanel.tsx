@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { usePlayerStore } from '@/store/playerStore'
 import { useCifraStore, cachedCifra, type CifraData } from '@/store/cifraStore'
 import { useLyricsStore } from '@/store/lyricsStore'
-import { cifraIsOtherSong } from '@/lib/lyricsMatch'
+import { cifraIsOtherSong, songArtist } from '@/lib/lyricsMatch'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { transposeKey, formatTons } from '@/lib/musicTheory'
 import { parseSheet, countChords } from '@/lib/chordSheet'
@@ -68,7 +68,7 @@ export function useCifra(trackId: string | undefined, artist: string, title: str
     // aba Cifra aberta sem a Letra: carrega a letra para conferir
     const t = usePlayerStore.getState().track
     if (!remote || !t || t.id !== trackId || lyricsTrack === trackId) return
-    void useLyricsStore.getState().fetchLyrics(t.artist, t.title, t.id, t.lrclibId, t.durationSeconds)
+    void useLyricsStore.getState().fetchLyrics(songArtist(t), t.title, t.id, t.lrclibId, t.durationSeconds)
   }, [remote, trackId, lyricsTrack])
 
   return { own, remote: otherSong ? null : remote, state: otherSong ? 'not_found' as const : state, fetchCifra }
@@ -81,7 +81,7 @@ export function CifrasPanel() {
   const setOffset = useCifraStore(s => s.setOffset)
   const setOwn = useCifraStore(s => s.setOwn)
   const removeOwn = useCifraStore(s => s.removeOwn)
-  const { own, remote, state, fetchCifra } = useCifra(track?.id, track?.artist || '', track?.title || '')
+  const { own, remote, state, fetchCifra } = useCifra(track?.id, track ? songArtist(track) : '', track?.title || '')
 
   const [autoScroll, setAutoScroll] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -211,7 +211,7 @@ export function CifrasPanel() {
                 <input type="text" value={manualQuery} onChange={(e) => setManualQuery(e.target.value)} placeholder="Artista - Música"
                   className="w-full h-10 rounded-lg bg-[#2a2a2a] pl-9 pr-3 text-sm text-white placeholder:text-[#606060] outline-none focus:ring-1 focus:ring-white/20" />
               </div>
-              {state === 'error' && <button type="button" onClick={() => fetchCifra(track.artist, track.title, true)} className="mt-2 text-xs text-[#b3b3b3] underline">Tentar de novo</button>}
+              {state === 'error' && <button type="button" onClick={() => fetchCifra(songArtist(track), track.title, true)} className="mt-2 text-xs text-[#b3b3b3] underline">Tentar de novo</button>}
             </form>
           </div>
         )}

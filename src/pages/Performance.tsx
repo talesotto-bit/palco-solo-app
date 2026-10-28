@@ -26,6 +26,7 @@ import { useStageSettings, type StageView } from '@/store/stageSettingsStore'
 import { useLyricsStore } from '@/store/lyricsStore'
 import { useCifraStore } from '@/store/cifraStore'
 import { useAllTracks } from '@/hooks/useAllTracks'
+import { songArtist } from '@/lib/lyricsMatch'
 import { useLyricSync, findActiveLine, usePlaybackLyrics } from '@/hooks/useLyricSync'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { audioEngine, isSupportStem } from '@/audio/AudioEngine'
@@ -93,7 +94,7 @@ export function StageLyrics({ scale, syncHint = true }: { scale: number; syncHin
   const userUntil = useRef(0)
   useAutoScroll(box, !syncedLines && !!plainLyrics)
 
-  useEffect(() => { if (track && trackId !== track.id) void fetchLyrics(track.artist, track.title, track.id, track.lrclibId, track.durationSeconds) }, [track?.id, trackId, fetchLyrics])
+  useEffect(() => { if (track && trackId !== track.id) void fetchLyrics(songArtist(track), track.title, track.id, track.lrclibId, track.durationSeconds) }, [track?.id, trackId, fetchLyrics])
   const active = syncedLines ? findActiveLine(syncedLines, currentTime - sync.offset) : -1
   const searching = isLoading || (!!track && trackId !== track.id)
 
@@ -147,7 +148,7 @@ function StageCifra({ scale }: { scale: number }) {
   const track = usePlayerStore(s => s.track)
   const pitch = usePlayerStore(s => Math.round(s.pitch))
   const offset = useCifraStore(s => (track ? s.offset[track.id] ?? 0 : 0))
-  const { own, remote, state } = useCifra(track?.id, track?.artist || '', track?.title || '')
+  const { own, remote, state } = useCifra(track?.id, track ? songArtist(track) : '', track?.title || '')
   const box = useRef<HTMLDivElement>(null)
   useAutoScroll(box, true)
   const content = own?.text ?? remote?.content ?? ''

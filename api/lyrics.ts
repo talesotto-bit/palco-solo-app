@@ -380,20 +380,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const a = (typeof artist === 'string' ? artist : '').trim()
   const t = title.trim()
 
-  // Run LRCLIB (synced lyrics) in parallel with Brazilian sources
-  const [lrcResult, vagWebResult, letrasResult] = await Promise.allSettled([
+  // Todas as fontes ao mesmo tempo: a resposta sai na velocidade da mais lenta, não da soma
+  const [lrcResult, vagApiResult, vagWebResult, letrasResult] = await Promise.allSettled([
     fetchFromLrclib(a, t, dur),
+    fetchFromVagalumeApi(a, t),
     fetchFromVagalumeWeb(a, t),
     fetchFromLetras(a, t),
   ])
+  const ok = <T,>(r: PromiseSettledResult<T | null>) => (r.status === 'fulfilled' ? r.value : null)
+  const lrc = ok(lrcResult), vagApi = ok(vagApiResult), vagWeb = ok(vagWebResult), letras = ok(letrasResult)
 
-  const lrc = lrcResult.status === 'fulfilled' ? lrcResult.value : null
-  const vagWeb = vagWebResult.status === 'fulfilled' ? vagWebResult.value : null
-  const letras = letrasResult.status === 'fulfilled' ? letrasResult.value : null
+  // letra não muda: guarda 30 dias no cache da Vercel; "não achei" só 6 h (fontes novas entram logo)
+  const FOUND = 'public, s-maxage=2592000, stale-while-revalidate=2592000'
 
-  // Prefer synced lyrics from LRCLIB
+  // letra sincronizada do LRCLIB primeiro
   if (lrc?.syncedLyrics) {
-    res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+    res.setHeader('Cache-Control', FOUND)
     return res.status(200).json({
       plainLyrics: lrc.plainLyrics,
       syncedLyrics: lrc.syncedLyrics,
@@ -401,27 +403,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  // Prefer Brazilian sources for plain lyrics
-  const plainResult = vagWeb || letras || lrc
-
-  // Try Vagalume API as last resort if nothing found
-  if (!plainResult && VAGALUME_KEY) {
-    const vagApi = await fetchFromVagalumeApi(a, t)
-    if (vagApi) {
-      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
-      return res.status(200).json({
-        plainLyrics: vagApi.plainLyrics,
-        syncedLyrics: null,
-        artist: a, title: t, source: vagApi.source,
-      })
-    }
-  }
-
+  // texto corrido: fontes brasileiras primeiro (API oficial da Vagalume, depois as páginas)
+  const plainResult = vagApi || vagWeb || letras || lrc
   if (!plainResult) {
+    res.setHeader('Cache-Control', 'public, s-maxage=21600')
     return res.status(404).json({ error: 'Lyrics not found' })
   }
 
-  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+  res.setHeader('Cache-Control', FOUND)
   return res.status(200).json({
     plainLyrics: plainResult.plainLyrics,
     syncedLyrics: plainResult.syncedLyrics,
