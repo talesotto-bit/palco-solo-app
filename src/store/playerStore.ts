@@ -183,7 +183,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         const nextT = queue[queueIndex + 1]
         if (nextT && inShow && useStageSettings.getState().autoAdvance && end - t < 45 && _listen.preloadFor !== nextT.id) {
           _listen.preloadFor = nextT.id
-          void resolveTrackUrls(nextT).then(r => audioEngine.preload(r.stems, initialStemStates(nextT))).catch(() => {})
+          void resolveTrackUrls(nextT).then(r => audioEngine.preload(r.stems, initialStemStates(nextT), nextT.mixUrl)).catch(() => {})
         }
         break
       }

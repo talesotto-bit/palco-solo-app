@@ -13,23 +13,41 @@ interface LyricsState {
   error: string | null
   trackId: string | null
   source: string | null
-  fetchLyrics: (artist: string, title: string, trackId: string, lrclibId?: number) => Promise<void>
+  fetchLyrics: (artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number) => Promise<void>
   searchManual: (query: string, trackId: string) => Promise<void>
   resetToSearch: () => void
-  reload: (artist: string, title: string, trackId: string, lrclibId?: number) => void
+  reload: (artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number) => void
   clear: () => void
 }
 
-const CACHE_KEY = 'palco-lyrics-cache-v4'
+const CACHE_KEY = 'palco-lyrics-cache-v5'
 const MAX_CACHE = 200
 
 try { localStorage.removeItem('palco-lyrics-cache-v2') } catch {}
 try { localStorage.removeItem('palco-lyrics-cache-v3') } catch {}
+try { localStorage.removeItem('palco-lyrics-cache-v4') } catch {}
 
 interface CacheEntry {
   plainLyrics: string
   syncedLyrics: string | null
   source: string
+  /** duração (s) da gravação em que a letra foi sincronizada */
+  duration?: number
+}
+
+/**
+ * A letra sincronizada foi feita numa gravação do mesmo tamanho deste playback?
+ * Outra versão (ao vivo, outro andamento) faz a letra correr na frente: aí mostra só o texto, com rolagem calma.
+ */
+export function syncFits(lyricSeconds: number | undefined, trackSeconds: number | undefined): boolean {
+  if (!lyricSeconds || !trackSeconds) return true
+  return Math.abs(lyricSeconds - trackSeconds) <= Math.max(6, trackSeconds * 0.035)
+}
+
+function syncedFor(synced: string | null | undefined, lyricSeconds: number | undefined, trackSeconds: number | undefined): LrcLine[] | null {
+  if (!synced || !syncFits(lyricSeconds, trackSeconds)) return null
+  const lines = parseLrc(synced)
+  return lines.length ? lines : null
 }
 
 function getCache(): Record<string, CacheEntry> {
@@ -84,7 +102,7 @@ function parseLrc(lrc: string): LrcLine[] {
 }
 
 /** Guarda a letra no aparelho sem abrir a música (show sem internet). true = já está disponível */
-export async function prefetchLyrics(artist: string, title: string, trackId: string, lrclibId?: number): Promise<boolean> {
+export async function prefetchLyrics(artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number): Promise<boolean> {
   const own = useOwnLyrics.getState().items[trackId]
   if (own && (own.plain || own.lrc)) return true
   const key = cacheKeyFor(artist, cleanTitleForSearch(title))
@@ -95,15 +113,17 @@ export async function prefetchLyrics(artist: string, title: string, trackId: str
       if (r.ok) {
         const d = await r.json()
         if (d.plainLyrics || d.syncedLyrics) {
-          setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB' })
+          setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB', duration: d.duration || undefined })
           return true
         }
       }
     }
-    const res = await fetch(`/api/lyrics?${new URLSearchParams({ artist, title: cleanTitleForSearch(title) })}`)
+    const q = new URLSearchParams({ artist, title: cleanTitleForSearch(title) })
+    if (trackSeconds) q.set('duration', String(Math.round(trackSeconds)))
+    const res = await fetch(`/api/lyrics?${q}`)
     if (!res.ok) return res.status === 404
     const data = await res.json()
-    setCache(key, { plainLyrics: data.plainLyrics || data.lyrics || '', syncedLyrics: data.syncedLyrics || null, source: data.source })
+    setCache(key, { plainLyrics: data.plainLyrics || data.lyrics || '', syncedLyrics: data.syncedLyrics || null, source: data.source, duration: data.duration || undefined })
     return true
   } catch { return false }
 }
@@ -116,7 +136,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   trackId: null,
   source: null,
 
-  fetchLyrics: async (artist: string, title: string, trackId: string, lrclibId?: number) => {
+  fetchLyrics: async (artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number) => {
     // letra colada/sincronizada pelo músico tem prioridade
     const own = useOwnLyrics.getState().items[trackId]
     if (own && (own.plain || own.lrc)) {
@@ -130,10 +150,9 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     const key = cacheKeyFor(artist, cleanedTitle)
     const cached = getCache()[key]
     if (cached) {
-      const synced = cached.syncedLyrics ? parseLrc(cached.syncedLyrics) : null
       set({
         plainLyrics: cached.plainLyrics || null,
-        syncedLines: synced && synced.length > 0 ? synced : null,
+        syncedLines: syncedFor(cached.syncedLyrics, cached.duration, trackSeconds),
         source: cached.source,
         trackId,
         isLoading: false,
@@ -151,10 +170,9 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
         if (r.ok) {
           const d = await r.json()
           if (d.plainLyrics || d.syncedLyrics) {
-            setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB' })
+            setCache(key, { plainLyrics: d.plainLyrics || '', syncedLyrics: d.syncedLyrics || null, source: 'LRCLIB', duration: d.duration || undefined })
             if (get().trackId !== trackId) return
-            const parsed = d.syncedLyrics ? parseLrc(d.syncedLyrics) : null
-            set({ plainLyrics: d.plainLyrics || null, syncedLines: parsed && parsed.length ? parsed : null, source: 'LRCLIB', isLoading: false })
+            set({ plainLyrics: d.plainLyrics || null, syncedLines: syncedFor(d.syncedLyrics, d.duration, trackSeconds), source: 'LRCLIB', isLoading: false })
             return
           }
         }
@@ -164,6 +182,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
 
     try {
       const params = new URLSearchParams({ artist, title: cleanedTitle })
+      if (trackSeconds) params.set('duration', String(Math.round(trackSeconds)))
       const res = await fetch(`/api/lyrics?${params}`)
 
       if (get().trackId !== trackId) return
@@ -185,14 +204,14 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
         plainLyrics: plain,
         syncedLyrics: synced,
         source: data.source,
+        duration: data.duration || undefined,
       })
 
       if (get().trackId !== trackId) return
 
-      const parsed = synced ? parseLrc(synced) : null
       set({
         plainLyrics: plain || null,
-        syncedLines: parsed && parsed.length > 0 ? parsed : null,
+        syncedLines: syncedFor(synced, data.duration, trackSeconds),
         source: data.source,
         isLoading: false,
       })
@@ -268,7 +287,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     }
   },
 
-  reload: (artist: string, title: string, trackId: string, lrclibId?: number) => { set({ trackId: null, plainLyrics: null, syncedLines: null }); void get().fetchLyrics(artist, title, trackId, lrclibId) },
+  reload: (artist: string, title: string, trackId: string, lrclibId?: number, trackSeconds?: number) => { set({ trackId: null, plainLyrics: null, syncedLines: null }); void get().fetchLyrics(artist, title, trackId, lrclibId, trackSeconds) },
   resetToSearch: () => set({
     plainLyrics: null,
     syncedLines: null,

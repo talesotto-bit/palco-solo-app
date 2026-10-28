@@ -38,7 +38,7 @@ export function LyricsPanel() {
   useEffect(() => {
     if (!track) return
     if (trackId === track.id) return
-    fetchLyrics(track.artist, track.title, track.id, track.lrclibId)
+    fetchLyrics(track.artist, track.title, track.id, track.lrclibId, track.durationSeconds)
   }, [track?.id, trackId, fetchLyrics])
 
   const sync = useLyricSync(syncedLines)
@@ -241,7 +241,7 @@ export function LyricsPanel() {
             <AlertCircle className="h-8 w-8 text-[#535353]" />
             <p className="text-sm font-medium text-white">Erro ao buscar letra</p>
             <button
-              onClick={() => fetchLyrics(track.artist, track.title, track.id)}
+              onClick={() => fetchLyrics(track.artist, track.title, track.id, undefined, track.durationSeconds)}
               className="mt-1 h-8 rounded-full px-5 text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-colors"
             >
               Tentar novamente
@@ -298,7 +298,7 @@ export function LyricsPanel() {
           <div className="flex flex-wrap justify-center gap-2 pb-3">
             <button onClick={() => setEditor('edit')} className="text-xs font-semibold text-[#d0d0d0] bg-white/5 px-3 py-2 rounded-lg">Editar letra</button>
             {!syncedLines && <button onClick={() => setEditor('sync')} className="text-xs font-bold text-black bg-[hsl(var(--primary))] px-3 py-2 rounded-lg">Sincronizar tocando</button>}
-            {own && <button onClick={() => { removeOwn(track.id); useLyricsStore.getState().reload(track.artist, track.title, track.id, track.lrclibId) }} className="text-xs font-semibold text-red-300 bg-white/5 px-3 py-2 rounded-lg">Apagar minha letra</button>}
+            {own && <button onClick={() => { removeOwn(track.id); useLyricsStore.getState().reload(track.artist, track.title, track.id, track.lrclibId, track.durationSeconds) }} className="text-xs font-semibold text-red-300 bg-white/5 px-3 py-2 rounded-lg">Apagar minha letra</button>}
           </div>
         )}
 

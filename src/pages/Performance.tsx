@@ -92,7 +92,7 @@ export function StageLyrics({ scale, syncHint = true }: { scale: number; syncHin
   const userUntil = useRef(0)
   useAutoScroll(box, !syncedLines && !!plainLyrics)
 
-  useEffect(() => { if (track && trackId !== track.id) void fetchLyrics(track.artist, track.title, track.id, track.lrclibId) }, [track?.id, trackId, fetchLyrics])
+  useEffect(() => { if (track && trackId !== track.id) void fetchLyrics(track.artist, track.title, track.id, track.lrclibId, track.durationSeconds) }, [track?.id, trackId, fetchLyrics])
   const active = syncedLines ? findActiveLine(syncedLines, currentTime - sync.offset) : -1
   const searching = isLoading || (!!track && trackId !== track.id)
 

@@ -6,6 +6,8 @@ interface LyricsResult {
   plainLyrics: string
   syncedLyrics: string | null
   source: string
+  /** duração (s) da gravação em que a letra sincronizada foi feita: o app compara com o playback */
+  duration?: number
 }
 
 function cleanTitle(raw: string): string {
@@ -51,10 +53,18 @@ function buildQueries(artist: string, title: string): { artist: string; title: s
 
 // ─── LRCLIB (synced lyrics) ──────────────────────────────────────────────────
 
-async function searchLrclib(artist: string, title: string): Promise<LyricsResult | null> {
+/** A letra sincronizada foi feita numa gravação de duração parecida? (outra versão = tempos errados no playback) */
+function durationFits(lrc: number | undefined, target: number | undefined): boolean {
+  if (!lrc || !target) return true
+  return Math.abs(lrc - target) <= Math.max(6, target * 0.035)
+}
+
+async function searchLrclib(artist: string, title: string, duration?: number): Promise<LyricsResult | null> {
   try {
     const params: Record<string, string> = { track_name: title }
     if (artist) params.artist_name = artist
+    // com a duração do playback, o LRCLIB devolve a gravação desse tamanho (±2 s)
+    if (duration) params.duration = String(Math.round(duration))
     const qs = new URLSearchParams(params)
 
     const res = await fetch(`https://lrclib.net/api/get?${qs}`, {
@@ -68,6 +78,7 @@ async function searchLrclib(artist: string, title: string): Promise<LyricsResult
           plainLyrics: data.plainLyrics || '',
           syncedLyrics: data.syncedLyrics || null,
           source: 'LRCLIB',
+          duration: data.duration || undefined,
         }
       }
     }
@@ -80,22 +91,27 @@ async function searchLrclib(artist: string, title: string): Promise<LyricsResult
     if (!searchRes.ok) return null
     const results = await searchRes.json()
     if (!results.length) return null
-    const best = results[0]
+    // várias versões da mesma música: fica com a de duração mais perto do playback
+    const best = duration
+      ? [...results].sort((x: any, y: any) => Math.abs((x.duration || 0) - duration) - Math.abs((y.duration || 0) - duration))[0]
+      : results[0]
     if (!best.plainLyrics && !best.syncedLyrics) return null
     return {
       plainLyrics: best.plainLyrics || '',
-      syncedLyrics: best.syncedLyrics || null,
+      // versão de outro tamanho: só o texto (tempos de outra gravação fariam a letra correr na frente)
+      syncedLyrics: durationFits(best.duration, duration) ? best.syncedLyrics || null : null,
       source: 'LRCLIB',
+      duration: best.duration || undefined,
     }
   } catch {
     return null
   }
 }
 
-async function fetchFromLrclib(artist: string, title: string): Promise<LyricsResult | null> {
+async function fetchFromLrclib(artist: string, title: string, duration?: number): Promise<LyricsResult | null> {
   const queries = buildQueries(artist, title)
   for (const q of queries) {
-    const result = await searchLrclib(q.artist, q.title)
+    const result = await searchLrclib(q.artist, q.title, duration)
     if (result) return result
   }
   return null
@@ -296,6 +312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const { artist, title } = req.query
+  const dur = Number(req.query.duration) || undefined
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'Missing title' })
   }
@@ -305,7 +322,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Run LRCLIB (synced lyrics) in parallel with Brazilian sources
   const [lrcResult, vagWebResult, letrasResult] = await Promise.allSettled([
-    fetchFromLrclib(a, t),
+    fetchFromLrclib(a, t, dur),
     fetchFromVagalumeWeb(a, t),
     fetchFromLetras(a, t),
   ])
@@ -320,7 +337,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       plainLyrics: lrc.plainLyrics,
       syncedLyrics: lrc.syncedLyrics,
-      artist: a, title: t, source: lrc.source,
+      artist: a, title: t, source: lrc.source, duration: lrc.duration,
     })
   }
 

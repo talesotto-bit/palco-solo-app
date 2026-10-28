@@ -224,8 +224,17 @@ function optimizeBuffer(ctx: BaseAudioContext, buf: AudioBuffer): { buffer: Audi
   return { buffer: out, offset: start / buf.sampleRate, ms }
 }
 
-/** Celular com pouca memória (≤ 2 GB): áudio interno a 32 kHz ocupa ~27% menos e evita o app fechar */
+/** Celular com pouca memória (≤ 2 GB, quando o navegador informa) */
 const LOW_MEMORY = typeof navigator !== 'undefined' && ((navigator as any).deviceMemory ?? 8) <= 2
+/** Celular ou tablet (o Safari do iPhone não informa a memória: reconhece pelo aparelho) */
+const MOBILE = typeof navigator !== 'undefined' &&
+  (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)))
+/**
+ * Modo econômico (celular): áudio interno a 32 kHz (~27% menos memória, som igual numa caixa de som)
+ * e a próxima música do show pré-carregada só pela prévia mixada, não com todas as pistas.
+ * Sem isso, uma música de 18 pistas ocupava ~675 MB e duas no show passavam de 1 GB: chiado e travamento.
+ */
+const COMPACT = LOW_MEMORY || MOBILE
 
 /** Nível alvo (soma da energia das pistas ligadas): a mediana do acervo, assim o volume médio não muda */
 const LOUDNESS_TARGET = 0.28
@@ -261,6 +270,8 @@ class AudioEngine {
   /** todas as pistas chegaram (o fim real da música já é conhecido) */
   private allLoaded = false
   private preloaded: { key: string; stems: Map<string, DecodedStem> } | null = null
+  /** modo econômico: a próxima música do show fica pronta só pela prévia mixada (um arquivo leve) */
+  private preloadedMix: { key: string; buffer: AudioBuffer } | null = null
   private preloadId = 0
 
   private stems = new Map<string, LoadedStem>()
@@ -300,7 +311,7 @@ class AudioEngine {
     try { const s = (navigator as any).audioSession; if (s) s.type = 'playback' } catch {}
     const Ctx = window.AudioContext || (window as any).webkitAudioContext
     // 44,1 kHz é a taxa das músicas: decodifica sem reamostrar (menos memória e processamento)
-    try { this.ctx = new Ctx({ latencyHint: 'playback', sampleRate: LOW_MEMORY ? 32000 : 44100 }) as AudioContext }
+    try { this.ctx = new Ctx({ latencyHint: 'playback', sampleRate: COMPACT ? 32000 : 44100 }) as AudioContext }
     catch { this.ctx = new Ctx({ latencyHint: 'playback' }) as AudioContext }
     this.master = this.ctx.createGain()
     this.master.gain.value = this._volume
@@ -442,12 +453,25 @@ class AudioEngine {
   }
 
   /**
-   * Deixa a próxima música do show decodificada enquanto esta toca: ela entra sem espera.
-   * Fica de fora em celular com pouca memória (seriam duas músicas na memória ao mesmo tempo).
+   * Deixa a próxima música do show pronta enquanto esta toca: ela entra sem espera.
+   * No computador decodifica as pistas. No celular decodifica só a prévia mixada: a música entra na hora
+   * pela prévia e as pistas chegam por trás (duas músicas inteiras na memória travariam o aparelho).
    */
-  async preload(stems: Stem[], states: Record<string, StemState>): Promise<void> {
-    if (LOW_MEMORY || !stems.length) return
+  async preload(stems: Stem[], states: Record<string, StemState>, mixUrl?: string): Promise<void> {
+    if (!stems.length) return
     const key = stemsKey(stems)
+    if (COMPACT) {
+      if (!mixUrl || this.preloadedMix?.key === key) return
+      const id = ++this.preloadId
+      try {
+        const ctx = this.ensureContext()
+        const bytes = await this.fetchBytes(mixUrl, () => id !== this.preloadId)
+        if (id !== this.preloadId) return
+        const buffer = await new Promise<AudioBuffer>((res, rej) => ctx.decodeAudioData(bytes, res, rej))
+        if (id === this.preloadId) this.preloadedMix = { key, buffer }
+      } catch { /* entra pelo carregamento normal */ }
+      return
+    }
     if (this.preloaded?.key === key) return
     const id = ++this.preloadId
     const map = new Map<string, DecodedStem>()
@@ -469,7 +493,9 @@ class AudioEngine {
     this.disposeTrack()
     this.ensureContext()
     const pre = this.preloaded?.key === stemsKey(stems) ? this.preloaded.stems : null
+    const preMix = this.preloadedMix?.key === stemsKey(stems) ? this.preloadedMix.buffer : null
     this.preloaded = null
+    this.preloadedMix = null
     this.preloadId++
     this.stemStates = initialStates ? { ...initialStates } : {}
     this.rhythmIds = rhythmStemIds(stems)
@@ -490,8 +516,10 @@ class AudioEngine {
     now.sort((a, b) => stemPriority(a, this.stemStates) - stemPriority(b, this.stemStates))
 
     // Prévia mixada: um arquivo leve que toca na hora. Só quando as pistas ainda não estão no aparelho.
-    const useMix = !!opts?.mixUrl && !isAvailableOffline(now.map(s => s.audioUrl)) && !now.every(s => pre?.has(s.id))
-    const mixP = useMix ? this.loadMix(opts!.mixUrl!, id).catch(err => { console.warn('[AudioEngine] prévia falhou:', err); return null }) : null
+    // Prévia já decodificada (show no celular): entra na hora, mesmo com as pistas guardadas no aparelho.
+    const useMix = !!preMix || (!!opts?.mixUrl && !isAvailableOffline(now.map(s => s.audioUrl)) && !now.every(s => pre?.has(s.id)))
+    const mixP = preMix ? Promise.resolve(this.mixFromBuffer(preMix))
+      : useMix ? this.loadMix(opts!.mixUrl!, id).catch(err => { console.warn('[AudioEngine] prévia falhou:', err); return null }) : null
 
     const need = Math.min(now.length, Math.max(2, Math.ceil(now.length * 0.4)))
     const foundation = now.filter(s => stemPriority(s, this.stemStates) <= 1).slice(0, 2).map(s => s.id)
@@ -528,7 +556,8 @@ class AudioEngine {
       else void mixP.then(m => { if (m && id === this.loadId && !isReady) useMix(m) })
     }
 
-    const all = pool(now, fetchConcurrency(), async (s) => {
+    // celular: no máximo 3 pistas decodificando ao mesmo tempo (evita pico de memória na abertura)
+    const all = pool(now, COMPACT ? Math.min(3, fetchConcurrency()) : fetchConcurrency(), async (s) => {
       try {
         const ready = pre?.get(s.id)
         const loaded = ready ? this.adoptStem(s, ready) : await this.loadStem(s, id)
@@ -829,7 +858,11 @@ class AudioEngine {
     const bytes = await this.fetchBytes(url, signalId)
     if (signalId !== this.loadId) return null
     const buffer = await new Promise<AudioBuffer>((res, rej) => ctx.decodeAudioData(bytes, res, rej))
-    const gain = ctx.createGain()
+    return this.mixFromBuffer(buffer)
+  }
+
+  private mixFromBuffer(buffer: AudioBuffer): LoadedStem {
+    const gain = this.ctx!.createGain()
     gain.gain.value = 1
     gain.connect(this.mixBus!)
     return { id: '__mix', label: 'Prévia', buffer, offset: 0, gain, source: null, ms: meanSquare(buffer) }
