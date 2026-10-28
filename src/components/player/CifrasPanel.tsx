@@ -3,6 +3,8 @@ import { Loader2, Search, Music, ArrowDownToLine, ClipboardPaste, ExternalLink, 
 import { toast } from 'sonner'
 import { usePlayerStore } from '@/store/playerStore'
 import { useCifraStore, cachedCifra, type CifraData } from '@/store/cifraStore'
+import { useLyricsStore } from '@/store/lyricsStore'
+import { cifraIsOtherSong } from '@/lib/lyricsMatch'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { transposeKey, formatTons } from '@/lib/musicTheory'
 import { parseSheet, countChords } from '@/lib/chordSheet'
@@ -58,7 +60,18 @@ export function useCifra(trackId: string | undefined, artist: string, title: str
     return () => abortRef.current?.abort()
   }, [trackId, own, artist, title, fetchCifra])
 
-  return { own, remote, state, fetchCifra }
+  // a cifra encontrada pelo nome pode ser de outra música com o mesmo título: confere com a letra verificada
+  const lyrics = useLyricsStore(s => (s.trackId === trackId ? s.plainLyrics || s.syncedLines?.map(l => l.text).join('\n') || null : null))
+  const otherSong = !!remote && cifraIsOtherSong(remote.content, lyrics)
+  const lyricsTrack = useLyricsStore(s => s.trackId)
+  useEffect(() => {
+    // aba Cifra aberta sem a Letra: carrega a letra para conferir
+    const t = usePlayerStore.getState().track
+    if (!remote || !t || t.id !== trackId || lyricsTrack === trackId) return
+    void useLyricsStore.getState().fetchLyrics(t.artist, t.title, t.id, t.lrclibId, t.durationSeconds)
+  }, [remote, trackId, lyricsTrack])
+
+  return { own, remote: otherSong ? null : remote, state: otherSong ? 'not_found' as const : state, fetchCifra }
 }
 
 export function CifrasPanel() {

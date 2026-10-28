@@ -89,6 +89,8 @@ async function cifraClubDirect(artist: string, title: string): Promise<CifraResu
 }
 
 async function cifraClubSearch(artist: string, title: string): Promise<CifraResult | null> {
+  // sem artista o primeiro resultado pode ser outra música com o mesmo nome
+  if (!artist) return null
   try {
     const q = artist ? `${artist} ${title}` : title
     const searchUrl = `https://www.cifraclub.com.br/?q=${encodeURIComponent(q)}`
@@ -105,10 +107,12 @@ async function cifraClubSearch(artist: string, title: string): Promise<CifraResu
     if (!res.ok) return null
     const html = await res.text()
 
-    const linkMatch = html.match(/href="(\/[a-z0-9-]+\/[a-z0-9-]+\/?)"/i)
-    if (!linkMatch) return null
+    // o primeiro link da busca pode ser outra música: só o endereço com o artista e o título desta
+    const links = [...html.matchAll(/href="\/([a-z0-9-]+)\/([a-z0-9-]+)\/?"/gi)]
+    const link = links.find(m => nameSim(m[1].replace(/-/g, ' '), artist) >= 0.6 && nameSim(m[2].replace(/-/g, ' '), title) >= 0.8)
+    if (!link) return null
 
-    const songUrl = `https://www.cifraclub.com.br${linkMatch[1]}`
+    const songUrl = `https://www.cifraclub.com.br/${link[1]}/${link[2]}/`
     const songRes = await fetch(songUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -225,7 +229,11 @@ async function ultimateGuitarQuery(artist: string, title: string, q: string): Pr
         const songScore = song === nt ? 6 : song.includes(nt) || nt.includes(song) ? 3 : 0
         if (songScore === 0) return { r, score: 0 } // nunca aceita outra música do mesmo artista
         let score = songScore
-        if (na) score += art === na ? 4 : art.includes(na) || na.includes(art) ? 2 : 0
+        if (na) {
+          const as = art === na ? 4 : art.includes(na) || na.includes(art) ? 2 : 0
+          if (as === 0) return { r, score: 0 } // mesmo título de outro artista: é outra música
+          score += as
+        }
         else if (nt.includes(art)) score += 2 // catálogo às vezes junta título e artista
         score += Math.min(2, (r.votes || 0) / 20) + (r.rating || 0) / 5
         return { r, score }
@@ -268,6 +276,29 @@ async function ultimateGuitarQuery(artist: string, title: string, q: string): Pr
   }
 }
 
+
+// ─── Conferência: a cifra encontrada é mesmo desta música? ───────────────────
+
+function nameKey(s: string): string {
+  return norm(decodeHtml(s || '')).replace(/\b(ao vivo|live|versao \w+|versao|part|feat|ft|participacao|acustico)\b/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function nameSim(a: string, b: string): number {
+  const x = nameKey(a), y = nameKey(b)
+  if (!x || !y) return 0
+  if (x === y) return 1
+  const ta = new Set(x.split(' ')), tb = new Set(y.split(' '))
+  let inter = 0
+  ta.forEach(w => { if (tb.has(w)) inter++ })
+  return Math.max(inter / (ta.size + tb.size - inter), x.includes(y) || y.includes(x) ? 0.9 : 0, (inter / Math.min(ta.size, tb.size)) * 0.95)
+}
+
+/** título bate e, quando o artista é conhecido, o artista também */
+function sameSong(r: CifraResult, title: string, artist: string): boolean {
+  if (nameSim(r.title, title) < 0.8) return false
+  return !artist || nameSim(r.artist, artist) >= 0.5
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -297,6 +328,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (!result) {
     result = await ultimateGuitar(a, cleanedT)
+  }
+
+  if (result && !sameSong(result, cleanedT, a) && !sameSong(result, t, a)) {
+    trace.push(`descartada: ${result.title} / ${result.artist}`)
+    result = null
   }
 
   if (debug) return res.status(result ? 200 : 404).json({ found: !!result, source: result?.source, trace })

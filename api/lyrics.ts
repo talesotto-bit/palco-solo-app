@@ -59,6 +59,40 @@ function durationFits(lrc: number | undefined, target: number | undefined): bool
   return Math.abs(lrc - target) <= Math.max(6, target * 0.035)
 }
 
+
+// ─── Conferência: a letra encontrada é mesmo desta música? ───────────────────
+
+function normName(s: string): string {
+  return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/\(.*?\)|\[.*?\]/g, ' ')
+    .replace(/\b(ao vivo|live|versao \w+|versao|part\.?|feat\.?|ft\.?|participacao|remix|acustico)\b/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** semelhança entre dois nomes (0 a 1): palavras em comum e grafia */
+function nameSim(a: string, b: string): number {
+  const x = normName(a), y = normName(b)
+  if (!x || !y) return 0
+  if (x === y) return 1
+  const ta = new Set(x.split(' ')), tb = new Set(y.split(' '))
+  let inter = 0
+  ta.forEach(w => { if (tb.has(w)) inter++ })
+  const jac = inter / (ta.size + tb.size - inter)
+  const cover = inter / Math.min(ta.size, tb.size)
+  return Math.max(jac, x.includes(y) || y.includes(x) ? 0.9 : 0, cover * 0.95)
+}
+
+/** artistas: duplas com "e"/"&", participações, grafias diferentes */
+function artistSim(a: string, b: string): number {
+  return nameSim(a.replace(/&/g, ' e '), b.replace(/&/g, ' e '))
+}
+
+/** título e artista batem? (sem artista informado, só o título) */
+function sameSong(foundTitle: string, foundArtist: string, title: string, artist: string): boolean {
+  if (nameSim(foundTitle, title) < 0.8) return false
+  return !artist || artistSim(foundArtist, artist) >= 0.5
+}
+
 async function lrclibGet(params: Record<string, string>): Promise<any | null> {
   try {
     const res = await fetch(`https://lrclib.net/api/get?${new URLSearchParams(params)}`, {
@@ -86,9 +120,14 @@ async function searchLrclib(artist: string, title: string, duration?: number): P
     if (artist) params.artist_name = artist
 
     // 1) pedido simples (rápido, com cache no LRCLIB). Se a gravação tem a duração do playback, pronto.
-    const data = await lrclibGet(params)
-    if (data && durationFits(data.duration, duration)) return fromLrclib(data, true)
-    if (data && duration) {
+    const got = await lrclibGet(params)
+    const data = got && sameSong(got.trackName, got.artistName, title, artist) ? got : null
+    // sem artista, só a gravação com a duração do playback (até 3 s) garante que é esta música
+    const fits = artist ? durationFits(data?.duration, duration) : !!duration && Math.abs((data?.duration || 0) - duration) <= 3
+    if (data && fits) return fromLrclib(data, true)
+    // com artista: a mesma música em outra versão → tenta a versão certa, senão só o texto.
+    // sem artista: o texto de outra gravação não é garantido; segue para a busca pela duração.
+    if (data && artist && duration) {
       // 2) é outra versão: tenta a gravação desse tamanho (consulta pesada no LRCLIB, pode recusar quando ocupado)
       const exact = await lrclibGet({ ...params, duration: String(Math.round(duration)) })
       if (exact && durationFits(exact.duration, duration)) return fromLrclib(exact, true)
@@ -103,12 +142,14 @@ async function searchLrclib(artist: string, title: string, duration?: number): P
     })
     if (!searchRes.ok) return null
     const results = await searchRes.json()
-    if (!results.length) return null
+    // só resultados desta música (título e artista batem); sem artista, a gravação precisa ter a duração do playback
+    const same = (results as any[]).filter(r => (r.plainLyrics || r.syncedLyrics) && !r.instrumental && sameSong(r.trackName, r.artistName, title, artist))
+      .filter(r => artist || (duration && Math.abs((r.duration || 0) - duration) <= 3))
+    if (!same.length) return null
     // várias versões da mesma música: fica com a de duração mais perto do playback
     const best = duration
-      ? [...results].sort((x: any, y: any) => Math.abs((x.duration || 0) - duration) - Math.abs((y.duration || 0) - duration))[0]
-      : results[0]
-    if (!best.plainLyrics && !best.syncedLyrics) return null
+      ? same.sort((x: any, y: any) => Math.abs((x.duration || 0) - duration) - Math.abs((y.duration || 0) - duration))[0]
+      : same[0]
     return {
       plainLyrics: best.plainLyrics || '',
       // versão de outro tamanho: só o texto (tempos de outra gravação fariam a letra correr na frente)
@@ -122,7 +163,8 @@ async function searchLrclib(artist: string, title: string, duration?: number): P
 }
 
 async function fetchFromLrclib(artist: string, title: string, duration?: number): Promise<LyricsResult | null> {
-  const queries = buildQueries(artist, title)
+  // com artista conhecido, nunca repete a busca só pelo título (traria a música de outro cantor)
+  const queries = buildQueries(artist, title).filter(q => !artist || q.artist)
   for (const q of queries) {
     const result = await searchLrclib(q.artist, q.title, duration)
     if (result) return result
@@ -179,6 +221,8 @@ async function vagalumeDirect(artist: string, title: string): Promise<LyricsResu
 }
 
 async function vagalumeSearch(artist: string, title: string): Promise<LyricsResult | null> {
+  // sem artista não dá para saber se o resultado é desta música
+  if (!artist) return null
   try {
     const q = artist ? `${artist} ${title}` : title
     const searchUrl = `https://www.vagalume.com.br/busca.php?q=${encodeURIComponent(q)}`
@@ -195,10 +239,12 @@ async function vagalumeSearch(artist: string, title: string): Promise<LyricsResu
     if (!res.ok) return null
     const html = await res.text()
 
-    const songLinkMatch = html.match(/href="(\/[a-z0-9-]+\/[a-z0-9-]+\.html)"/i)
-    if (!songLinkMatch) return null
+    // o primeiro link da busca pode ser outra música: só aceita o endereço com o artista e o título desta
+    const links = [...html.matchAll(/href="\/([a-z0-9-]+)\/([a-z0-9-]+)\.html"/gi)]
+    const link = links.find(m => artistSim(m[1].replace(/-/g, ' '), artist) >= 0.6 && nameSim(m[2].replace(/-/g, ' '), title) >= 0.8)
+    if (!link) return null
 
-    const songUrl = `https://www.vagalume.com.br${songLinkMatch[1]}`
+    const songUrl = `https://www.vagalume.com.br/${link[1]}/${link[2]}.html`
     const songRes = await fetch(songUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -251,6 +297,7 @@ async function searchVagalumeApi(artist: string, title: string): Promise<LyricsR
     if (!res.ok) return null
     const data = await res.json()
     if (data.type === 'notfound' || data.type === 'song_notfound' || !data.mus?.length) return null
+    if (data.type !== 'exact' && !sameSong(data.mus[0].name || '', data.art?.name || '', title, artist)) return null
     const text = data.mus[0].text
     if (!text?.trim()) return null
     return { plainLyrics: text, syncedLyrics: null, source: 'Vagalume' }
