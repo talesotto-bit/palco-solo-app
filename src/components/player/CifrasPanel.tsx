@@ -5,7 +5,7 @@ import { usePlayerStore } from '@/store/playerStore'
 import { useCifraStore, cachedCifra, type CifraData } from '@/store/cifraStore'
 import { useLyricsStore } from '@/store/lyricsStore'
 import { cifraIsOtherSong, songArtist } from '@/lib/lyricsMatch'
-import { useAutoScroll } from '@/hooks/useAutoScroll'
+import { useCifraFollow } from '@/hooks/useCifraFollow'
 import { transposeKey, formatTons } from '@/lib/musicTheory'
 import { parseSheet, countChords } from '@/lib/chordSheet'
 import { cn } from '@/lib/utils'
@@ -63,13 +63,7 @@ export function useCifra(trackId: string | undefined, artist: string, title: str
   // a cifra encontrada pelo nome pode ser de outra música com o mesmo título: confere com a letra verificada
   const lyrics = useLyricsStore(s => (s.trackId === trackId ? s.plainLyrics || s.syncedLines?.map(l => l.text).join('\n') || null : null))
   const otherSong = !!remote && cifraIsOtherSong(remote.content, lyrics)
-  const lyricsTrack = useLyricsStore(s => s.trackId)
-  useEffect(() => {
-    // aba Cifra aberta sem a Letra: carrega a letra para conferir
-    const t = usePlayerStore.getState().track
-    if (!remote || !t || t.id !== trackId || lyricsTrack === trackId) return
-    void useLyricsStore.getState().fetchLyrics(songArtist(t), t.title, t.id, t.lrclibId, t.durationSeconds, t.lyricsUrl)
-  }, [remote, trackId, lyricsTrack])
+  // a letra para conferir é carregada por useCifraFollow (a rolagem usa a mesma letra)
 
   return { own, remote: otherSong ? null : remote, state: otherSong ? 'not_found' as const : state, fetchCifra }
 }
@@ -85,7 +79,7 @@ export function CifrasPanel() {
 
   const [autoScroll, setAutoScroll] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
-  useAutoScroll(scrollRef, autoScroll)
+  const follow = useCifraFollow(scrollRef, own?.text ?? remote?.content ?? '', autoScroll)
   const [fontIdx, setFontIdx] = useState(1)
   const [manualQuery, setManualQuery] = useState('')
   const [editing, setEditing] = useState(false)
@@ -115,7 +109,7 @@ export function CifrasPanel() {
   }
 
   return (
-    <div className="flex flex-col min-h-[300px] lg:h-full rounded-lg bg-white/5 overflow-hidden">
+    <div className="flex flex-col h-full min-h-[300px] rounded-lg bg-white/5 overflow-hidden">
       {/* Cabeçalho */}
       <div className="flex items-center justify-between gap-2 px-3 py-2.5 shrink-0 border-b border-white/5">
         <div className="min-w-0">
@@ -123,6 +117,7 @@ export function CifrasPanel() {
           {hasSheet && (
             <p className="text-[10px] text-[#9a9a9a] truncate">
               {own ? 'Sua cifra (salva no aparelho)' : remote ? `Fonte: ${remote.source}` : ''}
+              {autoScroll && (follow.synced ? ' · rola no tempo da letra' : ' · rola com a música')}
             </p>
           )}
         </div>
@@ -131,7 +126,7 @@ export function CifrasPanel() {
             <button onClick={() => setAutoScroll(v => !v)} aria-pressed={autoScroll} title="Rolagem automática"
               className={cn('h-8 px-2 rounded flex items-center gap-1 text-[11px] font-bold transition-colors',
                 autoScroll ? 'bg-amber-400/20 text-amber-400' : 'bg-white/5 text-[#b3b3b3]')}>
-              <ArrowDownToLine className="h-3.5 w-3.5" /> Rolar
+              <ArrowDownToLine className="h-3.5 w-3.5" /> {autoScroll && follow.synced ? 'Seguindo' : 'Rolar'}
             </button>
             <button onClick={() => setFontIdx(i => Math.max(0, i - 1))} disabled={fontIdx === 0} aria-label="Diminuir letra"
               className="h-8 w-8 rounded text-xs font-bold text-[#b3b3b3] bg-white/5 disabled:opacity-30">A-</button>

@@ -246,7 +246,7 @@ export default function PlayerPage() {
                   </button>
                 ))}
               </div>
-              <div className="flex-1 min-h-0 min-h-[60vh] lg:min-h-0">
+              <div className="h-[72vh] min-h-[360px] lg:h-auto lg:min-h-0 lg:flex-1">
                 {tab === 'cifra' ? <CifrasPanel /> : <LyricsPanel />}
               </div>
             </div>

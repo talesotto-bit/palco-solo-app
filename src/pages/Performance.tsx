@@ -29,6 +29,7 @@ import { useAllTracks } from '@/hooks/useAllTracks'
 import { songArtist } from '@/lib/lyricsMatch'
 import { useLyricSync, findActiveLine, usePlaybackLyrics } from '@/hooks/useLyricSync'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
+import { useCifraFollow } from '@/hooks/useCifraFollow'
 import { audioEngine, isSupportStem } from '@/audio/AudioEngine'
 import { Sheet } from '@/components/ui/sheet'
 import { StemMixer } from '@/components/player/StemMixer'
@@ -150,8 +151,8 @@ function StageCifra({ scale }: { scale: number }) {
   const offset = useCifraStore(s => (track ? s.offset[track.id] ?? 0 : 0))
   const { own, remote, state } = useCifra(track?.id, track ? songArtist(track) : '', track?.title || '')
   const box = useRef<HTMLDivElement>(null)
-  useAutoScroll(box, true)
   const content = own?.text ?? remote?.content ?? ''
+  useCifraFollow(box, content, true)
   if (!track) return null
   return (
     <div ref={box} className="h-full overflow-y-auto px-4 py-4 overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>

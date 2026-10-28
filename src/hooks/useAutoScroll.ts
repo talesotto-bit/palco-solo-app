@@ -9,7 +9,7 @@ const RESUME_AFTER_MS = 5000
  * Rolar só nesse trecho evita a letra correr na frente do cantor. A "voz guia" pode ser a melodia
  * tocada por um instrumento já na introdução, então ela só conta quando entra depois do início típico do canto.
  */
-function sungSpan(duration: number): [number, number] {
+export function sungSpan(duration: number): [number, number] {
   const edge = Math.min(12, duration * 0.06)
   const start = Math.max(audioEngine.voiceStart() ?? 0, edge)
   const end = Math.max(start + 10, (audioEngine.contentEnd || duration) - edge)

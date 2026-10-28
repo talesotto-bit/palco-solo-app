@@ -6,7 +6,7 @@
  * o app completo em modo teste: as 4 músicas liberadas com tudo, as outras com cadeado.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Play, Pause, Loader2, Minus, Plus, Mic, MicOff, Check, Sparkles, X, Lightbulb, AlignLeft, SlidersHorizontal, ShoppingBag } from 'lucide-react'
+import { Play, Pause, Loader2, Minus, Plus, Mic, MicOff, Check, Sparkles, X, Lightbulb, AlignLeft, SlidersHorizontal, ShoppingBag, Guitar } from 'lucide-react'
 import { useCatalogStore } from '@/store/catalogStore'
 import { usePlayerStore } from '@/store/playerStore'
 import { audioEngine, isSupportStem } from '@/audio/AudioEngine'
@@ -14,6 +14,7 @@ import { CoverImg } from '@/components/shows/CoverImg'
 import { ProgressBar } from '@/components/player/ProgressBar'
 import { StemMixer } from '@/components/player/StemMixer'
 import { LyricsPanel } from '@/components/player/LyricsPanel'
+import { CifrasPanel } from '@/components/player/CifrasPanel'
 import { StageLights } from '@/components/stage/StageFx'
 import { StageLyrics } from '@/pages/Performance'
 import { formatTons } from '@/lib/musicTheory'
@@ -67,7 +68,7 @@ function GuidedDemo() {
   const [started, setStarted] = useState(false)
   const [done, setDone] = useState<Set<MissionId>>(new Set())
   const [stage, setStage] = useState(false)
-  const [tab, setTab] = useState<'letra' | 'mixer'>('letra')
+  const [tab, setTab] = useState<'letra' | 'cifra' | 'mixer'>('letra')
   const [justReady, setJustReady] = useState(false)
   const celebrated = useRef(false)
 
@@ -219,11 +220,11 @@ function GuidedDemo() {
         {track && started && (
           <div className="mt-4">
             <div className="flex gap-1.5">
-              {([['letra', 'Letra sincronizada', AlignLeft], ['mixer', 'Mixer completo', SlidersHorizontal]] as const).map(([id, label, Icon]) => (
+              {([['letra', 'Letra', AlignLeft], ['cifra', 'Cifra', Guitar], ['mixer', 'Mixer', SlidersHorizontal]] as const).map(([id, label, Icon]) => (
                 <button key={id} onClick={() => setTab(id)} className={cn('flex-1 h-9 rounded-full text-[12px] font-bold flex items-center justify-center gap-1', tab === id ? 'bg-white text-black' : 'bg-white/[0.07] text-white/75')}><Icon className="h-3.5 w-3.5" /> {label}</button>
               ))}
             </div>
-            <div className="mt-2">{tab === 'letra' ? <div className="h-[55vh]"><LyricsPanel /></div> : <StemMixer />}</div>
+            <div className="mt-2">{tab === 'mixer' ? <StemMixer /> : <div className="h-[60vh] min-h-[340px]">{tab === 'cifra' ? <CifrasPanel /> : <LyricsPanel />}</div>}</div>
           </div>
         )}
       </div>
