@@ -59,28 +59,41 @@ function durationFits(lrc: number | undefined, target: number | undefined): bool
   return Math.abs(lrc - target) <= Math.max(6, target * 0.035)
 }
 
+async function lrclibGet(params: Record<string, string>): Promise<any | null> {
+  try {
+    const res = await fetch(`https://lrclib.net/api/get?${new URLSearchParams(params)}`, {
+      headers: { 'User-Agent': 'PowerTom/1.0 (https://powertom.com.br)' },
+      signal: AbortSignal.timeout(6000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.plainLyrics || data.syncedLyrics ? data : null
+  } catch {
+    return null
+  }
+}
+
+const fromLrclib = (d: any, synced: boolean): LyricsResult => ({
+  plainLyrics: d.plainLyrics || '',
+  syncedLyrics: synced ? d.syncedLyrics || null : null,
+  source: 'LRCLIB',
+  duration: d.duration || undefined,
+})
+
 async function searchLrclib(artist: string, title: string, duration?: number): Promise<LyricsResult | null> {
   try {
     const params: Record<string, string> = { track_name: title }
     if (artist) params.artist_name = artist
-    // com a duração do playback, o LRCLIB devolve a gravação desse tamanho (±2 s)
-    if (duration) params.duration = String(Math.round(duration))
-    const qs = new URLSearchParams(params)
 
-    const res = await fetch(`https://lrclib.net/api/get?${qs}`, {
-      headers: { 'User-Agent': 'PowerTom/1.0 (https://powertom.com.br)' },
-      signal: AbortSignal.timeout(6000),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      if (data.plainLyrics || data.syncedLyrics) {
-        return {
-          plainLyrics: data.plainLyrics || '',
-          syncedLyrics: data.syncedLyrics || null,
-          source: 'LRCLIB',
-          duration: data.duration || undefined,
-        }
-      }
+    // 1) pedido simples (rápido, com cache no LRCLIB). Se a gravação tem a duração do playback, pronto.
+    const data = await lrclibGet(params)
+    if (data && durationFits(data.duration, duration)) return fromLrclib(data, true)
+    if (data && duration) {
+      // 2) é outra versão: tenta a gravação desse tamanho (consulta pesada no LRCLIB, pode recusar quando ocupado)
+      const exact = await lrclibGet({ ...params, duration: String(Math.round(duration)) })
+      if (exact && durationFits(exact.duration, duration)) return fromLrclib(exact, true)
+      // sem a versão certa: só o texto (tempos de outra gravação fariam a letra correr na frente)
+      return fromLrclib(data, false)
     }
 
     const q = artist ? `${artist} ${title}` : title
