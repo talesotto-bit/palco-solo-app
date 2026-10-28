@@ -26,7 +26,7 @@ export function LyricsEditor({ mode, initial, onClose }: Props) {
   const lines = useMemo(() => text.split(/\r?\n/).map(l => l.trim()).filter(Boolean), [text])
 
   if (!track || !mode) return null
-  const reload = () => useLyricsStore.getState().reload(songArtist(track), track.title, track.id, track.lrclibId, track.durationSeconds)
+  const reload = () => useLyricsStore.getState().reload(songArtist(track), track.title, track.id, track.lrclibId, track.durationSeconds, track.lyricsUrl)
 
   const saveText = () => {
     if (!text.trim()) { toast.error('Cole a letra antes de salvar.'); return }

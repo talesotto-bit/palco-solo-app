@@ -96,6 +96,7 @@ export interface Track {
   hasStems: boolean     // se tem stems individuais
   stems: Stem[]         // inclui o mix principal como stem[0]
   hasLyrics: boolean
+  /** letra transcrita da voz do próprio playback (sincronizada com ele) */
   lyricsUrl?: string
   /** id da letra no LRCLIB (busca exata, com sincronia) */
   lrclibId?: number

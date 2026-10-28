@@ -68,7 +68,7 @@ export function useCifra(trackId: string | undefined, artist: string, title: str
     // aba Cifra aberta sem a Letra: carrega a letra para conferir
     const t = usePlayerStore.getState().track
     if (!remote || !t || t.id !== trackId || lyricsTrack === trackId) return
-    void useLyricsStore.getState().fetchLyrics(songArtist(t), t.title, t.id, t.lrclibId, t.durationSeconds)
+    void useLyricsStore.getState().fetchLyrics(songArtist(t), t.title, t.id, t.lrclibId, t.durationSeconds, t.lyricsUrl)
   }, [remote, trackId, lyricsTrack])
 
   return { own, remote: otherSong ? null : remote, state: otherSong ? 'not_found' as const : state, fetchCifra }

@@ -113,7 +113,7 @@ export default function ShowEditor() {
       let ok = 0
       for (const t of all) {
         const [a, b] = await Promise.all([
-          prefetchLyrics(songArtist(t), t.title, t.id, t.lrclibId, t.durationSeconds),
+          prefetchLyrics(songArtist(t), t.title, t.id, t.lrclibId, t.durationSeconds, t.lyricsUrl),
           t.genre === 'importado' ? Promise.resolve(true) : prefetchCifra(t.id, songArtist(t), t.title),
         ])
         if (a && b) ok++
