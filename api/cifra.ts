@@ -198,6 +198,8 @@ function ugStore(html: string): any | null {
 const trace: string[] = []
 
 async function ultimateGuitar(artist: string, title: string): Promise<CifraResult | null> {
+  // sem artista o resultado é qualquer música com esse nome ("Saudade" de outro país...)
+  if (!artist) return null
   // "título + artista" às vezes não traz nada; só o título costuma achar
   const queries = [...new Set([`${title} ${artist}`.trim(), title.trim()])].filter(Boolean)
   for (const q of queries) {
