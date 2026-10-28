@@ -6,8 +6,10 @@
  * - Tom: Signalsmith Stretch no barramento mestre. Só entra no caminho quando tom ≠ 0 ou velocidade ≠ 1.
  * - Bateria, percussão e click não mudam de tom (soariam metálicos): vão por um barramento próprio, atrasado
  *   igual ao processador para ficar no tempo. Com velocidade ≠ 1, um segundo processador só corrige a velocidade.
- * - Memória: pistas iguais nos dois canais viram mono, silêncio do começo e do fim é cortado e pistas
- *   totalmente mudas são descartadas. Assim músicas com muitas pistas cabem na memória do celular.
+ * - Memória: cada pista guarda só os trechos com som (silêncio de 3 s ou mais não ocupa memória), pistas iguais
+ *   nos dois canais viram mono e pistas mudas são descartadas. No celular há um orçamento: passou dele, as
+ *   pistas seguintes viram mono e, no limite, as menos importantes ficam desligadas. Sem isso o Safari do
+ *   iPhone fechava a página no meio do carregamento (uma música de 20 pistas chegava a 1,5 GB).
  * - Pistas de apoio (click, contagem) só são baixadas quando o músico liga.
  * - O tempo informado (currentTime) é o da música original, já descontando a latência do processamento
  *   e da saída de som (caixa Bluetooth), para a letra sincronizada bater com o que se ouve.
@@ -60,6 +62,9 @@ type StretchNode = AudioWorkletNode & {
   addBuffers: (buffers: Float32Array[]) => Promise<number>
 }
 
+/** Trecho com som de uma pista: o buffer e o segundo da música em que ele começa */
+interface Chunk { buffer: AudioBuffer; at: number }
+
 interface LoadedStem {
   id: string
   label: string
@@ -67,11 +72,14 @@ interface LoadedStem {
   ms?: number
   /** pista de apoio (click) ligada sob demanda: toca mesmo durante a prévia */
   lazyStarted?: boolean
-  buffer: AudioBuffer
-  /** segundos da música em que o buffer começa (silêncio inicial cortado) */
+  /** trechos com som, em ordem (os silêncios longos entre eles não ocupam memória) */
+  chunks: Chunk[]
+  /** segundos da música em que a pista começa a ter som / termina */
   offset: number
+  end: number
   gain: GainNode
-  source: AudioBufferSourceNode | null
+  /** fontes tocando agora (uma por trecho) */
+  sources: AudioBufferSourceNode[]
   /** ligada no barramento de ritmo (não muda de tom) */
   rhythm?: boolean
   /** medidor de nível (criado quando o mixer pede) */
@@ -80,7 +88,12 @@ interface LoadedStem {
 }
 
 /** Pista decodificada, ainda sem ligação no motor (pré-carregamento da próxima música do show) */
-interface DecodedStem { buffer: AudioBuffer; offset: number; ms: number; duration: number }
+interface DecodedStem { chunks: Chunk[]; offset: number; end: number; ms: number; duration: number }
+
+/** Passou do limite de memória do aparelho: a pista fica desligada (o músico pode ligar depois) */
+class OverBudget extends Error {}
+
+const chunkBytes = (chunks: Chunk[]) => chunks.reduce((n, c) => n + c.buffer.length * c.buffer.numberOfChannels * 4, 0)
 
 /** Parte da música (intro, verso, refrão...) detectada pelo som das pistas */
 export interface SongAnalysis { peaks: number[]; sections: SongSection[] }
@@ -101,6 +114,8 @@ export type AudioEngineEvent =
   | { type: 'preview'; active: boolean }
   | { type: 'warning'; message: string }
   | { type: 'stemLoading'; id: string; active: boolean }
+  /** pistas deixadas desligadas para caber na memória do aparelho */
+  | { type: 'stemsSkipped'; ids: string[] }
   | { type: 'pitchProcessing'; active: boolean }
   /** o loop A-B voltou ao início (treino progressivo) */
   | { type: 'loopwrap' }
@@ -184,7 +199,6 @@ async function pool<T>(items: T[], limit: number, fn: (item: T, i: number) => Pr
   await Promise.all(workers)
 }
 
-/** Corta silêncio do começo/fim e junta canais idênticos em mono. Retorna null se a pista é muda. */
 /** Energia média (para igualar o volume entre músicas). Amostra 1 a cada 8: rápido no celular */
 function meanSquare(buf: AudioBuffer, start = 0, end = buf.length, fullLength = buf.length): number {
   let sq = 0
@@ -195,33 +209,74 @@ function meanSquare(buf: AudioBuffer, start = 0, end = buf.length, fullLength = 
   return sq / (Math.ceil(fullLength / 8) * buf.numberOfChannels)
 }
 
-function optimizeBuffer(ctx: BaseAudioContext, buf: AudioBuffer): { buffer: AudioBuffer; offset: number; ms: number } | null {
-  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c))
-  const len = buf.length
-  let first = len, last = -1
-  for (const d of chans) {
-    for (let i = 0; i < first; i++) { if (d[i] > SILENCE || d[i] < -SILENCE) { first = i; break } }
-    for (let i = len - 1; i > last; i--) { if (d[i] > SILENCE || d[i] < -SILENCE) { last = i; break } }
-  }
-  if (last < 0) return null
-  const pad = Math.round(buf.sampleRate * 0.05)
-  const start = Math.max(0, first - pad)
-  const end = Math.min(len, last + pad)
+/** silêncio a partir deste tamanho (s) sai da memória; menor que isso fica dentro do trecho */
+const GAP = 3
+const BLOCK = 0.25
 
-  let mono = chans.length === 1
-  if (chans.length === 2) {
-    let diff = 0, level = 0
-    const [l, r] = chans
-    for (let i = start; i < end; i += 8) { const d = l[i] - r[i]; diff += d * d; level += l[i] * l[i] + r[i] * r[i] }
-    mono = level === 0 || Math.sqrt(diff / (level / 2)) < 0.01
+/**
+ * Guarda só os trechos com som da pista (blocos de 0,25 s; silêncio de GAP s ou mais é descartado).
+ * Pista igual nos dois canais vira mono; estéreo de verdade vira mono quando mono(bytesEmEstéreo) pedir
+ * (o volume percebido é mantido). Retorna null se a pista é muda.
+ */
+function compactStem(ctx: BaseAudioContext, buf: AudioBuffer, mono: (stereoBytes: number) => boolean): { chunks: Chunk[]; ms: number } | null {
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c))
+  const len = buf.length, sr = buf.sampleRate
+  const B = Math.round(sr * BLOCK), nb = Math.ceil(len / B)
+  const loud = new Uint8Array(nb)
+  for (const d of chans) {
+    for (let b = 0; b < nb; b++) {
+      if (loud[b]) continue
+      for (let i = b * B, e = Math.min(len, i + B); i < e; i++) if (d[i] > SILENCE || d[i] < -SILENCE) { loud[b] = 1; break }
+    }
   }
-  const outChannels = mono ? 1 : chans.length
-  const ms = meanSquare(buf, start, end, len)
-  // Pista já enxuta: devolve a mesma, sem cópia
-  if (start === 0 && end === len && outChannels === chans.length) return { buffer: buf, offset: 0, ms }
-  const out = ctx.createBuffer(outChannels, end - start, buf.sampleRate)
-  for (let c = 0; c < outChannels; c++) out.copyToChannel(chans[c].subarray(start, end), c)
-  return { buffer: out, offset: start / buf.sampleRate, ms }
+  const regions: [number, number][] = []
+  const gapBlocks = Math.round(GAP / BLOCK)
+  let start = -1, lastLoud = -1
+  for (let b = 0; b < nb; b++) {
+    if (!loud[b]) {
+      if (start >= 0 && b - lastLoud >= gapBlocks) { regions.push([start * B, Math.min(len, (lastLoud + 1) * B)]); start = -1 }
+      continue
+    }
+    if (start < 0) start = b
+    lastLoud = b
+  }
+  if (start >= 0) regions.push([start * B, Math.min(len, (lastLoud + 1) * B)])
+  if (!regions.length) return null
+  const kept = regions.reduce((n, [a, e]) => n + e - a, 0)
+
+  let outChannels = chans.length, downmix = false, g = 1
+  if (chans.length === 2) {
+    const [l, r] = chans
+    let diff = 0, level = 0, sum = 0
+    for (const [a, e] of regions) for (let i = a; i < e; i += 8) {
+      const d = l[i] - r[i], m = l[i] + r[i]
+      diff += d * d; level += l[i] * l[i] + r[i] * r[i]; sum += m * m
+    }
+    if (level === 0 || Math.sqrt(diff / (level / 2)) < 0.01) outChannels = 1
+    else if (mono(kept * 2 * 4)) {
+      outChannels = 1; downmix = true
+      // (L+R)/2 perde volume no que está aberto no estéreo: compensa para soar igual (no máximo +3 dB)
+      g = sum > 0 ? Math.min(Math.SQRT2, Math.max(1, Math.sqrt((level / 2) / (sum / 4)))) : 1
+    }
+  }
+
+  let chunks: Chunk[]
+  if (regions.length === 1 && kept === len && outChannels === chans.length) chunks = [{ buffer: buf, at: 0 }] // já enxuta: sem cópia
+  else chunks = regions.map(([a, e]) => {
+    const out = ctx.createBuffer(outChannels, e - a, sr)
+    if (downmix) {
+      const m = out.getChannelData(0), [l, r] = chans, k = 0.5 * g
+      for (let i = 0; i < e - a; i++) m[i] = (l[a + i] + r[a + i]) * k
+    } else for (let c = 0; c < outChannels; c++) out.copyToChannel(chans[c].subarray(a, e), c)
+    return { buffer: out, at: a / sr }
+  })
+  // energia como se a pista inteira estivesse tocando (os trechos cortados são silêncio)
+  let sq = 0
+  for (const { buffer } of chunks) for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const d = buffer.getChannelData(c)
+    for (let i = 0; i < d.length; i += 8) sq += d[i] * d[i]
+  }
+  return { chunks, ms: sq / (Math.ceil(len / 8) * outChannels) }
 }
 
 /** Celular com pouca memória (≤ 2 GB, quando o navegador informa) */
@@ -235,6 +290,20 @@ const MOBILE = typeof navigator !== 'undefined' &&
  * Sem isso, uma música de 18 pistas ocupava ~675 MB e duas no show passavam de 1 GB: chiado e travamento.
  */
 const COMPACT = LOW_MEMORY || MOBILE
+const IOS = typeof navigator !== 'undefined' &&
+  (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)))
+/**
+ * Orçamento de áudio decodificado da música aberta (MB). Até `stereo` as pistas ficam em estéreo; depois,
+ * mono (metade da memória, na caixa de som soa igual). Passou de `max`, as pistas que faltam (as menos
+ * importantes, que carregam por último) ficam desligadas. O Safari do iPhone fecha a página por volta
+ * de 1 a 1,5 GB, somando tudo o que a página usa; o Android informa a memória do aparelho.
+ */
+const BUDGET_MB = (() => {
+  if (!COMPACT) return { stereo: Infinity, max: 3000 }
+  if (IOS) return { stereo: 120, max: 400 }
+  const mem = (typeof navigator !== 'undefined' && (navigator as any).deviceMemory) || 4
+  return mem <= 2 ? { stereo: 100, max: 300 } : mem <= 4 ? { stereo: 250, max: 600 } : { stereo: 400, max: 900 }
+})()
 
 /** Nível alvo (soma da energia das pistas ligadas): a mediana do acervo, assim o volume médio não muda */
 const LOUDNESS_TARGET = 0.28
@@ -273,6 +342,13 @@ class AudioEngine {
   /** modo econômico: a próxima música do show fica pronta só pela prévia mixada (um arquivo leve) */
   private preloadedMix: { key: string; buffer: AudioBuffer } | null = null
   private preloadId = 0
+
+  /** memória (bytes) das pistas da música aberta, para o orçamento do aparelho */
+  private memBytes = 0
+  /** pistas que alimentam o "Sem voz": precisam continuar em estéreo */
+  private keepStereo = new Set<string>()
+  /** celular: uma decodificação por vez (cada uma ocupa a pista inteira em estéreo até ser enxugada) */
+  private decodeLock: Promise<unknown> = Promise.resolve()
 
   private stems = new Map<string, LoadedStem>()
   /** prévia mixada tocando enquanto as pistas chegam */
@@ -424,17 +500,38 @@ class AudioEngine {
     throw lastErr
   }
 
-  private async decodeStem(stem: Stem, stale: () => boolean): Promise<DecodedStem | null> {
+  /** No celular, uma de cada vez; no computador, em paralelo */
+  private serialized<T>(fn: () => Promise<T>): Promise<T> {
+    if (!COMPACT) return fn()
+    const p = this.decodeLock.then(fn, fn)
+    this.decodeLock = p.catch(() => {})
+    return p
+  }
+
+  /**
+   * Baixa, decodifica e enxuga uma pista.
+   * budget: 'track' conta no orçamento da música aberta (e pode recusar com OverBudget); 'lazy' conta mas
+   * nunca recusa (o músico ligou a pista); 'none' (pré-carregamento) não conta.
+   */
+  private async decodeStem(stem: Stem, stale: () => boolean, budget: 'track' | 'lazy' | 'none' = 'none'): Promise<DecodedStem | null> {
     const ctx = this.ensureContext()
     const bytes = await this.fetchBytes(stem.audioUrl, stale)
-    if (stale()) return null
-    const decoded = await new Promise<AudioBuffer>((resolve, reject) => {
-      // forma com callbacks: funciona também no Safari antigo
-      ctx.decodeAudioData(bytes, resolve, reject)
+    return this.serialized(async () => {
+      if (stale()) return null
+      if (budget === 'track' && this.memBytes / 1e6 >= BUDGET_MB.max) throw new OverBudget()
+      const decoded = await new Promise<AudioBuffer>((resolve, reject) => {
+        // forma com callbacks: funciona também no Safari antigo
+        ctx.decodeAudioData(bytes, resolve, reject)
+      })
+      const keep = this.keepStereo.has(stem.audioUrl)
+      const opt = compactStem(ctx, decoded, stereoBytes => !keep && budget !== 'none' && (this.memBytes + stereoBytes) / 1e6 > BUDGET_MB.stereo)
+      if (!opt || stale()) return null
+      const size = chunkBytes(opt.chunks)
+      if (budget === 'track' && (this.memBytes + size) / 1e6 > BUDGET_MB.max) throw new OverBudget()
+      if (budget !== 'none') this.memBytes += size
+      const last = opt.chunks[opt.chunks.length - 1]
+      return { ...opt, offset: opt.chunks[0].at, end: last.at + last.buffer.duration, duration: decoded.duration }
     })
-    const opt = optimizeBuffer(ctx, decoded)
-    if (!opt || stale()) return null
-    return { ...opt, duration: decoded.duration }
   }
 
   /** Liga uma pista decodificada no motor (volume, barramento de tom ou de ritmo) */
@@ -444,11 +541,11 @@ class AudioEngine {
     gain.gain.value = this.targetGain(stem.id)
     const bus = this.busFor(stem.id)
     gain.connect(bus)
-    return { id: stem.id, label: stem.label, buffer: d.buffer, offset: d.offset, gain, source: null, ms: d.ms, rhythm: bus === this.rhythmBus }
+    return { id: stem.id, label: stem.label, chunks: d.chunks, offset: d.offset, end: d.end, gain, sources: [], ms: d.ms, rhythm: bus === this.rhythmBus }
   }
 
-  private async loadStem(stem: Stem, signalId: number): Promise<LoadedStem | null> {
-    const d = await this.decodeStem(stem, () => signalId !== this.loadId)
+  private async loadStem(stem: Stem, signalId: number, budget: 'track' | 'lazy' = 'track'): Promise<LoadedStem | null> {
+    const d = await this.decodeStem(stem, () => signalId !== this.loadId, budget)
     return d && signalId === this.loadId ? this.adoptStem(stem, d) : null
   }
 
@@ -504,6 +601,8 @@ class AudioEngine {
     // Pistas de apoio desligadas ficam para depois
     const now: Stem[] = []
     const derived = stems.filter(s => s.derive)
+    this.keepStereo = new Set(derived.map(d => d.audioUrl))
+    const skipped: string[] = []
     for (const s of stems) {
       if (s.derive) continue
       const st = this.stemStates[s.id]
@@ -543,7 +642,7 @@ class AudioEngine {
       // a prévia baixa sozinha primeiro (com a internet toda); as pistas começam em seguida
       const useMix = (mixStem: LoadedStem) => {
         this.mix = mixStem
-        if (mixStem.buffer.duration > this._duration) this._duration = mixStem.buffer.duration
+        if (mixStem.end > this._duration) this._duration = mixStem.end
         this.emit({ type: 'preview', active: true })
         this.updateNorm()
         becomeReady()
@@ -560,6 +659,7 @@ class AudioEngine {
     const all = pool(now, COMPACT ? Math.min(3, fetchConcurrency()) : fetchConcurrency(), async (s) => {
       try {
         const ready = pre?.get(s.id)
+        if (ready) this.memBytes += chunkBytes(ready.chunks)
         const loaded = ready ? this.adoptStem(s, ready) : await this.loadStem(s, id)
         if (loaded && id === this.loadId) {
           this.stems.set(s.id, loaded)
@@ -572,7 +672,15 @@ class AudioEngine {
           }
         }
       } catch (err) {
-        if (id === this.loadId) { failed++; console.error(`[AudioEngine] pista ${s.id} falhou:`, err) }
+        if (id !== this.loadId) { /* música trocada */ }
+        else if (err instanceof OverBudget) {
+          // desligada já (senão o próximo ajuste do mixer tentaria carregar); o músico pode ligar depois
+          skipped.push(s.id)
+          this.stemStates[s.id] = { ...(this.stemStates[s.id] ?? { id: s.id, solo: false, volume: 1 }), muted: true }
+          this.pending.set(s.id, s)
+          this.emit({ type: 'stemsSkipped', ids: [s.id] })
+        }
+        else { failed++; console.error(`[AudioEngine] pista ${s.id} falhou:`, err) }
       }
       done++
       if (id !== this.loadId) return
@@ -598,6 +706,7 @@ class AudioEngine {
       if (this.mix) this.handoff()
       for (const d of derived) await this.buildDerived(d, stems, id)
       if (failed > 0) this.emit({ type: 'warning', message: `${failed} pista(s) não carregaram. A música toca com as demais.` })
+      if (skipped.length) this.emit({ type: 'warning', message: `Música com muitas pistas: ${skipped.length} das menos importantes ficaram desligadas para o celular não travar. Ligue no mixer se precisar.` })
       this.emit({ type: 'background', loaded: now.length, total: now.length })
     })
   }
@@ -652,7 +761,7 @@ class AudioEngine {
   /** Onde o som de verdade acaba (sem o silêncio do fim do arquivo) */
   get contentEnd(): number {
     let e = 0
-    this.stems.forEach(st => { if (!isSupportStem(st)) e = Math.max(e, st.offset + st.buffer.duration) })
+    this.stems.forEach(st => { if (!isSupportStem(st)) e = Math.max(e, st.end) })
     return e || this._duration
   }
 
@@ -698,24 +807,30 @@ class AudioEngine {
     this.anchorPos = pos
   }
 
+  /** Agenda os trechos da pista a partir da posição pos (os que já passaram ficam de fora) */
   private startStem(st: LoadedStem, pos: number, when: number, ctx: AudioContext) {
-    const rel = pos - st.offset
-    if (rel >= st.buffer.duration) return
-    const src = ctx.createBufferSource()
-    src.buffer = st.buffer
-    src.playbackRate.value = this._speed
-    src.connect(st.gain)
-    if (rel >= 0) src.start(when, rel)
-    else src.start(when + -rel / this._speed, 0)
-    src.onended = () => { try { src.disconnect() } catch {} ; if (st.source === src) st.source = null }
-    st.source = src
+    for (const c of st.chunks) {
+      const rel = pos - c.at
+      if (rel >= c.buffer.duration) continue
+      const src = ctx.createBufferSource()
+      src.buffer = c.buffer
+      src.playbackRate.value = this._speed
+      src.connect(st.gain)
+      if (rel >= 0) src.start(when, rel)
+      else src.start(when + -rel / this._speed, 0)
+      src.onended = () => { try { src.disconnect() } catch {} ; const i = st.sources.indexOf(src); if (i >= 0) st.sources.splice(i, 1) }
+      st.sources.push(src)
+    }
+  }
+
+  private stopStem(st: LoadedStem, when?: number) {
+    for (const src of st.sources) { try { src.stop(when) } catch {} }
+    st.sources = []
   }
 
   private stopSources(when?: number) {
-    this.stems.forEach(st => {
-      if (st.source) { try { st.source.stop(when) } catch {} ; st.source = null }
-    })
-    if (this.mix?.source) { try { this.mix.source.stop(when) } catch {} ; this.mix.source = null }
+    this.stems.forEach(st => this.stopStem(st, when))
+    if (this.mix) this.stopStem(this.mix, when)
   }
 
   /** Monta a pista calculada (ex.: "Sem voz") a partir da pista original já carregada */
@@ -724,16 +839,20 @@ class AudioEngine {
     const src = srcStem && this.stems.get(srcStem.id)
     if (!src || signalId !== this.loadId) return
     try {
-      const buf = await karaokeBuffer(src.buffer)
-      if (!buf || signalId !== this.loadId) {
-        if (!buf) this.emit({ type: 'warning', message: 'Esta música é mono: não dá para tirar a voz.' })
-        return
+      const chunks: Chunk[] = []
+      for (const c of src.chunks) {
+        const buf = await karaokeBuffer(c.buffer)
+        if (!buf) { this.emit({ type: 'warning', message: 'Esta música é mono: não dá para tirar a voz.' }); return }
+        if (signalId !== this.loadId) return
+        chunks.push({ buffer: buf, at: c.at })
       }
+      let sq = 0, n = 0
+      for (const c of chunks) { const m = meanSquare(c.buffer); sq += m * c.buffer.length; n += c.buffer.length }
       const gain = this.ctx!.createGain()
       gain.gain.value = this.targetGain(d.id)
       const bus = this.busFor(d.id)
       gain.connect(bus)
-      const st: LoadedStem = { id: d.id, label: d.label, buffer: buf, offset: src.offset, gain, source: null, ms: meanSquare(buf), rhythm: bus === this.rhythmBus }
+      const st: LoadedStem = { id: d.id, label: d.label, chunks, offset: src.offset, end: src.end, gain, sources: [], ms: n ? sq / n : 0, rhythm: bus === this.rhythmBus }
       this.stems.set(d.id, st)
       if (this._playing && this.ctx && !this.mix) {
         const when = this.ctx.currentTime + 0.05
@@ -775,7 +894,7 @@ class AudioEngine {
    */
   getStemLevel(id: string): number | null {
     const st = this.stems.get(id)
-    if (!st || !this.ctx || !this._playing || !st.source) return null
+    if (!st || !this.ctx || !this._playing || !st.sources.length) return null
     if (!st.meter) {
       st.meter = this.ctx.createAnalyser()
       st.meter.fftSize = 512
@@ -803,13 +922,16 @@ class AudioEngine {
     // nível de cada pista a cada meio segundo (1 amostra a cada 16: rápido no celular)
     const tracks: SectionTrack[] = src.map(st => {
       const rms = new Float32Array(n)
-      const sr = st.buffer.sampleRate, d = st.buffer.getChannelData(0), per = Math.round(HOP * sr)
-      for (let f = Math.max(0, Math.floor(st.offset / HOP)); f < n; f++) {
-        const a = Math.round((f * HOP - st.offset) * sr)
-        if (a >= d.length) break
-        let sq = 0, c = 0
-        for (let i = Math.max(0, a); i < Math.min(d.length, a + per); i += 16) { sq += d[i] * d[i]; c++ }
-        if (c) rms[f] = Math.sqrt(sq / c)
+      // trechos cortados são silêncio: o meio segundo que cai na borda de um trecho conta só a parte com som
+      for (const ch of st.chunks) {
+        const sr = ch.buffer.sampleRate, d = ch.buffer.getChannelData(0), per = Math.round(HOP * sr), full = Math.ceil(per / 16)
+        for (let f = Math.max(0, Math.floor(ch.at / HOP)); f < n; f++) {
+          const a = Math.round((f * HOP - ch.at) * sr)
+          if (a >= d.length) break
+          let sq = 0
+          for (let i = Math.max(0, a); i < Math.min(d.length, a + per); i += 16) sq += d[i] * d[i]
+          rms[f] = Math.sqrt(rms[f] * rms[f] + sq / full)
+        }
       }
       return { rms, voice: st !== this.mix && isVoiceStem(st) }
     })
@@ -865,7 +987,7 @@ class AudioEngine {
     const gain = this.ctx!.createGain()
     gain.gain.value = 1
     gain.connect(this.mixBus!)
-    return { id: '__mix', label: 'Prévia', buffer, offset: 0, gain, source: null, ms: meanSquare(buffer) }
+    return { id: '__mix', label: 'Prévia', chunks: [{ buffer, at: 0 }], offset: 0, end: buffer.duration, gain, sources: [], ms: meanSquare(buffer) }
   }
 
   /** Troca a prévia pelas pistas separadas, com uma transição curta (sem corte, no ponto exato) */
@@ -881,14 +1003,14 @@ class AudioEngine {
     const when = ctx.currentTime + 0.1
     const pos = this.anchorPos + (when - this.anchorCtxTime) * this._speed
     this.stems.forEach(st => {
-      if (st.source) return // já tocando (ex.: click ligado durante a prévia)
+      if (st.sources.length) return // já tocando (ex.: click ligado durante a prévia)
       const g = st.gain.gain
       g.cancelScheduledValues(0); g.setValueAtTime(0, when); g.linearRampToValueAtTime(this.targetGain(st.id), when + XF)
       this.startStem(st, pos, when, ctx)
     })
     mix.gain.gain.setValueAtTime(1, when)
     mix.gain.gain.linearRampToValueAtTime(0, when + XF)
-    try { mix.source?.stop(when + XF + 0.05) } catch {}
+    this.stopStem(mix, when + XF + 0.05)
     setTimeout(() => { try { mix.gain.disconnect() } catch {} }, (XF + 0.6) * 1000)
   }
 
@@ -1127,7 +1249,7 @@ class AudioEngine {
     const id = this.loadId
     this.emit({ type: 'stemLoading', id: stem.id, active: true })
     try {
-      const loaded = await this.loadStem(stem, id)
+      const loaded = await this.loadStem(stem, id, 'lazy')
       if (!loaded || id !== this.loadId) return
       loaded.lazyStarted = true
       this.stems.set(stem.id, loaded)
@@ -1264,11 +1386,15 @@ class AudioEngine {
         if (!list.length) return null
         const mixCtx = new OfflineAudioContext(2, length, sr)
         list.forEach(st => {
-          const src = mixCtx.createBufferSource(); src.buffer = st.buffer
           const g = mixCtx.createGain(); g.gain.value = volOf(st.id) * this._volume
-          src.connect(g); g.connect(mixCtx.destination)
-          if (st.offset >= from) src.start(st.offset - from)
-          else if (from - st.offset < st.buffer.duration) src.start(0, from - st.offset)
+          g.connect(mixCtx.destination)
+          for (const c of st.chunks) {
+            if (c.at >= to || c.at + c.buffer.duration <= from) continue
+            const src = mixCtx.createBufferSource(); src.buffer = c.buffer
+            src.connect(g)
+            if (c.at >= from) src.start(c.at - from)
+            else src.start(0, from - c.at)
+          }
         })
         return mixCtx.startRendering()
       }
@@ -1301,7 +1427,8 @@ class AudioEngine {
     this._playing = false
     this.stems.forEach(st => { try { st.gain.disconnect() } catch {} })
     this.stems.clear()
-    if (this.mix) { try { this.mix.source?.stop() } catch {} ; try { this.mix.gain.disconnect() } catch {} ; this.mix = null }
+    if (this.mix) { this.stopStem(this.mix); try { this.mix.gain.disconnect() } catch {} ; this.mix = null }
+    this.memBytes = 0
     this.pending.clear()
     this.allLoaded = false
     this.fading = false
@@ -1327,14 +1454,15 @@ class AudioEngine {
   /** Diagnóstico (usado nos testes e no suporte) */
   stats() {
     let bytes = 0, mono = 0
-    this.stems.forEach(st => { bytes += st.buffer.length * st.buffer.numberOfChannels * 4; if (st.buffer.numberOfChannels === 1) mono++ })
+    let chunks = 0
+    this.stems.forEach(st => { bytes += chunkBytes(st.chunks); chunks += st.chunks.length; if (st.chunks[0]?.buffer.numberOfChannels === 1) mono++ })
     return {
       stems: this.stems.size, pending: [...this.pending.keys()], mono, memoryMB: Math.round(bytes / 1e6), preview: !!this.mix, normGain: Math.round(this.normGain * 100) / 100,
       stretchActive: this.stretchActive, stretchLatency: this.stretchLatency, stretchFailed: this.stretchFailed,
       rhythmTarget: this.rhythmTarget, rhythmStems: [...this.stems.values()].filter(st => st.rhythm).map(st => st.id),
       playing: this._playing, position: this.currentTime, duration: this._duration, speed: this._speed, pitch: this._pitch,
       ctxState: this.ctx?.state, sampleRate: this.ctx?.sampleRate,
-      sources: [...this.stems.values()].filter(st => st.source).length,
+      sources: [...this.stems.values()].filter(st => st.sources.length).length, chunks,
     }
   }
 }

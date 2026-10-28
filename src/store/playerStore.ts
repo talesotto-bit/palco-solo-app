@@ -221,6 +221,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         }
         break
       }
+      case 'stemsSkipped':
+        // deixadas de fora para caber na memória do celular: aparecem desligadas no mixer (não salva como escolha)
+        set(s => {
+          const stemStates = { ...s.stemStates }
+          for (const id of event.ids) if (stemStates[id]) stemStates[id] = { ...stemStates[id], muted: true }
+          return { stemStates }
+        })
+        break
       case 'stemLoading':
         set(s => ({ loadingStems: event.active ? [...s.loadingStems, event.id] : s.loadingStems.filter(x => x !== event.id) }))
         // a voz guia chegou depois: as partes da música ficam mais precisas
