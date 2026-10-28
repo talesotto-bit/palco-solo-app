@@ -173,7 +173,7 @@ export function LyricsPanel() {
       {syncedLines && syncedLines.length > 0 && (
         <div className="flex items-center justify-between gap-2 px-3 py-1.5 shrink-0 bg-black/20 text-[11px]">
           <span className="text-[#9a9a9a] leading-tight">
-            Sincronia: <b className="text-white">{sync.mode === 'auto' ? 'automática' : sync.mode === 'manual' ? `ajustada (${sync.offset > 0 ? '+' : ''}${sync.offset.toFixed(1)}s)` : 'original'}</b>
+            Sincronia: <b className="text-white">{sync.mode === 'manual' ? `ajustada (${sync.offset > 0 ? '+' : ''}${sync.offset.toFixed(1)}s)` : 'no tempo da música'}</b>
           </span>
           <div className="flex items-center gap-1 shrink-0">
             <button onClick={() => sync.nudge(-0.25)} aria-label="Letra mais cedo" className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center"><Minus className="h-3.5 w-3.5" /></button>

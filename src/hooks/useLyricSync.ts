@@ -1,40 +1,27 @@
-import { useEffect, useState } from 'react'
 import { usePlayerStore } from '@/store/playerStore'
 import { useLyricsSyncStore } from '@/store/lyricsSyncStore'
-import { audioEngine } from '@/audio/AudioEngine'
-import { useLyricsStore, type LrcLine } from '@/store/lyricsStore'
+import type { LrcLine } from '@/store/lyricsStore'
 
 /**
  * Sincronia da letra com o playback:
  * - ajuste manual do músico (salvo por música) tem prioridade;
- * - senão, alinha sozinho pelo início da voz guia (quando a música tem);
- * - senão, usa os tempos da letra como vieram.
+ * - senão, usa os tempos da letra como vieram. Só chega letra sincronizada da gravação com a mesma duração
+ *   do playback (lyricsStore), então os tempos já batem.
+ *
+ * Não alinha mais pelo início da "voz guia": em muitos playbacks a guia é a melodia tocada por um instrumento
+ * e começa na introdução, antes do cantor. Em Deixa Alagar ela entra aos 3,2 s e o canto aos 11,5 s, e o
+ * alinhamento automático adiantava a letra 8 s (a letra corria na frente do cantor).
  */
 export function useLyricSync(lines: LrcLine[] | null) {
   const trackId = usePlayerStore(s => s.track?.id)
-  const loaded = usePlayerStore(s => s.playbackState !== 'loading' && s.playbackState !== 'idle')
-  // a voz guia pode chegar depois (prévia): recalcula quando todas as pistas estiverem prontas
-  const allStems = usePlayerStore(s => !s.bgProgress && !s.previewActive)
   const manual = useLyricsSyncStore(s => (trackId ? s.offsets[trackId] : undefined))
   const setOffset = useLyricsSyncStore(s => s.setOffset)
   const clearOffset = useLyricsSyncStore(s => s.clearOffset)
-  const [auto, setAuto] = useState<number | null>(null)
-  // letra sincronizada pelo próprio músico já está no tempo deste playback
-  const ownSynced = useLyricsStore(s => s.source === 'Sua letra sincronizada')
 
-  useEffect(() => {
-    setAuto(null)
-    if (!lines?.length || !loaded || ownSynced) return
-    const vs = audioEngine.voiceStart()
-    if (vs === null) return
-    const diff = vs - lines[0].time
-    if (Math.abs(diff) >= 0.3 && Math.abs(diff) <= 40) setAuto(Math.round(diff * 100) / 100)
-  }, [trackId, lines, loaded, allStems, ownSynced])
-
-  const offset = manual ?? auto ?? 0
+  const offset = manual ?? 0
   return {
     offset,
-    mode: manual !== undefined ? 'manual' as const : auto !== null ? 'auto' as const : 'none' as const,
+    mode: manual !== undefined ? 'manual' as const : 'none' as const,
     nudge: (delta: number) => { if (trackId) setOffset(trackId, offset + delta) },
     /** o músico toca quando o cantor começa: alinha a 1ª linha naquele instante */
     markStart: () => {
