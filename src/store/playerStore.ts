@@ -579,8 +579,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       if (!t || isLocked(t)) return
       // só mostra a música; o áudio é baixado quando o músico apertar play (economiza dados)
       const saved = useTrackSettingsStore.getState().get(t.id)
-      const stemStates = buildStemStates(t)
-      if (saved) for (const sid of Object.keys(saved.stemStates)) if (stemStates[sid]) stemStates[sid] = { ...saved.stemStates[sid], id: sid }
+      const stemStates = initialStemStates(t)
       set({ track: t, stemStates, pitch: saved?.pitch ?? 0, speed: saved?.speed ?? 1, playbackState: 'idle', currentTime: 0, duration: 0 })
     },
 

@@ -652,8 +652,10 @@ class AudioEngine {
 
     // Prévia mixada: um arquivo leve que toca na hora. Só quando as pistas ainda não estão no aparelho.
     // Prévia já decodificada (show no celular): entra na hora, mesmo com as pistas guardadas no aparelho.
-    const useMix = !!preMix || (!!opts?.mixUrl && !isAvailableOffline(now.map(s => s.audioUrl)) && !now.every(s => pre?.has(s.id)))
-    const mixP = preMix ? Promise.resolve(this.mixFromBuffer(preMix))
+    // saída VS: a prévia foi gerada com a regência misturada (iria para o R, na caixa); nessas músicas espera as pistas
+    const mixOk = !(this.vsOutput && stems.some(s => /reg[eê]ncia/i.test(`${s.id} ${s.label}`)))
+    const useMix = mixOk && (!!preMix || (!!opts?.mixUrl && !isAvailableOffline(now.map(s => s.audioUrl)) && !now.every(s => pre?.has(s.id))))
+    const mixP = useMix && preMix ? Promise.resolve(this.mixFromBuffer(preMix))
       : useMix ? this.loadMix(opts!.mixUrl!, id).catch(err => { console.warn('[AudioEngine] prévia falhou:', err); return null }) : null
 
     const need = Math.min(now.length, Math.max(2, Math.ceil(now.length * 0.4)))
@@ -699,10 +701,12 @@ class AudioEngine {
         const loaded = ready ? this.adoptStem(s, ready) : await this.loadStem(s, id)
         if (loaded && id === this.loadId) {
           this.stems.set(s.id, loaded)
+          // click/regência ligados (saída VS): tocam já junto da prévia — a banda precisa do click desde o começo
+          if (isSupportStem(s)) loaded.lazyStarted = true
           ok++
           this.updateNorm()
           // chegou com a música tocando: entra sincronizada (durante a prévia, espera a troca)
-          if (this._playing && this.ctx && !this.mix) {
+          if (this._playing && this.ctx && (!this.mix || loaded.lazyStarted)) {
             const when = this.ctx.currentTime + 0.05
             this.startStem(loaded, this.anchorPos + (when - this.anchorCtxTime) * this._speed, when, this.ctx)
           }
@@ -1107,7 +1111,7 @@ class AudioEngine {
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
       osc.connect(g)
       // saída VS: a contagem vai junto do click, no L
-      if (this.vsOutput) { const p = ctx.createStereoPanner(); p.pan.value = -1; g.connect(p); p.connect(ctx.destination) }
+      if (this.vsOutput && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = -1; g.connect(p); p.connect(ctx.destination) }
       else g.connect(ctx.destination)
       osc.start(t); osc.stop(t + 0.1)
       this.countInNodes.push(osc)
@@ -1304,7 +1308,10 @@ class AudioEngine {
     this.updateNorm()
     const t = this.ctx?.currentTime ?? 0
     this.stems.forEach(st => {
-      st.gain.gain.setTargetAtTime(this.targetGain(st.id), t, 0.015)
+      // desfaz a rampa da troca prévia → pistas (se estiver no meio): senão ela terminaria no volume antigo
+      const g = st.gain.gain
+      g.cancelScheduledValues(t); g.setValueAtTime(g.value, t)
+      g.setTargetAtTime(this.targetGain(st.id), t, 0.015)
       // "acompanha o tom" mudou: troca de barramento (os dois caminhos têm o mesmo atraso, segue no tempo)
       const bus = this.busFor(st.id), rhythm = bus === this.rhythmBus
       if (rhythm !== !!st.rhythm) {
