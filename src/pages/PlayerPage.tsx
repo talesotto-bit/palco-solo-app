@@ -47,7 +47,7 @@ export default function PlayerPage() {
   const noVocalsOn = usePlayerStore(s => (noVocalsStem ? !s.stemStates[noVocalsStem.id]?.muted : false))
   const isLocal = !!track?.id.startsWith('local-')
   const keySuggestion = usePlayerStore(s => s.keySuggestion)
-  const [tab, setTab] = useState<Tab>('letra')
+  const [tab, setTab] = useState<Tab>('mixer')
   const [editing, setEditing] = useState(false)
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
@@ -78,7 +78,7 @@ export default function PlayerPage() {
     toast('Música de volta ao original')
   }
 
-  const tabs: [Tab, string, typeof AlignLeft][] = [['letra', 'Letra', AlignLeft], ['cifra', 'Cifra', Guitar], ['tom', 'Tom', Gauge], ['mixer', 'Mixer', SlidersHorizontal]]
+  const tabs: [Tab, string, typeof AlignLeft][] = [['mixer', 'Mixer', SlidersHorizontal], ['cifra', 'Cifra', Guitar], ['tom', 'Tom', Gauge], ['letra', 'Letra', AlignLeft]]
 
   return (
     <div className="h-full overflow-y-auto">

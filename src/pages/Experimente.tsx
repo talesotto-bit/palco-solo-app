@@ -68,7 +68,7 @@ function GuidedDemo() {
   const [started, setStarted] = useState(false)
   const [done, setDone] = useState<Set<MissionId>>(new Set())
   const [stage, setStage] = useState(false)
-  const [tab, setTab] = useState<'letra' | 'cifra' | 'mixer'>('letra')
+  const [tab, setTab] = useState<'letra' | 'cifra' | 'mixer'>('mixer')
   const [justReady, setJustReady] = useState(false)
   const celebrated = useRef(false)
 
@@ -216,11 +216,11 @@ function GuidedDemo() {
           </div>
         )}
 
-        {/* letra e mixer completo (o app de verdade) */}
+        {/* mixer completo e letra (o app de verdade) */}
         {track && started && (
           <div className="mt-4">
             <div className="flex gap-1.5">
-              {([['letra', 'Letra', AlignLeft], ['cifra', 'Cifra', Guitar], ['mixer', 'Mixer', SlidersHorizontal]] as const).map(([id, label, Icon]) => (
+              {([['mixer', 'Mixer', SlidersHorizontal], ['cifra', 'Cifra', Guitar], ['letra', 'Letra', AlignLeft]] as const).map(([id, label, Icon]) => (
                 <button key={id} onClick={() => setTab(id)} className={cn('flex-1 h-9 rounded-full text-[12px] font-bold flex items-center justify-center gap-1', tab === id ? 'bg-white text-black' : 'bg-white/[0.07] text-white/75')}><Icon className="h-3.5 w-3.5" /> {label}</button>
               ))}
             </div>
