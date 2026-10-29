@@ -100,6 +100,10 @@ interface PlayerStore extends PlayerState {
   setStemSolo: (stemId: string, solo: boolean) => void
   setStemVolume: (stemId: string, volume: number) => void
   setStemFollowPitch: (stemId: string, follow: boolean) => void
+  /** pan da pista (-1 L, 0 centro, 1 R); undefined volta ao padrão (centro ou o lado da saída VS) */
+  setStemPan: (stemId: string, pan: number | undefined) => void
+  /** liga/desliga a saída VS: instrumental no R, click/contagem/regência no L */
+  setVsOutput: (on: boolean) => void
   resetMix: () => void
   resetPitch: () => void
   resetSpeed: () => void
@@ -126,15 +130,17 @@ export function stemInstrument(stem: { id: string; label: string }) {
 /**
  * Estado inicial do mixer: tudo ligado, menos click e contagem (vão no fone, não na caixa)
  * e os instrumentos que o músico toca ao vivo (ele mesmo faz essa parte).
+ * Com a saída VS, click/contagem/regência começam ligados: vão no L, para o fone dos músicos.
  */
 export function buildStemStates(track: Track): Record<string, StemState> {
   const states: Record<string, StemState> = {}
-  const plays = new Set<string>(usePrefsStore.getState().plays)
+  const { plays: played, vsOutput } = usePrefsStore.getState()
+  const plays = new Set<string>(played)
   const many = track.stems.length > 2
   track.stems.forEach(stem => {
     const mine = many && !stem.derive && plays.has(stemInstrument(stem))
     // "Sem voz" (beta) começa desligado: o músico liga e desliga a original
-    states[stem.id] = { id: stem.id, muted: isSupportStem(stem) || mine || !!stem.derive, solo: false, volume: 1 }
+    states[stem.id] = { id: stem.id, muted: (isSupportStem(stem) && !vsOutput) || mine || !!stem.derive, solo: false, volume: 1 }
   })
   return states
 }
@@ -144,8 +150,12 @@ function initialStemStates(track: Track): Record<string, StemState> {
   const saved = useTrackSettingsStore.getState().get(track.id)
   const stemStates = buildStemStates(track)
   if (saved) for (const id of Object.keys(saved.stemStates)) if (stemStates[id]) stemStates[id] = { ...saved.stemStates[id], id }
+  // saída VS: o click abre sempre ligado, mesmo nas músicas salvas antes (sem ele a banda se perde)
+  if (usePrefsStore.getState().vsOutput) for (const stem of track.stems) if (isSupportStem(stem) && stemStates[stem.id]) stemStates[stem.id] = { ...stemStates[stem.id], muted: false }
   return stemStates
 }
+
+audioEngine.setVsOutput(usePrefsStore.getState().vsOutput)
 
 export const usePlayerStore = create<PlayerStore>((set, get) => {
   const analyzeSoon = () => setTimeout(() => {
@@ -425,6 +435,23 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       audioEngine.setStemStates(stemStates)
       set({ stemStates })
       get().saveTrackSettings()
+    },
+
+    setStemPan: (stemId, pan) => {
+      const stemStates = { ...get().stemStates }
+      if (!stemStates[stemId]) return
+      stemStates[stemId] = { ...stemStates[stemId], pan }
+      audioEngine.setStemStates(stemStates)
+      set({ stemStates })
+      get().saveTrackSettings()
+    },
+
+    setVsOutput: (on) => {
+      usePrefsStore.getState().setVsOutput(on)
+      audioEngine.setVsOutput(on)
+      // click/contagem/regência: ligados na saída VS (vão para o fone), desligados na caixa
+      const track = get().track
+      if (track) for (const stem of track.stems) if (isSupportStem(stem) && get().stemStates[stem.id]?.muted === on) get().setStemMuted(stem.id, !on)
     },
 
     resetMix: () => {

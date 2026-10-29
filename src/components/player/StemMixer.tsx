@@ -115,6 +115,33 @@ function QuickMixes() {
   )
 }
 
+/** Saída VS para a mesa: instrumental no R, click/contagem/regência no L (vale para todas as músicas) */
+function VsOutput() {
+  const on = usePrefsStore(s => s.vsOutput)
+  const setVsOutput = usePlayerStore(s => s.setVsOutput)
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={() => setVsOutput(!on)}
+      className={cn('mx-4 md:mx-5 mb-3 flex w-[calc(100%-2rem)] md:w-[calc(100%-2.5rem)] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
+        on ? 'bg-[hsl(var(--primary))]/15' : 'bg-white/[0.05] hover:bg-white/[0.08]')}
+    >
+      <span className="flex-1 min-w-0">
+        <span className="block text-xs font-bold text-white">Saída VS para a mesa</span>
+        <span className="block text-[11px] text-[#a8a8a8]">Instrumental no R · click, contagem e regência no L. Vale para todas as músicas.</span>
+      </span>
+      <span className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', on ? 'bg-[hsl(var(--primary))]' : 'bg-white/20')}>
+        <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all', on ? 'left-[18px]' : 'left-0.5')} />
+      </span>
+    </button>
+  )
+}
+
+/** L → C → R → L */
+const PAN_NEXT: Record<string, number> = { '-1': 0, '0': 1, '1': -1 }
+const PAN_NAME: Record<string, string> = { '-1': 'esquerda (L)', '0': 'centro', '1': 'direita (R)' }
+
 function PreviewBanner() {
   const preview = usePlayerStore(s => s.previewActive)
   const bg = usePlayerStore(s => s.bgProgress)
@@ -153,6 +180,8 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
   const setStemSolo = usePlayerStore(s => s.setStemSolo)
   const setStemVolume = usePlayerStore(s => s.setStemVolume)
   const setStemFollowPitch = usePlayerStore(s => s.setStemFollowPitch)
+  const setStemPan = usePlayerStore(s => s.setStemPan)
+  const vsOutput = usePrefsStore(s => s.vsOutput)
   const resetMix = usePlayerStore(s => s.resetMix)
   const pitch = usePlayerStore(s => s.pitch)
   const rhythm = useMemo(() => rhythmStemIds(track?.stems ?? []), [track])
@@ -164,7 +193,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
     ? track.stems.filter(s => visibleStemIds.has(s.id))
     : track.stems
   const hasSolo = Object.values(stemStates).some(s => s.solo)
-  const anyModified = Object.values(stemStates).some(s => s.muted || s.solo || s.volume !== 1)
+  const anyModified = Object.values(stemStates).some(s => s.muted || s.solo || s.volume !== 1 || s.pan !== undefined)
   const isPlaying = playbackState === 'playing'
   // a escolha "acompanha o tom" só aparece com o tom alterado (é quando faz diferença)
   const pitchOn = Math.abs(pitch) > 0.01
@@ -217,6 +246,7 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
       </div>
 
       <QuickMixes />
+      <VsOutput />
 
       {pitchOn && (
         <div className="mx-4 md:mx-5 mb-3 rounded-lg bg-white/[0.05] px-3 py-2 text-xs text-[#c8c8c8]">
@@ -240,6 +270,8 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
           const label = stemDisplayLabel(stem.id, stem.label)
           const stemActive = isPlaying && !isMuted && (!hasSolo || isSolo)
           const follows = followsPitch(stem.id, rhythm, state.followPitch)
+          // pan valendo agora: o escolhido ou o padrão (centro, ou o lado da saída VS)
+          const pan = Math.sign(state.pan ?? (vsOutput ? (isSupportStem(stem) ? -1 : 1) : 0))
 
           return (
             <div
@@ -300,6 +332,20 @@ export function StemMixer({ visibleStemIds }: StemMixerProps = {}) {
                   {!follows && <span className="absolute h-[2px] w-5 md:w-4 rotate-45 rounded bg-current" />}
                 </button>
               )}
+
+              {/* Pan: L / C / R */}
+              <button
+                aria-label={`Pan de ${label}: ${PAN_NAME[pan]}. Tocar para mudar`}
+                onClick={() => setStemPan(stem.id, PAN_NEXT[pan])}
+                className={cn(
+                  'flex items-center justify-center h-10 w-10 md:h-8 md:w-8 rounded-full shrink-0 transition-colors text-xs font-bold',
+                  pan !== 0
+                    ? 'bg-sky-500/20 text-sky-300'
+                    : 'bg-white/5 text-[#6a6a6a] hover:text-white hover:bg-white/10'
+                )}
+              >
+                {pan < 0 ? 'L' : pan > 0 ? 'R' : 'C'}
+              </button>
 
               {/* Mute button */}
               <button

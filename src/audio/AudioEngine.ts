@@ -10,7 +10,8 @@
  *   nos dois canais viram mono e pistas mudas são descartadas. No celular há um orçamento: passou dele, as
  *   pistas seguintes viram mono e, no limite, as menos importantes ficam desligadas. Sem isso o Safari do
  *   iPhone fechava a página no meio do carregamento (uma música de 20 pistas chegava a 1,5 GB).
- * - Pistas de apoio (click, contagem) só são baixadas quando o músico liga.
+ * - Pistas de apoio (click, contagem, regência) só são baixadas quando o músico liga.
+ * - Pan por pista e saída VS para a mesa: instrumental no R, click/contagem/regência no L (ver makePan).
  * - O tempo informado (currentTime) é o da música original, já descontando a latência do processamento
  *   e da saída de som (caixa Bluetooth), para a letra sincronizada bater com o que se ouve.
  */
@@ -78,6 +79,8 @@ interface LoadedStem {
   offset: number
   end: number
   gain: GainNode
+  /** pan, criado só quando a pista sai do centro (no centro o caminho é direto) */
+  pan?: Pan
   /** fontes tocando agora (uma por trecho) */
   sources: AudioBufferSourceNode[]
   /** ligada no barramento de ritmo (não muda de tom) */
@@ -93,6 +96,8 @@ interface DecodedStem { chunks: Chunk[]; offset: number; end: number; ms: number
 /** Passou do limite de memória do aparelho: a pista fica desligada (o músico pode ligar depois) */
 class OverBudget extends Error {}
 
+/** Desliga a pista do barramento (com o pan, se tiver) */
+const unplug = (st: LoadedStem) => { try { st.gain.disconnect() } catch {} ; try { st.pan?.out.disconnect() } catch {} }
 const chunkBytes = (chunks: Chunk[]) => chunks.reduce((n, c) => n + c.buffer.length * c.buffer.numberOfChannels * 4, 0)
 
 /** Parte da música (intro, verso, refrão...) detectada pelo som das pistas */
@@ -140,7 +145,32 @@ const FADE = 0.025
 /** Pistas que não fazem parte do som do show e só carregam sob demanda */
 export function isSupportStem(stem: Pick<Stem, 'id' | 'label'>): boolean {
   const s = `${stem.id} ${stem.label}`.toLowerCase()
-  return /\b(click|clique|metronomo|metrônomo|contagem|count|cue)\b|click-|contagem-|-click|-contagem/.test(s)
+  return /\b(click|clique|metronomo|metrônomo|contagem|count|cue)\b|click-|contagem-|-click|-contagem|reg[eê]ncia/.test(s)
+}
+
+/** Pan de uma pista: os quatro caminhos L→L, R→L, L→R, R→R */
+interface Pan { ll: GainNode; rl: GainNode; lr: GainNode; rr: GainNode; out: ChannelMergerNode }
+
+/**
+ * Pan que serve para a saída VS: no centro não mexe no som; indo para um lado, o outro canal some e se
+ * soma no lado escolhido. Todo para a direita, a pista sai em mono no R com (L+R)/2 — sem passar do pico
+ * original (o StereoPannerNode somaria L+R inteiros e estouraria).
+ */
+function makePan(ctx: BaseAudioContext, src: GainNode): Pan {
+  // pista mono vira L=R antes de separar os canais (o separador trataria o mono como só L)
+  src.channelCount = 2; src.channelCountMode = 'explicit'; src.channelInterpretation = 'speakers'
+  const split = ctx.createChannelSplitter(2), out = ctx.createChannelMerger(2)
+  const ll = ctx.createGain(), rl = ctx.createGain(), lr = ctx.createGain(), rr = ctx.createGain()
+  src.connect(split)
+  split.connect(ll, 0); split.connect(lr, 0); split.connect(rl, 1); split.connect(rr, 1)
+  ll.connect(out, 0, 0); rl.connect(out, 0, 0); lr.connect(out, 0, 1); rr.connect(out, 0, 1)
+  return { ll, rl, lr, rr, out }
+}
+
+function setPan(p: Pan, v: number, t: number) {
+  const r = Math.max(0, Math.min(1, v)), l = Math.max(0, Math.min(1, -v))
+  const set = (g: GainNode, x: number) => g.gain.setTargetAtTime(x, t, 0.015)
+  set(p.ll, 1 - r - l / 2); set(p.rl, l / 2); set(p.rr, 1 - l - r / 2); set(p.lr, r / 2)
 }
 
 /**
@@ -183,6 +213,8 @@ async function stretchOffline(buf: AudioBuffer, outLen: number, rate: number, se
 /** Ordem de carregamento: base rítmica primeiro, pistas desligadas por último */
 function stemPriority(stem: Stem, states: Record<string, StemState>): number {
   if (states[stem.id]?.muted) return 9
+  // click ligado (saída VS): sem ele o músico se perde; nunca fica de fora por falta de memória
+  if (isSupportStem(stem)) return 0
   const inst = detectInstrument(`${stem.label} ${stem.id}`.replace(/-/g, ' '))
   if (inst === 'drums' || inst === 'percussion') return 0
   if (inst === 'bass') return 1
@@ -369,6 +401,8 @@ class AudioEngine {
   private timer: number | null = null
   private lastEmit = 0
   private countInNodes: AudioScheduledSourceNode[] = []
+  /** saída VS: pistas sem pan escolhido vão para o R e as de apoio (click, regência) para o L */
+  private vsOutput = false
 
   constructor() {
     const unlock = () => { this.unlock() }
@@ -541,7 +575,9 @@ class AudioEngine {
     gain.gain.value = this.targetGain(stem.id)
     const bus = this.busFor(stem.id)
     gain.connect(bus)
-    return { id: stem.id, label: stem.label, chunks: d.chunks, offset: d.offset, end: d.end, gain, sources: [], ms: d.ms, rhythm: bus === this.rhythmBus }
+    const st: LoadedStem = { id: stem.id, label: stem.label, chunks: d.chunks, offset: d.offset, end: d.end, gain, sources: [], ms: d.ms, rhythm: bus === this.rhythmBus }
+    this.applyPan(st)
+    return st
   }
 
   private async loadStem(stem: Stem, signalId: number, budget: 'track' | 'lazy' = 'track'): Promise<LoadedStem | null> {
@@ -853,6 +889,7 @@ class AudioEngine {
       const bus = this.busFor(d.id)
       gain.connect(bus)
       const st: LoadedStem = { id: d.id, label: d.label, chunks, offset: src.offset, end: src.end, gain, sources: [], ms: n ? sq / n : 0, rhythm: bus === this.rhythmBus }
+      this.applyPan(st)
       this.stems.set(d.id, st)
       if (this._playing && this.ctx && !this.mix) {
         const when = this.ctx.currentTime + 0.05
@@ -987,7 +1024,10 @@ class AudioEngine {
     const gain = this.ctx!.createGain()
     gain.gain.value = 1
     gain.connect(this.mixBus!)
-    return { id: '__mix', label: 'Prévia', chunks: [{ buffer, at: 0 }], offset: 0, end: buffer.duration, gain, sources: [], ms: meanSquare(buffer) }
+    const st: LoadedStem = { id: '__mix', label: 'Prévia', chunks: [{ buffer, at: 0 }], offset: 0, end: buffer.duration, gain, sources: [], ms: meanSquare(buffer) }
+    // saída VS: a prévia (só instrumental) vai para o R até as pistas chegarem
+    this.applyPan(st)
+    return st
   }
 
   /** Troca a prévia pelas pistas separadas, com uma transição curta (sem corte, no ponto exato) */
@@ -997,7 +1037,7 @@ class AudioEngine {
     this.mix = null
     this.emit({ type: 'preview', active: false })
     this.updateNorm()
-    if (!this._playing || !this.ctx) { try { mix.gain.disconnect() } catch {} ; return }
+    if (!this._playing || !this.ctx) { unplug(mix); return }
     const ctx = this.ctx
     const XF = 0.35
     const when = ctx.currentTime + 0.1
@@ -1011,7 +1051,7 @@ class AudioEngine {
     mix.gain.gain.setValueAtTime(1, when)
     mix.gain.gain.linearRampToValueAtTime(0, when + XF)
     this.stopStem(mix, when + XF + 0.05)
-    setTimeout(() => { try { mix.gain.disconnect() } catch {} }, (XF + 0.6) * 1000)
+    setTimeout(() => unplug(mix), (XF + 0.6) * 1000)
   }
 
   private fadeTo(value: number, at: number, dur = FADE) {
@@ -1065,7 +1105,10 @@ class AudioEngine {
       g.gain.setValueAtTime(0.0001, t)
       g.gain.exponentialRampToValueAtTime(0.5, t + 0.004)
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
-      osc.connect(g); g.connect(this.ctx!.destination)
+      osc.connect(g)
+      // saída VS: a contagem vai junto do click, no L
+      if (this.vsOutput) { const p = ctx.createStereoPanner(); p.pan.value = -1; g.connect(p); p.connect(ctx.destination) }
+      else g.connect(ctx.destination)
       osc.start(t); osc.stop(t + 0.1)
       this.countInNodes.push(osc)
     }
@@ -1220,6 +1263,33 @@ class AudioEngine {
 
   // ─── Mixer ───────────────────────────────────────────────────────────────
 
+  /** Pan da pista: o escolhido pelo músico; sem escolha, centro (ou o lado da saída VS) */
+  private panOf(st: LoadedStem): number {
+    const p = this.stemStates[st.id]?.pan
+    if (p !== undefined) return p
+    return this.vsOutput ? (isSupportStem(st) ? -1 : 1) : 0
+  }
+
+  private applyPan(st: LoadedStem) {
+    const v = this.panOf(st)
+    if (!this.ctx || (!st.pan && Math.abs(v) < 0.01)) return
+    if (!st.pan) {
+      st.gain.disconnect()
+      st.pan = makePan(this.ctx, st.gain)
+      st.pan.out.connect(st.rhythm ? this.rhythmBus! : this.mixBus!)
+      if (st.meter) st.gain.connect(st.meter)
+    }
+    setPan(st.pan, v, this.ctx.currentTime)
+  }
+
+  /** Saída VS para a mesa: instrumental no R, click/contagem/regência no L (pistas com pan escolhido ficam como estão) */
+  setVsOutput(on: boolean) {
+    if (on === this.vsOutput) return
+    this.vsOutput = on
+    this.stems.forEach(st => this.applyPan(st))
+    if (this.mix) this.applyPan(this.mix)
+  }
+
   private targetGain(id: string): number {
     const states = this.stemStates
     const st = states[id]
@@ -1237,7 +1307,13 @@ class AudioEngine {
       st.gain.gain.setTargetAtTime(this.targetGain(st.id), t, 0.015)
       // "acompanha o tom" mudou: troca de barramento (os dois caminhos têm o mesmo atraso, segue no tempo)
       const bus = this.busFor(st.id), rhythm = bus === this.rhythmBus
-      if (rhythm !== !!st.rhythm) { st.gain.disconnect(); st.gain.connect(bus); if (st.meter) st.gain.connect(st.meter); st.rhythm = rhythm }
+      if (rhythm !== !!st.rhythm) {
+        const out = st.pan?.out ?? st.gain
+        out.disconnect(); out.connect(bus)
+        if (!st.pan && st.meter) st.gain.connect(st.meter)
+        st.rhythm = rhythm
+      }
+      this.applyPan(st)
     })
     // pista de apoio ligada pela primeira vez: baixa agora e entra no ponto certo
     this.pending.forEach((stem, id) => {
@@ -1425,9 +1501,9 @@ class AudioEngine {
     this.stopTimer()
     if (this._playing) this.stopSources()
     this._playing = false
-    this.stems.forEach(st => { try { st.gain.disconnect() } catch {} })
+    this.stems.forEach(unplug)
     this.stems.clear()
-    if (this.mix) { this.stopStem(this.mix); try { this.mix.gain.disconnect() } catch {} ; this.mix = null }
+    if (this.mix) { this.stopStem(this.mix); unplug(this.mix); this.mix = null }
     this.memBytes = 0
     this.pending.clear()
     this.allLoaded = false

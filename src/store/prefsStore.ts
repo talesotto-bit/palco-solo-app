@@ -1,7 +1,8 @@
 /**
  * Preferências do músico:
  * - instrumentos que ele toca ao vivo (já abrem desligados no mixer de toda música);
- * - histórico das últimas músicas abertas ("Continue de onde parou").
+ * - histórico das últimas músicas abertas ("Continue de onde parou");
+ * - saída VS para a mesa (instrumental no R, click e regência no L), valendo para todas as músicas.
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -33,6 +34,8 @@ interface PrefsState {
   togglePlay: (id: PlayedInstrument) => void
   pushRecent: (trackId: string) => void
   setAsked: () => void
+  vsOutput: boolean
+  setVsOutput: (on: boolean) => void
 }
 
 export const usePrefsStore = create<PrefsState>()(
@@ -49,6 +52,8 @@ export const usePrefsStore = create<PrefsState>()(
       togglePlay: (id) => set(s => ({ plays: s.plays.includes(id) ? s.plays.filter(x => x !== id) : [...s.plays, id], askedInstruments: true })),
       pushRecent: (trackId) => set(s => ({ recent: [trackId, ...s.recent.filter(x => x !== trackId)].slice(0, 30) })),
       setAsked: () => set({ askedInstruments: true }),
+      vsOutput: false,
+      setVsOutput: (vsOutput) => set({ vsOutput }),
     }),
     { name: 'prefs-v1' }
   )

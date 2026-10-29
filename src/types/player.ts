@@ -9,6 +9,8 @@ export interface StemState {
   volume: number // 0..1
   /** acompanha a mudança de tom? sem escolha: bateria, percussão e click não acompanham */
   followPitch?: boolean
+  /** pan escolhido (-1 = L, 0 = centro, 1 = R); sem escolha: centro, ou o lado da saída VS */
+  pan?: number
 }
 
 export interface PlayerState {

@@ -8,6 +8,7 @@ import { EditTrackSheet } from '@/components/player/EditTrackSheet'
 import { MultipistasButton } from '@/components/player/MultipistasButton'
 import { toast } from 'sonner'
 import { usePlayerStore } from '@/store/playerStore'
+import { usePrefsStore } from '@/store/prefsStore'
 import { useFavoritesStore } from '@/store/favoritesStore'
 import { useTrackSettingsStore } from '@/store/trackSettingsStore'
 import { useAddToShow } from '@/store/addToShowStore'
@@ -48,6 +49,7 @@ export default function PlayerPage() {
   const isLocal = !!track?.id.startsWith('local-')
   const keySuggestion = usePlayerStore(s => s.keySuggestion)
   const [tab, setTab] = useState<Tab>('mixer')
+  const vsOutput = usePrefsStore(s => s.vsOutput)
   const [editing, setEditing] = useState(false)
   const coverUrl = useCoverArt(track?.artist || '', track?.title || '', track?.coverUrl || '')
 
@@ -231,7 +233,9 @@ export default function PlayerPage() {
               </div>
 
               <div id="player-mixer" className={cn('scroll-mt-4', tab !== 'mixer' && 'hidden lg:block')}>
-                <p className="text-[11px] text-[#9a9a9a] mb-2">Click e contagem começam desligados (som de show na caixa). Ligue para ouvir no fone. Tudo que você muda fica salvo nesta música.</p>
+                <p className="text-[11px] text-[#9a9a9a] mb-2">{vsOutput
+                  ? 'Saída VS ligada: instrumental no R e click, contagem e regência no L. Ligue cada lado num canal da mesa. Tudo que você muda fica salvo nesta música.'
+                  : 'Click e contagem começam desligados (som de show na caixa). Ligue para ouvir no fone. Tudo que você muda fica salvo nesta música.'}</p>
                 <StemMixer />
               </div>
             </div>
