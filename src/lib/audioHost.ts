@@ -3,7 +3,9 @@
  * O endereço próprio (audio.powertom.com.br) passa pelo cache da Cloudflare e não tem o limite de acessos do r2.dev.
  */
 export const LEGACY_AUDIO_BASE: string = 'https://pub-81339f96e6c746e8ac25fbe60e95563c.r2.dev'
-export const AUDIO_BASE: string = 'https://audio.powertom.com.br'
+// 16/11/2026: powertom.com.br suspenso no Registro.br. Enquanto o domínio próprio do áudio não volta, vai direto ao r2.dev
+// (para voltar: 'https://audio.powertom.com.br', ou o audio.<domínio novo> quando estiver no Cloudflare)
+export const AUDIO_BASE: string = LEGACY_AUDIO_BASE
 
 /**
  * Chave única de um arquivo de áudio, seja qual for o endereço usado.

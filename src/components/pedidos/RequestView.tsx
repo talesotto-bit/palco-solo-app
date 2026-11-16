@@ -205,7 +205,7 @@ export function RequestView({ page, preview = false }: { page: RequestPage; prev
           </a>
         )}
 
-        <a href={preview ? undefined : 'https://powertom.com.br/?utm_source=pedidos&utm_medium=app&utm_campaign=rodape'} target="_blank" rel="noopener noreferrer"
+        <a href={preview ? undefined : 'https://powertombrasil.com/?utm_source=pedidos&utm_medium=app&utm_campaign=rodape'} target="_blank" rel="noopener noreferrer"
           className="mt-10 block text-center text-xs text-white/35">Feito com <b className="text-white/60">Power Tom</b> · a banda completa no celular do músico</a>
       </div>
 

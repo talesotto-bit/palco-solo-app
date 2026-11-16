@@ -1,6 +1,6 @@
 /**
  * Recursos extras comprados à parte (order bumps / upsells). A Cakto envia no e-mail da compra
- * um link app.powertom.com.br/ativar/<código>; o código libera o recurso neste aparelho.
+ * um link app.powertombrasil.com/ativar/<código>; o código libera o recurso neste aparelho.
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'

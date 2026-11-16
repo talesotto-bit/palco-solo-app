@@ -111,7 +111,7 @@ export async function renderTakeVideo(audio: AudioBuffer, meta: { title: string;
     g.fillStyle = 'rgba(255,255,255,0.9)'; g.font = '700 30px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'
     g.fillText('🎙️ Gravado no Power Tom', cx, 1190)
     g.fillStyle = 'rgba(255,255,255,0.55)'; g.font = '500 24px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'
-    g.fillText('powertom.com.br', cx, 1228)
+    g.fillText('powertombrasil.com', cx, 1228)
   }
 
   draw(0)

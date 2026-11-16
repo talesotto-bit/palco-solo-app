@@ -18,7 +18,7 @@ const DEST: Record<string, { path: string; label: string; how: string; cta: stri
   },
 }
 
-/** Link do e-mail de compra: app.powertom.com.br/ativar/<código> */
+/** Link do e-mail de compra: app.powertombrasil.com/ativar/<código> */
 export default function Activate() {
   const { code = '' } = useParams()
   const navigate = useNavigate()

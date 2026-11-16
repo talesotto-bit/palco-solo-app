@@ -1,8 +1,8 @@
 /**
- * Modo teste: quem chega pelo link de teste (app.powertom.com.br/experimente) usa o app completo,
+ * Modo teste: quem chega pelo link de teste (app.powertombrasil.com/experimente) usa o app completo,
  * com 4 músicas liberadas. As outras aparecem com cadeado e abrem a tela de compra.
  * Só vale no aparelho que entrou pelo link de teste: quem já comprou e nunca passou por ele não é afetado.
- * Quem compra depois de testar libera pelo link de ativação (app.powertom.com.br/ativar/<código>).
+ * Quem compra depois de testar libera pelo link de ativação (app.powertombrasil.com/ativar/<código>).
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'

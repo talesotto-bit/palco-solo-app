@@ -50,7 +50,7 @@ export default function SharedShow() {
             </li>
           ))}
         </ol>
-        <a href="https://powertom.com.br/?utm_source=setlist&utm_medium=app&utm_campaign=banda" target="_blank" rel="noopener noreferrer" className="mt-10 block text-center text-xs text-white/40">
+        <a href="https://powertombrasil.com/?utm_source=setlist&utm_medium=app&utm_campaign=banda" target="_blank" rel="noopener noreferrer" className="mt-10 block text-center text-xs text-white/40">
           Setlist feito no <b className="text-white/70">Power Tom</b> · a banda completa no celular do músico
         </a>
       </div>
